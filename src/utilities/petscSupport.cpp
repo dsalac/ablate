@@ -404,6 +404,8 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
     } else {
         numberCells = n;
     }
+
+numberCells = n;
     PetscCall(DMGetWorkArray(dm, numberCells, MPIU_INT, cells));
     PetscCall(PetscArraycpy(*cells, list, numberCells));
     PetscCall(PetscIntSortSemiOrdered(numberCells, *cells));

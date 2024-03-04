@@ -234,11 +234,17 @@ Mat F;
 try {
     MatFactorInfo info;
     MatFactorInfoInitialize(&info) >> utilities::PetscUtilities::checkError;
-    MatGetFactor(A, MATSOLVERPETSC, MAT_FACTOR_LU, &F) >> utilities::PetscUtilities::checkError;
-    info.shifttype = (PetscReal)MAT_SHIFT_POSITIVE_DEFINITE;
-    info.shiftamount = 0.1;
-    MatLUFactorSymbolic(F, A, NULL, NULL, &info) >> utilities::PetscUtilities::checkError;
-    MatLUFactorNumeric(F, A, &info) >> utilities::PetscUtilities::checkError;
+
+    MatGetFactor(A, MATSOLVERPETSC, MAT_FACTOR_QR, &F) >> utilities::PetscUtilities::checkError;
+    MatQRFactorSymbolic(F, A, NULL, &info) >> utilities::PetscUtilities::checkError;
+    MatQRFactorNumeric(F, A, &info) >> utilities::PetscUtilities::checkError;
+
+//    MatGetFactor(A, MATSOLVERPETSC, MAT_FACTOR_LU, &F) >> utilities::PetscUtilities::checkError;
+//    info.shifttype = (PetscReal)MAT_SHIFT_POSITIVE_DEFINITE;
+//    info.shiftamount = 0.1;
+//    MatLUFactorSymbolic(F, A, NULL, NULL, &info) >> utilities::PetscUtilities::checkError;
+//    MatLUFactorNumeric(F, A, &info) >> utilities::PetscUtilities::checkError;
+
     MatDestroy(&A) >> utilities::PetscUtilities::checkError;
 }
 catch (const std::exception& e) {
