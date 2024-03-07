@@ -229,9 +229,8 @@ void RBF::Matrix(const PetscInt c) {
 //    MatViewFromOptions(A, NULL, "-ablate::domain::rbf::RBF::A_view") >> utilities::PetscUtilities::checkError;
 
     // Factor the matrix
+    Mat F;
 
-Mat F;
-try {
     MatFactorInfo info;
     MatFactorInfoInitialize(&info) >> utilities::PetscUtilities::checkError;
 
@@ -239,30 +238,13 @@ try {
     MatQRFactorSymbolic(F, A, NULL, &info) >> utilities::PetscUtilities::checkError;
     MatQRFactorNumeric(F, A, &info) >> utilities::PetscUtilities::checkError;
 
-//    MatGetFactor(A, MATSOLVERPETSC, MAT_FACTOR_LU, &F) >> utilities::PetscUtilities::checkError;
-//    info.shifttype = (PetscReal)MAT_SHIFT_POSITIVE_DEFINITE;
-//    info.shiftamount = 0.1;
-//    MatLUFactorSymbolic(F, A, NULL, NULL, &info) >> utilities::PetscUtilities::checkError;
-//    MatLUFactorNumeric(F, A, &info) >> utilities::PetscUtilities::checkError;
+    //    MatGetFactor(A, MATSOLVERPETSC, MAT_FACTOR_LU, &F) >> utilities::PetscUtilities::checkError;
+    //    info.shifttype = (PetscReal)MAT_SHIFT_POSITIVE_DEFINITE;
+    //    info.shiftamount = 0.1;
+    //    MatLUFactorSymbolic(F, A, NULL, NULL, &info) >> utilities::PetscUtilities::checkError;
+    //    MatLUFactorNumeric(F, A, &info) >> utilities::PetscUtilities::checkError;
 
     MatDestroy(&A) >> utilities::PetscUtilities::checkError;
-}
-catch (const std::exception& e) {
-  MatViewFromOptions(A, NULL, "-ablate::domain::rbf::RBF::A_view") >> utilities::PetscUtilities::checkError;
-  int rank;
-  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-  printf("Rank: %d\n", rank);
-  printf("Cell: %" PetscInt_FMT"d\n", c);
-  printf("\n");
-  for (PetscInt i = 0 ; i < nCells; ++i) {
-    for(PetscInt d = 0 ; d < dim; ++d) {
-      printf("%+.10f\t", x[i*dim + d]);
-    }
-    printf("\n");
-  }
-  exit(0);
-}
-//    MatLUFactor(A, NULL, NULL, NULL) >> utilities::PetscUtilities::checkError;
 
     PetscFree(xp) >> utilities::PetscUtilities::checkError;
 
@@ -427,7 +409,6 @@ PetscReal RBF::EvalDer(const ablate::domain::Field *field, PetscInt c, PetscInt 
 }
 
 PetscReal RBF::EvalDer(DM dm, Vec vec, const PetscInt fid, PetscInt c, PetscInt dx, PetscInt dy, PetscInt dz) {
-
     PetscReal *wt = nullptr;
     PetscScalar val = 0.0, *f;
     const PetscScalar *array;
@@ -468,15 +449,21 @@ PetscReal RBF::EvalDer(DM dm, Vec vec, const PetscInt fid, PetscInt c, PetscInt 
 /************ End Derivative Code **********************/
 
 /************ Begin Interpolation Code **********************/
+PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, PetscReal xEval[3]) {
+    DM dm = RBF::subDomain->GetFieldDM(*field);
 
-PetscReal RBF::Interpolate(const ablate::domain::Field *field, PetscReal xEval[3]) {
-    RBF::CheckField(field);
+    PetscInt c;
+    DMPlexGetContainingCell(dm, xEval, &c) >> utilities::PetscUtilities::checkError;
+    if (c < 0) {
+        throw std::runtime_error("ablate::domain::RBF::Interpolate could not determine the location of (" + std::to_string(xEval[0]) + ", " + std::to_string(xEval[1]) + ", " +
+                                 std::to_string(xEval[2]) + ").");
+    }
 
-    return RBF::Interpolate(field, RBF::subDomain->GetVec(*field), xEval);
+    return RBF::Interpolate(field, f, c, xEval);
 }
 
-PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, PetscReal xEval[3]) {
-    PetscInt i, c, nCells, *lst;
+PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, const PetscInt c, PetscReal xEval[3]) {
+    PetscInt i, nCells, *lst;
     PetscScalar *vals, *v;
     const PetscScalar *fvals;
     PetscReal *x, x0[3];
@@ -485,12 +472,7 @@ PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, PetscReal 
     DM dm = RBF::subDomain->GetFieldDM(*field);
     const PetscInt fid = field->id;
 
-    DMPlexGetContainingCell(dm, xEval, &c) >> utilities::PetscUtilities::checkError;
-
-    if (c < 0) {
-        throw std::runtime_error("ablate::domain::RBF::Interpolate could not determine the location of (" + std::to_string(xEval[0]) + ", " + std::to_string(xEval[1]) + ", " +
-                                 std::to_string(xEval[2]) + ").");
-    }
+    RBF::CheckField(field);
 
     if (RBF::RBFMatrix[c] == nullptr) {
         RBF::Matrix(c);
@@ -511,8 +493,6 @@ PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, PetscReal 
     VecGetArray(rhs, &vals) >> utilities::PetscUtilities::checkError;
 
     for (i = 0; i < nCells; ++i) {
-        // DMPlexPointLocalFieldRead isn't behaving like I would expect. If I don't make f a pointer then it just returns zero.
-        //    Additionally, it looks like it allows for the editing of the value.
         if (fid >= 0) {
             DMPlexPointLocalFieldRead(dm, lst[i], fid, fvals, &v) >> utilities::PetscUtilities::checkError;
         } else {

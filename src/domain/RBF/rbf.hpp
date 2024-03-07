@@ -16,10 +16,10 @@ class RBF {
     // Radial Basis Function type and parameters
     const int polyOrder = 4;
 
-    PetscInt nPoly = -1;                             // The number of polynomial components to include
-    PetscInt minNumberCells = -1;                    // Minimum number of cells-vertices needed to compute the RBF
-    PetscBool useCells = PETSC_FALSE;                // Use vertices or edges/faces when computing neighbor cells/vertices
-    const bool returnNeighborVertices;     // If it is true formulates the RBF based on vertices surrounding a cell, otherwise will use cells surrounding a cell
+    PetscInt nPoly = -1;                // The number of polynomial components to include
+    PetscInt minNumberCells = -1;       // Minimum number of cells-vertices needed to compute the RBF
+    PetscBool useCells = PETSC_FALSE;   // Use vertices or edges/faces when computing neighbor cells/vertices
+    const bool returnNeighborVertices;  // If it is true formulates the RBF based on vertices surrounding a cell, otherwise will use cells surrounding a cell
 
     // Information from the subDomain cell range
     PetscInt cStart = 0, cEnd = 0;  // The cell range
@@ -105,6 +105,16 @@ class RBF {
     PetscReal EvalDer(DM dm, Vec vec, const PetscInt fid, PetscInt c, PetscInt dx, PetscInt dy, PetscInt dz);  // Evaluate a derivative
 
     // Interpolation stuff
+
+    /**
+     * Return the interpolation of a field at a given location
+     * @param field - The field to interpolate
+     * @param f - The local vector containing the data
+     * @param c - Cell containing the evaluation point
+     * @param xEval - The location where to perform the interpolation
+     */
+    PetscReal Interpolate(const ablate::domain::Field *field, Vec f, const PetscInt c, PetscReal xEval[3]);
+
     /**
      * Return the interpolation of a field at a given location
      * @param field - The field to interpolate
@@ -118,7 +128,7 @@ class RBF {
      * @param field - The field to interpolate
      * @param xEval - The location where to perform the interpolation
      */
-    PetscReal Interpolate(const ablate::domain::Field *field, PetscReal xEval[3]);
+    [[nodiscard]] inline PetscReal Interpolate(const ablate::domain::Field *field, PetscReal xEval[3]) { return RBF::Interpolate(field, RBF::subDomain->GetVec(*field), xEval); }
 
     // These will be overwritten in the derived classes
     /**
@@ -144,7 +154,7 @@ class RBF {
 
     /**
      *
-    */
+     */
     inline PetscInt GetDimensions() { return RBF::subDomain->GetDimensions(); }
 };
 
