@@ -1205,6 +1205,8 @@ void CurvatureViaGaussian(DM dm, const PetscInt cell, const Vec vec, const ablat
   PetscReal x0[dim], vol;
   DMPlexComputeCellGeometryFVM(dm, cell, &vol, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
 
+  // Mabye relate this to PETSC_SQRT_MACHINE_EPSILON or similar?
+  //  The would probably require that the derivative factor be re-done to account for round-off.
   const PetscReal sigma = 1e-3*h;
 
   PetscReal cx = 0.0, cy = 0.0, cxx = 0.0, cyy = 0.0, cxy = 0.0;
@@ -1215,7 +1217,7 @@ void CurvatureViaGaussian(DM dm, const PetscInt cell, const Vec vec, const ablat
       const PetscReal dist[2] = {sigma*quad[i], sigma*quad[j]};
       PetscReal x[2] = {x0[0] + dist[0], x0[1] + dist[1]};
 
-      const PetscReal lsVal = vertRBF->Interpolate(lsField, vec, x);
+      const PetscReal lsVal = vertRBF->Interpolate(lsField, vec, cell, x);
 
       const PetscReal wt = weights[i]*weights[j];
 
@@ -1666,21 +1668,21 @@ PetscPrintf(PETSC_COMM_WORLD, "Reinit\n");
 
         nrm = ablate::utilities::MathUtilities::MagVector(dim, g);
 
-        const PetscReal alphaH = PetscMax(nrm, 1.0)*h;
-        PetscReal sgn;
-        if (phi0 < -alphaH) sgn = -1.0;
-        else if (phi0 > alphaH) sgn = 1.0;
-        else sgn = phi0/alphaH + PetscSinReal(M_PI*phi0/alphaH)/M_PI;
+//        const PetscReal alphaH = PetscMax(nrm, 1.0)*h;
+//        PetscReal sgn;
+//        if (phi0 < -alphaH) sgn = -1.0;
+//        else if (phi0 > alphaH) sgn = 1.0;
+//        else sgn = phi0/alphaH + PetscSinReal(M_PI*phi0/alphaH)/M_PI;
 
 //          PetscReal sgn = (phi0 > 0.0 ? +1.0 : -1.0);
-//          PetscReal sgn = tempLS[v]/PetscSqrtReal(PetscSqr(tempLS[v]) + PetscSqr(h));
+          PetscReal sgn = tempLS[v]/PetscSqrtReal(PetscSqr(tempLS[v]) + PetscSqr(h));
 
 
 //        PetscReal gNRM[dim];
 //        DMPlexVertexGradFromCell(auxDM, vert, auxVec, curvID, 0, gNRM);
 
 //        if (vertMask[v]>1)
-          *phi -= 0.9*h*sgn*(nrm - 1.0);
+          *phi -= 0.5*h*sgn*(nrm - 1.0);
 
 //        if (vertMask[v]  < (nLevels+1)) {
 //            PetscScalar H = 0.0;
