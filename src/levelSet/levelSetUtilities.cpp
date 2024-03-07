@@ -1134,14 +1134,9 @@ bool ablate::levelSet::Utilities::ValidCell(DM dm, PetscInt p) {
 //}
 
 
-PetscReal GaussianKernel(const PetscInt dim, const PetscReal *x, const PetscReal s,  const PetscInt dx, const PetscInt dy, const PetscInt dz) {
-
-  PetscReal dist = 0.0;
-  for (PetscInt d = 0; d < dim; ++d) dist += PetscSqr(x[d]);
+PetscReal GaussianDerivativeFactor(const PetscInt dim, const PetscReal *x, const PetscReal s,  const PetscInt dx, const PetscInt dy, const PetscInt dz) {
 
   const PetscReal s2 = PetscSqr(s);
-  const PetscReal gaussFactor = PetscPowRealInt(1.0/(s*PetscSqrtReal(2.0*PETSC_PI)), dim);
-  PetscReal gaussKernel = gaussFactor*PetscExpReal(-0.5*dist/s2);
 
   const PetscInt derHash = 100*dx + 10*dy + dz;
 
@@ -1149,91 +1144,90 @@ PetscReal GaussianKernel(const PetscInt dim, const PetscReal *x, const PetscReal
 
   switch (derHash) {
     case   0: // Value
-      // Do nothing
-      break;
+      return (1.0);
     case 100: // x
-      gaussKernel *= -x[0]/s2;
-      break;
+      return (x[0]/s2);
     case  10: // y
-      gaussKernel *= -x[1]/s2;
-      break;
+      return (x[1]/s2);
     case   1: // z
-      gaussKernel *= -x[2]/s2;
-      break;
+      return (x[2]/s2);
     case 200: // xx
-      gaussKernel *= (x[0]*x[0] - s2)/PetscSqr(s2);
-      break;
+      return ((x[0]*x[0] - s2)/PetscSqr(s2));
     case  20: // yy
-      gaussKernel *= (x[1]*x[1] - s2)/PetscSqr(s2);
-      break;
+      return ((x[1]*x[1] - s2)/PetscSqr(s2));
     case   2: // zz
-      gaussKernel *= (x[2]*x[2] - s2)/PetscSqr(s2);
-      break;
+      return ((x[2]*x[2] - s2)/PetscSqr(s2));
     case 110: // xy
-      gaussKernel *= x[0]*x[1]/PetscSqr(s2);
-      break;
+      return (x[0]*x[1]/PetscSqr(s2));
     case 101: // xz
-      gaussKernel *= x[0]*x[2]/PetscSqr(s2);
-      break;
+      return (x[0]*x[2]/PetscSqr(s2));
     case  11: // yz
-      gaussKernel *= x[1]*x[2]/PetscSqr(s2);
-      break;
+      return (x[1]*x[2]/PetscSqr(s2));
     default:
       throw std::runtime_error("Unknown derivative request");
   }
 
-  return (gaussKernel);
 }
 
 // Calculate the curvature from a vertex-based level set field using Gaussian convolution.
 // Right now this is just 2D for testing purposes.
-// For now this assumes that all cells have the same volume, which will NOT be true in general
-void GaussianCurvature(DM dm, const PetscInt cell, const PetscScalar *array, const PetscInt lsID, double *H) {
+void CurvatureViaGaussian(DM dm, const PetscInt cell, const Vec vec, const ablate::domain::Field *lsField, double *H) {
 
   PetscInt dim;
   DMGetDimension(dm, &dim) >> ablate::utilities::PetscUtilities::checkError;
 
   PetscReal h;
   DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
-  h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
+//  h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
+
+  const PetscInt nQuad = 3; // Size of the 1D quadrature
+  const PetscReal quad[] = {0.0, PetscSqrtReal(3.0), -PetscSqrtReal(3.0)};
+  const PetscReal weights[] = {2.0/3.0, 1.0/6.0, 1.0/6.0};
+
+
+//   Hermite-Gauss quadrature points
+//  const PetscInt nQuad = 4; // Size of the 1D quadrature
+
+//   The quadrature is actually sqrt(2) times the quadrature points. This is as we are integrating
+//      against the normal distribution, not exp(-x^2)
+//  const PetscReal quad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+//                             0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+//                            -2.3344142183389772393175122672103621944890707102161406718291603341725665622712306,
+//                             2.3344142183389772393175122672103621944890707102161406718291603341725665622712306};
+
+//// The weights are the true weights divided by sqrt(pi)
+//  const PetscReal weights[4] = {0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+//                               0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+//                               0.045875854768068491816892993774509050669504376611944155963942286062419968545223748,
+//                               0.045875854768068491816892993774509050669504376611944155963942286062419968545223748};
+
 
   PetscReal x0[dim], vol;
   DMPlexComputeCellGeometryFVM(dm, cell, &vol, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
 
-
-  const PetscReal sigma = h;
-
-  PetscInt nVert, *verts;
-  DMPlexGetNeighbors(dm, cell, 0, 5.0*sigma, 0, PETSC_FALSE, PETSC_TRUE, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-
-  PetscReal *coords;
-  DMPlexVertexGetCoordinates(dm, nVert, verts, &coords) >> ablate::utilities::PetscUtilities::checkError;
-
+  const PetscReal sigma = 1e-3*h;
 
   PetscReal cx = 0.0, cy = 0.0, cxx = 0.0, cyy = 0.0, cxy = 0.0;
 
-  for (PetscInt i = 0; i < nVert; ++i) {
-    PetscInt v = verts[i];
+  for (PetscInt i = 0; i < nQuad; ++i) {
+    for (PetscInt j = 0; j < nQuad; ++j) {
 
-    for (PetscInt d = 0; d < dim; ++d) coords[i*dim+d] -= x0[d];
+      const PetscReal dist[2] = {sigma*quad[i], sigma*quad[j]};
+      PetscReal x[2] = {x0[0] + dist[0], x0[1] + dist[1]};
 
-    const PetscScalar *lsVal = nullptr;
-    xDMPlexPointLocalRead(dm, v, lsID, array, &lsVal) >> ablate::utilities::PetscUtilities::checkError;
+      const PetscReal lsVal = vertRBF->Interpolate(lsField, vec, x);
 
-    cx  += vol*GaussianKernel(dim, &coords[i*dim], sigma, 1, 0, 0)*lsVal[0];
-    cy  += vol*GaussianKernel(dim, &coords[i*dim], sigma, 0, 1, 0)*lsVal[0];
-    cxx += vol*GaussianKernel(dim, &coords[i*dim], sigma, 2, 0, 0)*lsVal[0];
-    cyy += vol*GaussianKernel(dim, &coords[i*dim], sigma, 0, 2, 0)*lsVal[0];
-    cxy += vol*GaussianKernel(dim, &coords[i*dim], sigma, 1, 1, 0)*lsVal[0];
+      const PetscReal wt = weights[i]*weights[j];
+
+      cx  += wt*GaussianDerivativeFactor(dim, dist, sigma, 1, 0, 0)*lsVal;
+      cy  += wt*GaussianDerivativeFactor(dim, dist, sigma, 0, 1, 0)*lsVal;
+      cxx += wt*GaussianDerivativeFactor(dim, dist, sigma, 2, 0, 0)*lsVal;
+      cyy += wt*GaussianDerivativeFactor(dim, dist, sigma, 0, 2, 0)*lsVal;
+      cxy += wt*GaussianDerivativeFactor(dim, dist, sigma, 1, 1, 0)*lsVal;
+    }
   }
 
   *H = (cxx*cy*cy + cyy*cx*cx - 2.0*cxy*cx*cy)/PetscPowReal(cx*cx + cy*cy, 1.5);
-
-  DMPlexVertexRestoreCoordinates(dm, nVert, verts, &coords) >> ablate::utilities::PetscUtilities::checkError;
-  DMPlexRestoreNeighbors(dm, cell, 0, 0, 0, PETSC_FALSE, PETSC_TRUE, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-
-
-
 
 }
 
@@ -1714,21 +1708,21 @@ PetscPrintf(PETSC_COMM_WORLD, "Reinit\n");
 
 
 
-{
-  for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
+//{
+//  for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
 
-    if (vertMask[v] > 0) {
-      PetscInt vert = vertRange.GetPoint(v);
-      PetscReal x[dim];
-      DMPlexComputeCellGeometryFVM(auxDM, vert, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-      PetscScalar *phi;
-      xDMPlexPointLocalRef(auxDM, vert, lsID, auxArray, &phi);
-      *phi = sqrt(x[0]*x[0]+x[1]*x[1])-1;
-    }
-  }
+//    if (vertMask[v] > 0) {
+//      PetscInt vert = vertRange.GetPoint(v);
+//      PetscReal x[dim];
+//      DMPlexComputeCellGeometryFVM(auxDM, vert, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+//      PetscScalar *phi;
+//      xDMPlexPointLocalRef(auxDM, vert, lsID, auxArray, &phi);
+//      *phi = sqrt(x[0]*x[0]+x[1]*x[1])-1;
+//    }
+//  }
 
 
-}
+//}
 
 SaveVertexData(auxDM, auxVec, "ls2.txt", lsField, subDomain);
 printf("1617\n");
@@ -1970,7 +1964,8 @@ printf("1617\n");
 
     if (cellMask[c] == 1 ) {
 
-      GaussianCurvature(auxDM, cell, auxArray, lsID, H);
+      CurvatureViaGaussian(auxDM, cell, auxVec, lsField, H);
+
 
 //      *H = ablate::levelSet::geometry::Curvature(vertRBF, lsField, cell);
 
@@ -1992,7 +1987,7 @@ printf("1617\n");
 
   subDomain->UpdateAuxLocalVector();
 
-SaveCellData(auxDM, auxVec, "curv1.txt", curvField, 1, subDomain);
+SaveCellData(auxDM, auxVec, "curv2.txt", curvField, 1, subDomain);
 exit(0);
   // Extension
   PetscInt vertexCurvID = lsID; // Store the vertex curvatures in the work vec at the same location as the level-set
