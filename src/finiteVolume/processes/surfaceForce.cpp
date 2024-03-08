@@ -117,7 +117,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
 //SaveCellData("vof0.txt", locX, vofField, 1, subDomain);
 
-    ablate::levelSet::Utilities::Reinitialize(subDomain, locX, vofField, 15, lsField, vertexNormalField, cellNormalField, curvField);
+    ablate::levelSet::Utilities::Reinitialize(subDomain, locX, vofField, 8, lsField, vertexNormalField, cellNormalField, curvField);
 
     DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
