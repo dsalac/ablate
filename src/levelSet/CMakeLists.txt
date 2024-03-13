@@ -7,6 +7,7 @@ target_sources(ablateLibrary
         vofMathFunction.cpp
         cellGrad.cpp
         geometry.cpp
+        interfaceReconstruction.cpp
 
         PUBLIC
         LS-VOF.hpp
@@ -16,4 +17,5 @@ target_sources(ablateLibrary
         vofMathFunction.hpp
         cellGrad.hpp
         geometry.hpp
+        interfaceReconstruction.hpp
         )

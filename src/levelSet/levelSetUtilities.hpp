@@ -158,8 +158,5 @@ void Reinitialize(std::shared_ptr<ablate::domain::SubDomain> subDomain, const Ve
 
 bool ValidCell(DM dm, PetscInt p);
 
-
-void SharpenVOF(std::shared_ptr<ablate::domain::SubDomain> subDomain, ablate::domain::Range cellRange, ablate::domain::Range vertRange, const Vec solVec, const Vec auxVec, DM solDM, DM auxDM, const PetscInt vofID, const PetscInt vertexGradID, const PetscInt cellGradID, const PetscInt sharpID);
-
 }  // namespace ablate::levelSet::Utilities
 #endif  // ABLATELIBRARY_LEVELSETUTILITIES_HPP
