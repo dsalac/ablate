@@ -278,7 +278,7 @@ void RBF::SetDerivatives(PetscInt numDer, PetscInt dx[], PetscInt dy[], PetscInt
         }
     }
 }
-
+#include <signal.h>
 /**
  * Set derivatives, defaulting to using common vertices
  */
@@ -422,7 +422,7 @@ PetscReal RBF::EvalDer(DM dm, Vec vec, const PetscInt fid, PetscInt c, PetscInt 
     PetscHMapIGet(RBF::hash, derKey, &derID);
 
     // If the stencil hasn't been setup yet do so
-    if (RBF::nStencil[c] < 1) {
+    if ( RBF::stencilWeights[c] == nullptr ) {
         RBF::SetupDerivativeStencils(c);
     }
 
