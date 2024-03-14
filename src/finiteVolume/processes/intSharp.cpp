@@ -41,9 +41,18 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
     flow.RegisterRHSFunction(ComputeTerm, this);
 }
 
+
+
+// Called every time the mesh changes
+void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
+  IntSharp::subDomain = solver.GetSubDomainPtr();
+
+//  SurfaceForce::reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(subDomain);
+
+}
+
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
     PetscFunctionBegin;
-    auto process = (ablate::finiteVolume::processes::IntSharp *)ctx;
 
     //dm = sol DM
     //locX = solvec
@@ -54,47 +63,63 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     //process->vertexDM = aux DM
 
     //get fields
-    auto dim = solver.GetSubDomain().GetDimensions();
-    const auto &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
-    const auto &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+    ablate::finiteVolume::processes::IntSharp *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
+    std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
+    auto dim = subDomain->GetDimensions();
+    const auto &phiField = subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+    const auto &eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
     auto phifID = phiField.id;
     auto eulerfID = eulerField.id;
 
     // get vecs/arrays
     Vec auxvec; DMGetLocalVector(process->vertexDM, &auxvec);
-    PetscScalar *auxArray; VecGetArray(auxvec, &auxArray);
-    PetscScalar *fArray; VecGetArray(locFVec, &fArray);
-    PetscScalar *solArray; VecGetArray(locX, &solArray);
+    PetscScalar *auxArray, *fArray, *solArray;
+
+    VecGetArray(auxvec, &auxArray);
+    VecGetArray(locFVec, &fArray);
+    VecGetArray(locX, &solArray);
 
     // get ranges
-    ablate::domain::Range cellRange; solver.GetCellRangeWithoutGhost(cellRange);
-    PetscInt vStart, vEnd; DMPlexGetDepthStratum(process->vertexDM, 0, &vStart, &vEnd);
+    ablate::domain::Range cellRange, vertRange;
+
+    solver.GetCellRangeWithoutGhost(cellRange);
+    subDomain->GetRange(nullptr, 0, vertRange);
 
     //march over vertices
-    for (PetscInt vertex = vStart; vertex < vEnd; vertex++) {
+    for (PetscInt v = vertRange.start; v < vertRange.end; v++) {
+
+        PetscInt vertex = vertRange.GetPoint(v);
 
         const double epsmach = 1e-52;
-        PetscReal vx, vy, vz; GetCoordinate(dm, dim, vertex, &vx, &vy, &vz);
+        PetscReal vx, vy, vz;
+        GetCoordinate(dm, dim, vertex, &vx, &vy, &vz);
+
         PetscInt nvn, *vertexneighbors;
         DMPlexVertexGetCells(dm, vertex, &nvn, &vertexneighbors);
+
         PetscReal distances[nvn];
-        PetscReal shortestdistance=999999;
+        PetscReal shortestdistance=PETSC_MAX_REAL;
         for (PetscInt k =0; k< nvn; ++k){
             PetscInt neighbor = vertexneighbors[k];
             PetscReal nx, ny, nz; GetCoordinate(dm, dim, neighbor, &nx, &ny, &nz);
-            PetscReal distance = pow(pow((nx-vx),2) + pow((ny-vy),2) + pow((nz-vz),2), 0.5);
-            if (distance < shortestdistance){shortestdistance=distance;}
+
+            PetscReal distance = PetscSqrtReal(PetscSqr(nx-vx) + PetscSqr(ny-vy) + PetscSqr(nz-vz));
+            if (distance < shortestdistance){
+              shortestdistance=distance;
+            }
             distances[k]=distance;
         }
         PetscReal weights_wrt_short[nvn];
-        PetscReal totalweight_wrt_short=0;
+        PetscReal totalweight_wrt_short = 0.0;
         for (PetscInt k =0; k< nvn; ++k){
             PetscReal weight_wrt_short = shortestdistance/distances[k];
             weights_wrt_short[k] =  weight_wrt_short;
             totalweight_wrt_short += weight_wrt_short;
         }
         PetscReal weights[nvn];
-        for (PetscInt k =0; k< nvn; ++k){weights[k] = weights_wrt_short[k]/totalweight_wrt_short;}
+        for (PetscInt k =0; k< nvn; ++k){
+          weights[k] = weights_wrt_short[k]/totalweight_wrt_short;
+        }
 
         PetscReal phiv=0;
         for (PetscInt k =0; k< nvn; ++k){
@@ -110,9 +135,9 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
         DMPlexVertexGradFromCell(dm, vertex, locX, phifID, 0, gradphiv);
         PetscReal normgradphi = 0.0;
         for (int k=0; k<dim; ++k){
-            normgradphi += pow(gradphiv[k],2);
+            normgradphi += PetscSqr(gradphiv[k]);
         }
-        normgradphi = pow(normgradphi, 0.5);
+        normgradphi = PetscSqrtReal(normgradphi);
 
         //get a at vertices (av) (Chiu 2011)
         //based on Eq. 1 of:   Jain SS. Accurate conservative phase-field method for simulation of two-phase flows. Journal of Computational Physics. 2022 Nov 15;469:111529.
@@ -158,6 +183,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     VecRestoreArray(locX, &solArray);
 //    VecRestoreArray(auxvec, &auxArray);
     solver.RestoreRange(cellRange);
+    subDomain->RestoreRange(vertRange);
     PetscFunctionReturn(0);
 
 }
