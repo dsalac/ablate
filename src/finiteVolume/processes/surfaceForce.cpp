@@ -67,8 +67,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
     h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
 
-
-    ablate::levelSet::Utilities::Reinitialize(flow, subDomain, locX, vofField, 4, lsField, vertexNormalField, cellNormalField, curvField);
+    ablate::levelSet::Utilities::Reinitialize(flow, subDomain, locX, vofField, 6, lsField, vertexNormalField, cellNormalField, curvField);
 
     DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
@@ -77,7 +76,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     VecGetArray(locF, &fArray) >> utilities::PetscUtilities::checkError;
     VecGetArrayRead(locX, &xArray) >> utilities::PetscUtilities::checkError;
     VecGetArrayRead(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
-
+//FILE *f1 = fopen("force.txt","w");
     subDomain->GetCellRange(nullptr, cellRange);
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
       PetscInt cell = cellRange.GetPoint(c);
@@ -122,6 +121,9 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         xDMPlexPointLocalRead(eulerDM, cell, eulerField->id, xArray, &euler) >> utilities::PetscUtilities::checkError;
         const PetscScalar density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
 
+//PetscReal x[3];
+//DMPlexComputeCellGeometryFVM(eulerDM, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+//fprintf(f1,"%+f\t%+f\t", x[0], x[1]);
         for (PetscInt d = 0; d < dim; ++d) {
             // calculate surface force and energy
 
@@ -132,13 +134,16 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
             // add in the contributions
             eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = surfaceForce;
             eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += surfaceEnergy;
+//fprintf(f1,"%+f\t", surfaceForce);
         }
+//fprintf(f1, "\n");
       }
 
 
     }
     subDomain->RestoreRange(cellRange);
 //SaveCellData("locF.txt", locF, eulerField, 5, subDomain);
+//fclose(f1);
 //exit(0);
 
     // Cleanup
