@@ -1284,7 +1284,8 @@ void ablate::levelSet::Utilities::Reinitialize(
   maxDiff = 1.0;
   iter = 0;
 
-  while (maxDiff>1.e-2 && iter<(nLevels*5)) {
+//  while (maxDiff>1.e-2 && iter<(nLevels*5)) {
+  while (maxDiff>1.e-2 && iter<100) {
     ++iter;
 
     for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {

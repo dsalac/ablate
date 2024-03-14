@@ -311,33 +311,9 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
         decoder->DecodeTwoPhaseEulerState(
             dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
         // maybe save other values for use later, would interpolation to the face be the same as calculating at face?
-        allFields[uOff[0]] = alpha;  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
+        allFields[uOff[0]] = PetscMax(PetscMin(alpha, 1.0), 0.0);  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
     }
     // clean up
-
-
-//std::shared_ptr<ablate::domain::SubDomain> subDomain = fvSolver.GetSubDomainPtr();
-
-//ablate::domain::Range vertRange;
-//fvSolver.GetSubDomain().GetRange(nullptr, 0, vertRange);
-//DM solDM = fvSolver.GetSubDomain().GetDM();
-//DM auxDM = fvSolver.GetSubDomain().GetAuxDM();
-//Vec auxVec = fvSolver.GetSubDomain().GetAuxVector();
-
-
-//const ablate::domain::Field *vofField = &(subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD));
-//const ablate::domain::Field *vertexNormalField = &(subDomain->GetField("vertexNormal"));
-//const ablate::domain::Field *cellNormalField = &(subDomain->GetField("cellNormal"));
-//const ablate::domain::Field *curvField = &(subDomain->GetField("curvature"));
-
-//ablate::levelSet::Utilities::SharpenVOF(subDomain, cellRange, vertRange, globFlowVec, auxVec, solDM, auxDM, vofField->id, vertexNormalField->id, cellNormalField->id, curvField->id);
-
-
-
-//fvSolver.GetSubDomain().RestoreRange(vertRange);
-
-//exit(0);
-
 
     fvSolver.RestoreRange(cellRange);
 
@@ -959,6 +935,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasPerfectG
     *internalEnergyG = eG;
     *internalEnergyL = eL;
     *alpha = densityVF / (*densityG);
+    *alpha = PetscMax(PetscMin(*alpha, 1.0), 0.0);
     *p = pG;  // pressure equilibrium, pG = pL
     *aG = a1;
     *aL = a2;
@@ -1146,6 +1123,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
     *internalEnergyG = eG;
     *internalEnergyL = eL;
     *alpha = densityVF / (*densityG);
+    *alpha = PetscMax(PetscMin(*alpha, 1.0), 0.0);
     *p = pG;  // pressure equilibrium, pG = pL
     *aG = a1;
     *aL = a2;
@@ -1314,6 +1292,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffe
     *internalEnergyG = eG;
     *internalEnergyL = eL;
     *alpha = densityVF / (*densityG);
+    *alpha = PetscMax(PetscMin(*alpha, 1.0), 0.0);
     *p = pG;  // pressure equilibrium, pG = pL
     *aG = a1;
     *aL = a2;
