@@ -13,6 +13,7 @@
 #include "solver/solver.hpp"
 #include "twoPhaseEulerAdvection.hpp"
 
+
 namespace ablate::finiteVolume::processes {
 
   class SurfaceForce : public Process {
@@ -23,8 +24,12 @@ namespace ablate::finiteVolume::processes {
     PetscReal sigma;
 
 
+    std::shared_ptr<ablate::domain::SubDomain> subDomain;
+
+//    std::shared_ptr<ablate::levelSet::Reconstruction> reconstruction;
 
     public:
+
 
 
     explicit SurfaceForce(PetscReal sigma);
@@ -45,7 +50,7 @@ namespace ablate::finiteVolume::processes {
      * @param ctx - Pointer to ablate::finiteVolume::processes::SurfaceForce
      * @return
      */
-    static PetscErrorCode ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
+    static PetscErrorCode ComputeSource(const ablate::finiteVolume::FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
   };
 }  // namespace ablate::finiteVolume::processes
 #endif

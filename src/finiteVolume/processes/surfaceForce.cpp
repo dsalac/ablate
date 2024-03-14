@@ -8,6 +8,13 @@
 #include "utilities/petscSupport.hpp"
 #include "mathFunctions/functionFactory.hpp"
 
+
+
+
+
+
+
+
 #define xexit(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr, \
   "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n", \
   __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(0);}
@@ -20,11 +27,12 @@ void ablate::finiteVolume::processes::SurfaceForce::Setup(ablate::finiteVolume::
     flow.RegisterRHSFunction(ComputeSource, this);
 }
 
-std::shared_ptr<ablate::domain::SubDomain> subDomain = nullptr;
-
 // Called every time the mesh changes
 void ablate::finiteVolume::processes::SurfaceForce::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
-  subDomain = solver.GetSubDomainPtr();
+  SurfaceForce::subDomain = solver.GetSubDomainPtr();
+
+//  SurfaceForce::reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(subDomain);
+
 }
 
 
@@ -33,68 +41,11 @@ inline PetscReal SmoothDirac(PetscReal c, PetscReal c0, PetscReal t) {
   return (PetscAbsReal(c-c0) < t ? 0.5*(1.0 + cos(M_PI*(c - c0)/t))/t : 0);
 }
 
-
-//#include "utilities/mpiUtilities.hpp"
-//static void SaveCellData(const char fname[255], Vec vec, const ablate::domain::Field *field, PetscInt Nc, std::shared_ptr<ablate::domain::SubDomain> subDomain) {
-
-//  ablate::domain::Range range;
-//  PetscReal    *array, *val;
-//  DM            dm  = subDomain->GetFieldDM(*field);
-//  PetscInt      dim = subDomain->GetDimensions();
-//  MPI_Comm      comm = PetscObjectComm((PetscObject)dm);
-//  int rank, size;
-//  MPI_Comm_size(comm, &size) >> ablate::utilities::MpiUtilities::checkError;
-//  MPI_Comm_rank(comm, &rank) >> ablate::utilities::MpiUtilities::checkError;
-
-//  subDomain->GetCellRange(nullptr, range);
-
-//  VecGetArray(vec, &array) >> ablate::utilities::PetscUtilities::checkError;
-
-
-
-//  for (PetscInt r = 0; r < size; ++r) {
-//    if ( rank==r ) {
-
-//      FILE *f1;
-//      if ( rank==0 ) f1 = fopen(fname, "w");
-//      else f1 = fopen(fname, "a");
-
-//      for (PetscInt c = range.start; c < range.end; ++c) {
-//        PetscInt cell = range.points ? range.points[c] : c;
-
-//        if (ablate::levelSet::Utilities::ValidCell(dm, cell)) {
-
-//          PetscReal x0[3];
-//          DMPlexComputeCellGeometryFVM(dm, cell, NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
-//          DMPlexPointLocalFieldRef(dm, cell, field->id, array, &val) >> ablate::utilities::PetscUtilities::checkError;
-
-//          for (PetscInt d = 0; d < dim; ++d) {
-//            fprintf(f1, "%+f\t", x0[d]);
-//          }
-
-//          for (PetscInt i = 0; i < Nc; ++i) {
-//            fprintf(f1, "%+f\t", val[i]);
-//          }
-//          fprintf(f1, "\n");
-//        }
-//      }
-//      fclose(f1);
-//    }
-
-//    MPI_Barrier(PETSC_COMM_WORLD);
-//  }
-
-
-//  VecRestoreArray(vec, &array) >> ablate::utilities::PetscUtilities::checkError;
-//  ablate::domain::RestoreRange(range);
-//}
-
-
-PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(const FiniteVolumeSolver &flow, DM dm, PetscReal time, Vec locX, Vec locF, void *ctx) {
+PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(const ablate::finiteVolume::FiniteVolumeSolver &flow, DM dm, PetscReal time, Vec locX, Vec locF, void *ctx) {
     PetscFunctionBegin;
 
     ablate::finiteVolume::processes::SurfaceForce *process = (ablate::finiteVolume::processes::SurfaceForce *)ctx;
-//    std::shared_ptr<ablate::domain::SubDomain> subDomain = this->subDomainPTR;
+    std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
     const PetscInt dim = subDomain->GetDimensions();
     ablate::domain::Range cellRange;
 
@@ -115,9 +66,9 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     PetscReal h;
     DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
     h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
-//SaveCellData("vof0.txt", locX, vofField, 1, subDomain);
 
-    ablate::levelSet::Utilities::Reinitialize(subDomain, locX, vofField, 4, lsField, vertexNormalField, cellNormalField, curvField);
+
+    ablate::levelSet::Utilities::Reinitialize(flow, subDomain, locX, vofField, 4, lsField, vertexNormalField, cellNormalField, curvField);
 
     DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
