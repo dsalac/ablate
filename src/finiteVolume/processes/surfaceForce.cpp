@@ -95,7 +95,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         }
         cellPhi /= nv;
         DMPlexCellRestoreVertices(auxDM, cell, &nv, &verts) >> ablate::utilities::PetscUtilities::checkError;
-        dirac = SmoothDirac(cellPhi, 0.0, 2.0*h);
+        dirac = SmoothDirac(cellPhi, 0.0, 1.5*h);
       }
 
       PetscScalar *eulerSource = nullptr;

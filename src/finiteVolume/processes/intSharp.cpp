@@ -6,38 +6,11 @@
 #include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
 
-void GetVertexRange(DM dm, const std::shared_ptr<ablate::domain::Region> &region, ablate::domain::Range &vertexRange) {
-    PetscInt depth=0; //zeroth layer of DAG is always that of the vertices
-    ablate::domain::GetRange(dm, region, depth, vertexRange);
-}
-
-void GetCoordinate(DM dm, PetscInt dim, PetscInt p, PetscReal *xp, PetscReal *yp, PetscReal *zp){
-    //get the coordinates of the point
-    PetscReal vol;
-    PetscReal centroid[dim];
-    DMPlexComputeCellGeometryFVM(dm, p, &vol, centroid, nullptr);
-    *xp = centroid[0];
-    *yp = centroid[1];
-    *zp = centroid[2];
-}
-
 ablate::finiteVolume::processes::IntSharp::IntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
 
-ablate::finiteVolume::processes::IntSharp::~IntSharp() { DMDestroy(&vertexDM) >> utilities::PetscUtilities::checkError; }
+ablate::finiteVolume::processes::IntSharp::~IntSharp() { }
 
 void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
-    auto dim = flow.GetSubDomain().GetDimensions();
-    auto dm = flow.GetSubDomain().GetDM();
-
-    // create a domain, vertexDM, to use it in source function for storing any calculated vertex normal. Here the vertex normals will be stored on vertices, therefore k = 1
-    PetscFE fe_coords;
-    PetscInt k = 1;
-    DMClone(dm, &vertexDM) >> utilities::PetscUtilities::checkError;
-    PetscFECreateLagrange(PETSC_COMM_SELF, dim, dim, PETSC_TRUE, k, PETSC_DETERMINE, &fe_coords) >> utilities::PetscUtilities::checkError;
-    DMSetField(vertexDM, 0, nullptr, (PetscObject)fe_coords) >> utilities::PetscUtilities::checkError;
-    PetscFEDestroy(&fe_coords) >> utilities::PetscUtilities::checkError;
-    DMCreateDS(vertexDM) >> utilities::PetscUtilities::checkError;
-
     flow.RegisterRHSFunction(ComputeTerm, this);
 }
 
@@ -47,11 +20,11 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
 void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
   IntSharp::subDomain = solver.GetSubDomainPtr();
 
-//  SurfaceForce::reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(subDomain);
-
 }
 
-PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
+
+
+PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec solVec, Vec fVec, void *ctx) {
     PetscFunctionBegin;
 
     //dm = sol DM
@@ -65,19 +38,28 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     //get fields
     ablate::finiteVolume::processes::IntSharp *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
     std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
-    auto dim = subDomain->GetDimensions();
-    const auto &phiField = subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+    const PetscInt dim = subDomain->GetDimensions();
+
+    DM  auxDM = subDomain->GetAuxDM();
+    Vec auxVec = subDomain->GetAuxVector();
+
+    const auto &vofField = subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
     const auto &eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
-    auto phifID = phiField.id;
-    auto eulerfID = eulerField.id;
+
+    const auto &vertexNormalField = subDomain->GetField("vertexNormal");
+
+    DM eulerDM = subDomain->GetFieldDM(eulerField); // Get an euler-specific DM in case it's not in the same solution vector as the VOF field
+
+    const auto vofID = vofField.id;
+    const auto eulerID = eulerField.id;
+    const auto vertexNormalID = vertexNormalField.id;
 
     // get vecs/arrays
-    Vec auxvec; DMGetLocalVector(process->vertexDM, &auxvec);
     PetscScalar *auxArray, *fArray, *solArray;
 
-    VecGetArray(auxvec, &auxArray);
-    VecGetArray(locFVec, &fArray);
-    VecGetArray(locX, &solArray);
+    VecGetArray(auxVec, &auxArray);
+    VecGetArray(fVec, &fArray);
+    VecGetArray(solVec, &solArray);
 
     // get ranges
     ablate::domain::Range cellRange, vertRange;
@@ -88,105 +70,203 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const Fini
     //march over vertices
     for (PetscInt v = vertRange.start; v < vertRange.end; v++) {
 
-        PetscInt vertex = vertRange.GetPoint(v);
+        const PetscInt vert = vertRange.GetPoint(v);
 
-        const double epsmach = 1e-52;
-        PetscReal vx, vy, vz;
-        GetCoordinate(dm, dim, vertex, &vx, &vy, &vz);
+        PetscReal grad[dim];
+        DMPlexVertexGradFromCell(auxDM, vert, auxVec, vofID, 0, grad) >> utilities::PetscUtilities::checkError;
 
-        PetscInt nvn, *vertexneighbors;
-        DMPlexVertexGetCells(dm, vertex, &nvn, &vertexneighbors);
+        const PetscReal nrm = ablate::utilities::MathUtilities::MagVector(dim, grad);
 
-        PetscReal distances[nvn];
-        PetscReal shortestdistance=PETSC_MAX_REAL;
-        for (PetscInt k =0; k< nvn; ++k){
-            PetscInt neighbor = vertexneighbors[k];
-            PetscReal nx, ny, nz; GetCoordinate(dm, dim, neighbor, &nx, &ny, &nz);
+        PetscScalar *g;
+        xDMPlexPointLocalRef(auxDM, vert, vertexNormalID, auxArray, &g) >> utilities::PetscUtilities::checkError;
+        DMPlexVertexGradFromCell(dm, vert, solVec, vofID, 0, g) >> utilities::PetscUtilities::checkError;
 
-            PetscReal distance = PetscSqrtReal(PetscSqr(nx-vx) + PetscSqr(ny-vy) + PetscSqr(nz-vz));
-            if (distance < shortestdistance){
-              shortestdistance=distance;
-            }
-            distances[k]=distance;
-        }
-        PetscReal weights_wrt_short[nvn];
-        PetscReal totalweight_wrt_short = 0.0;
-        for (PetscInt k =0; k< nvn; ++k){
-            PetscReal weight_wrt_short = shortestdistance/distances[k];
-            weights_wrt_short[k] =  weight_wrt_short;
-            totalweight_wrt_short += weight_wrt_short;
-        }
-        PetscReal weights[nvn];
-        for (PetscInt k =0; k< nvn; ++k){
-          weights[k] = weights_wrt_short[k]/totalweight_wrt_short;
-        }
+        const PetscScalar *vof;
+        xDMPlexPointLocalRead(dm, vert, vofID, solArray, &vof) >> utilities::PetscUtilities::checkError;
 
-        PetscReal phiv=0;
-        for (PetscInt k =0; k< nvn; ++k){
-            PetscInt neighbor = vertexneighbors[k];
-            const PetscReal *phineighbor;
-            xDMPlexPointLocalRef(dm, neighbor, phifID, solArray, &phineighbor);
-            //                    phiv += (*phineighbor/nvn); //would only work for structured
-            phiv += (*phineighbor)*(weights[k]); //unstructured case
-        }
-
-        //get gradphi at vertices (gradphiv) based on cell centered phis
-        PetscScalar gradphiv[dim];
-        DMPlexVertexGradFromCell(dm, vertex, locX, phifID, 0, gradphiv);
-        PetscReal normgradphi = 0.0;
-        for (int k=0; k<dim; ++k){
-            normgradphi += PetscSqr(gradphiv[k]);
-        }
-        normgradphi = PetscSqrtReal(normgradphi);
-
-        //get a at vertices (av) (Chiu 2011)
-        //based on Eq. 1 of:   Jain SS. Accurate conservative phase-field method for simulation of two-phase flows. Journal of Computational Physics. 2022 Nov 15;469:111529.
-        PetscScalar  av[dim];
-        PetscReal *avptr;
-        xDMPlexPointLocalRef(process->vertexDM, vertex, 0, auxArray, &avptr); //vertexDM
-        for (int k=0; k<dim; ++k){
-            av[k] = (process->Gamma * process->epsilon * gradphiv[k]) - (process->Gamma * phiv * (1-phiv) * ((gradphiv[k] + epsmach)/(normgradphi + epsmach)));
-            avptr[k]=av[k];
+        for (PetscInt d = 0; d < dim; ++d) {
+          g[d] = (process->Gamma)*((process->epsilon)*g[d] - vof[0]*(1.0 - vof[0])*g[d]/nrm);
         }
     }
 
-
-    // march over cells
-    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
-
-        const PetscInt cell = cellRange.GetPoint(i);
-
-        PetscReal div=0.0;
-        for (PetscInt offset=0; offset<dim; offset++){
-            PetscReal nabla_ai[dim];
-            DMPlexCellGradFromVertex(process->vertexDM, cell, auxvec, 0, offset, nabla_ai);
-            div +=nabla_ai[offset];
-        }
-        PetscReal *divaptr;
-        xDMPlexPointLocalRef(dm, cell, 0, solArray, &divaptr);
-        *divaptr = div;
+    subDomain->UpdateAuxLocalVector();
 
 
-        // add diva to advection equation RHS
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+
+        const PetscInt cell = cellRange.GetPoint(c);
+
         const PetscScalar *euler = nullptr;
-        PetscScalar *eulerSource = nullptr;
-        xDMPlexPointLocalRef(dm, cell, eulerfID, fArray, &eulerSource);
-        xDMPlexPointLocalRef(dm, cell, eulerfID, solArray, &euler);
+        xDMPlexPointLocalRead(eulerDM, cell, eulerID, solArray, &euler) >> utilities::PetscUtilities::checkError;
+        const PetscScalar density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
 
-        eulerSource[0] += div; //first euler equation for multiphase corresponds to vol frac (might need to be density * vf ?)
+        PetscScalar *eulerSource = nullptr;
+        xDMPlexPointLocalRef(eulerDM, cell, eulerID, fArray, &eulerSource) >> utilities::PetscUtilities::checkError;
+
+//        PetscScalar vel[dim];
+
+        eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHO] = 0.0;
+
+        for (PetscInt d = 0; d < dim; ++d) {
+//          vel[d] = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / density;
+
+          PetscReal g[dim];
+          DMPlexCellGradFromVertex(auxDM, cell, auxVec, vertexNormalID, d, g) >> utilities::PetscUtilities::checkError;
+          eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHO] += g[d];
+        }
+        eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHO] *= density;  // This might be wrong
 
     }
 
     // cleanup
-    DMRestoreLocalVector(process->vertexDM, &auxvec);
-    VecRestoreArray(locFVec, &fArray);
-    VecRestoreArray(locX, &solArray);
+    VecRestoreArray(auxVec, &auxArray);
+    VecRestoreArray(fVec, &fArray);
+    VecRestoreArray(solVec, &solArray);
+
 //    VecRestoreArray(auxvec, &auxArray);
     solver.RestoreRange(cellRange);
     subDomain->RestoreRange(vertRange);
+
     PetscFunctionReturn(0);
 
 }
+
+//PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec solVec, Vec fVec, void *ctx) {
+//    PetscFunctionBegin;
+
+//    //dm = sol DM
+//    //locX = solvec
+//    //locFVec = vector of conserved vars / eulerSource fields (rho, rhoe, rhov, ..., rhoet)
+//    //auxvec = auxvec
+//    //auxArray = auxArray
+//    //notions of "process->" refer to the private variables: vertexDM, Gamma, epsilon. (the public variables are a subset: Gamma and epsilon)
+//    //process->vertexDM = aux DM
+
+//    //get fields
+//    ablate::finiteVolume::processes::IntSharp *process = (ablate::finiteVolume::processes::IntSharp *)ctx;
+//    std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
+//    const PetscInt dim = subDomain->GetDimensions();
+
+//    DM  auxDM = subDomain->GetAuxDM();
+//    Vec auxVec = subDomain->GetAuxVector();
+
+//    const auto &vofField = subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+//    const auto &eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
+
+//    const auto &vertexNormalField = subDomain->GetField("vertexNormal");
+//    const auto &psiField = subDomain->GetField("curvature");
+
+//    DM eulerDM = subDomain->GetFieldDM(eulerField); // Get an euler-specific DM in case it's not in the same solution vector as the VOF field
+
+//    const auto vofID = vofField.id;
+//    const auto eulerID = eulerField.id;
+//    const auto vertexNormalID = vertexNormalField.id;
+//    const auto psiID = psiField.id;
+
+//    // get vecs/arrays
+//    PetscScalar *auxArray, *fArray, *solArray;
+
+//    VecGetArray(auxVec, &auxArray);
+//    VecGetArray(fVec, &fArray);
+//    VecGetArray(solVec, &solArray);
+
+//    // get ranges
+//    ablate::domain::Range cellRange, vertRange;
+
+//    solver.GetCellRangeWithoutGhost(cellRange);
+//    subDomain->GetRange(nullptr, 0, vertRange);
+
+//    const PetscReal eps = 1e-100;
+//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+//      const PetscInt cell = cellRange.GetPoint(c);
+
+//      const PetscScalar *vof;
+//      PetscScalar *psi;
+
+//      xDMPlexPointLocalRead(dm, cell, vofID, solArray, &vof) >> utilities::PetscUtilities::checkError;
+//      xDMPlexPointLocalRef(auxDM, cell, psiID, auxArray, &psi) >> utilities::PetscUtilities::checkError;
+
+//      *psi = eps * PetscLogScalar( (*vof + eps)/(1 - *vof + eps) );
+//    }
+
+//    subDomain->UpdateAuxLocalVector();
+
+
+//    //march over vertices
+//    for (PetscInt v = vertRange.start; v < vertRange.end; v++) {
+
+//        const PetscInt vert = vertRange.GetPoint(v);
+
+//        PetscReal gradPSI[dim];
+//        DMPlexVertexGradFromCell(auxDM, vert, auxVec, psiID, 0, gradPSI) >> utilities::PetscUtilities::checkError;
+
+//        ablate::utilities::MathUtilities::NormVector(dim, gradPSI, gradPSI);
+
+//        PetscInt nCells, *cells;
+//        DMPlexVertexGetCells(auxDM, vert, &nCells, &cells) >> utilities::PetscUtilities::checkError;
+
+//        PetscScalar vertPsi = 0.0;
+//        for (PetscInt c = 0; c < nCells; ++c) {
+//          const PetscScalar *cellPsi;
+//          xDMPlexPointLocalRead(auxDM, cells[c], psiID, auxArray, &cellPsi) >> utilities::PetscUtilities::checkError;
+//          vertPsi += *cellPsi;
+//        }
+//        vertPsi /= nCells;
+
+//        DMPlexVertexRestoreCells(auxDM, vert, &nCells, &cells) >> utilities::PetscUtilities::checkError;
+
+//        const PetscScalar tanhPSI = PetscTanhScalar(0.5*vertPsi/(process->epsilon));
+
+//        PetscScalar *g;
+//        xDMPlexPointLocalRead(auxDM, vert, vertexNormalID, auxArray, &g) >> utilities::PetscUtilities::checkError;
+//        DMPlexVertexGradFromCell(dm, vert, solVec, vofID, 0, g) >> utilities::PetscUtilities::checkError;
+
+//        for (PetscInt d = 0; d < dim; ++d) {
+//          g[d] = (process->Gamma)*((process->epsilon)*g[d] - 0.25*(1.0 - PetscSqr(tanhPSI))*gradPSI[d]);
+//        }
+//    }
+
+//    subDomain->UpdateAuxLocalVector();
+
+
+//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+
+//        const PetscInt cell = cellRange.GetPoint(c);
+
+//        const PetscScalar *euler = nullptr;
+//        xDMPlexPointLocalRead(eulerDM, cell, eulerID, solArray, &euler) >> utilities::PetscUtilities::checkError;
+//        const PetscScalar density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
+
+//        PetscScalar *eulerSource = nullptr;
+//        xDMPlexPointLocalRef(eulerDM, cell, eulerID, fArray, &eulerSource) >> utilities::PetscUtilities::checkError;
+
+////        PetscScalar vel[dim];
+
+//        eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHO] = 0.0;
+
+//        for (PetscInt d = 0; d < dim; ++d) {
+////          vel[d] = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / density;
+
+//          PetscReal g[dim];
+//          DMPlexCellGradFromVertex(auxDM, cell, auxVec, vertexNormalID, d, g) >> utilities::PetscUtilities::checkError;
+//          eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHO] += g[d];
+//        }
+//        eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHO] *= density;  // This might be wrong
+
+//    }
+
+//    // cleanup
+//    VecRestoreArray(auxVec, &auxArray);
+//    VecRestoreArray(fVec, &fArray);
+//    VecRestoreArray(solVec, &solArray);
+
+////    VecRestoreArray(auxvec, &auxArray);
+//    solver.RestoreRange(cellRange);
+//    subDomain->RestoreRange(vertRange);
+
+//    PetscFunctionReturn(0);
+
+//}
 
 REGISTER(ablate::finiteVolume::processes::Process, ablate::finiteVolume::processes::IntSharp, "calculates interface regularization term",
          ARG(PetscReal, "Gamma", "Gamma, velocity scale parameter (approx. umax)"),
