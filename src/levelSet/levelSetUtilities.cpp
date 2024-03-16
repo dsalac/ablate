@@ -949,7 +949,7 @@ PetscReal SmoothingViaGaussian(DM dm, const PetscInt c, const PetscInt cell, con
 }
 
 
-#define saveData
+//#define saveData
 
 #ifdef saveData
 static PetscInt saveIter = 0;
@@ -1208,9 +1208,9 @@ SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
         const PetscScalar *n = nullptr;
         xDMPlexPointLocalRead(auxDM, cell, cellNormalID, auxArray, &n) >> ablate::utilities::PetscUtilities::checkError; // VOF normal
 
-//        // Compute the cell in the direction of the normal
+        // Compute the cell in the direction of the normal
 //        PetscInt forwardCell;
-//        DMPlexGetForwardCell(solDM, cell, n, +1.0, &forwardCell) >> ablate::utilities::PetscUtilities::checkError;
+//        DMPlexGetForwardCell(auxDM, cell, n, +1.0, &forwardCell) >> ablate::utilities::PetscUtilities::checkError;
 
         // Compute the cell in the opposite direction of the normal
         PetscInt backwardCell;
@@ -1222,13 +1222,13 @@ SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
 
 //        PetscScalar centerFcn;
 //        const PetscScalar *centerVOF = nullptr;
-//        xDMPlexPointLocalRead(solDM, cell, vofID, workArray, &centerVOF) >> ablate::utilities::PetscUtilities::checkError;
+//        xDMPlexPointLocalRead(auxDM, cell, vofID, workArray, &centerVOF) >> ablate::utilities::PetscUtilities::checkError;
 //        centerFcn = (*centerVOF)*(1.0 - *centerVOF);
 
 
 //        if (backwardCell > -1) {
 //            const PetscScalar *vof = nullptr;
-//            xDMPlexPointLocalRead(solDM, backwardCell, vofID, workArray, &vof) >> ablate::utilities::PetscUtilities::checkError;
+//            xDMPlexPointLocalRead(auxDM, backwardCell, vofID, workArray, &vof) >> ablate::utilities::PetscUtilities::checkError;
 //            const PetscScalar neighborFcn = (*vof)*(1.0 - *vof);
 //            if (PetscAbsScalar(centerFcn - neighborFcn)<PETSC_SMALL) {
 //              cellMask[c] = (*centerVOF > *vof) ? 1 : 2; // Take the one with the larger volume fraction
@@ -1242,7 +1242,7 @@ SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
 
 //        if (forwardCell > -1 && cellMask[c]==1) { // Check the forward cell only if the center cell isn't deactivated
 //            const PetscScalar *vof = nullptr;
-//            xDMPlexPointLocalRead(solDM, forwardCell, vofID, workArray, &vof) >> ablate::utilities::PetscUtilities::checkError;
+//            xDMPlexPointLocalRead(auxDM, forwardCell, vofID, workArray, &vof) >> ablate::utilities::PetscUtilities::checkError;
 //            const PetscScalar neighborFcn = (*vof)*(1.0 - *vof);
 //            if (PetscAbsScalar(centerFcn - neighborFcn)<PETSC_SMALL) {
 //              cellMask[c] = (*centerVOF > *vof) ? 1 : 2; // Take the one with the larger volume fraction
