@@ -8,19 +8,7 @@
 #include "utilities/petscSupport.hpp"
 #include "mathFunctions/functionFactory.hpp"
 
-
-
-
-
-
-
-
-#define xexit(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr, \
-  "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n", \
-  __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(0);}
-ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma) : sigma(sigma) {
-    printf("Sigma is equal to %e\n", sigma);
-}
+ablate::finiteVolume::processes::SurfaceForce::SurfaceForce(PetscReal sigma) : sigma(sigma) {}
 
 // Done once at the beginning of every run
 void ablate::finiteVolume::processes::SurfaceForce::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
@@ -30,11 +18,7 @@ void ablate::finiteVolume::processes::SurfaceForce::Setup(ablate::finiteVolume::
 // Called every time the mesh changes
 void ablate::finiteVolume::processes::SurfaceForce::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
   SurfaceForce::subDomain = solver.GetSubDomainPtr();
-
-//  SurfaceForce::reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(subDomain);
-
 }
-
 
 
 inline PetscReal SmoothDirac(PetscReal c, PetscReal c0, PetscReal t) {
@@ -76,27 +60,24 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     VecGetArray(locF, &fArray) >> utilities::PetscUtilities::checkError;
     VecGetArrayRead(locX, &xArray) >> utilities::PetscUtilities::checkError;
     VecGetArrayRead(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
-//FILE *f1 = fopen("force.txt","w");
-    subDomain->GetCellRange(nullptr, cellRange);
+
+    flow.GetCellRangeWithoutGhost(cellRange);
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
       PetscInt cell = cellRange.GetPoint(c);
 
       PetscReal cellPhi = 0.0, dirac = -1.0;
 
-      if (ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
+      PetscInt nv, *verts;
+      DMPlexCellGetVertices(auxDM, cell, &nv, &verts) >> ablate::utilities::PetscUtilities::checkError;
+      for (PetscInt v = 0; v < nv; ++v) {
+        const PetscReal *phi = nullptr;
+        xDMPlexPointLocalRead(auxDM, verts[v], lsField->id, auxArray, &phi);
 
-        PetscInt nv, *verts;
-        DMPlexCellGetVertices(auxDM, cell, &nv, &verts) >> ablate::utilities::PetscUtilities::checkError;
-        for (PetscInt v = 0; v < nv; ++v) {
-          const PetscReal *phi = nullptr;
-          xDMPlexPointLocalRead(auxDM, verts[v], lsField->id, auxArray, &phi);
-
-          cellPhi += *phi;
-        }
-        cellPhi /= nv;
-        DMPlexCellRestoreVertices(auxDM, cell, &nv, &verts) >> ablate::utilities::PetscUtilities::checkError;
-        dirac = SmoothDirac(cellPhi, 0.0, 1.5*h);
+        cellPhi += *phi;
       }
+      cellPhi /= nv;
+      DMPlexCellRestoreVertices(auxDM, cell, &nv, &verts) >> ablate::utilities::PetscUtilities::checkError;
+      dirac = SmoothDirac(cellPhi, 0.0, 1.5*h);
 
       PetscScalar *eulerSource = nullptr;
       xDMPlexPointLocalRef(eulerDM, cell, eulerField->id, fArray, &eulerSource) >> utilities::PetscUtilities::checkError;
@@ -108,7 +89,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
           eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = 0.0;
       }
 
-      if (dirac > 1e-10){
+      if (dirac > 1e-12){
         // Normal at the cell-center
         PetscReal *n = nullptr;
         xDMPlexPointLocalRead(auxDM, cell, cellNormalField->id, auxArray, &n);
@@ -121,9 +102,6 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
         xDMPlexPointLocalRead(eulerDM, cell, eulerField->id, xArray, &euler) >> utilities::PetscUtilities::checkError;
         const PetscScalar density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
 
-//PetscReal x[3];
-//DMPlexComputeCellGeometryFVM(eulerDM, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-//fprintf(f1,"%+f\t%+f\t", x[0], x[1]);
         for (PetscInt d = 0; d < dim; ++d) {
             // calculate surface force and energy
 
@@ -134,17 +112,12 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
             // add in the contributions
             eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] = surfaceForce;
             eulerSource[ablate::finiteVolume::CompressibleFlowFields::RHOE] += surfaceEnergy;
-//fprintf(f1,"%+f\t", surfaceForce);
         }
-//fprintf(f1, "\n");
       }
 
 
     }
-    subDomain->RestoreRange(cellRange);
-//SaveCellData("locF.txt", locF, eulerField, 5, subDomain);
-//fclose(f1);
-//exit(0);
+    flow.RestoreRange(cellRange);
 
     // Cleanup
     VecRestoreArray(locF, &fArray) >> utilities::PetscUtilities::checkError;
