@@ -312,9 +312,9 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
             dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
         // maybe save other values for use later, would interpolation to the face be the same as calculating at face?
         allFields[uOff[0]] = PetscMax(PetscMin(alpha, 1.0), 0.0);  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
-        if (allFields[uOff[0]]>0.99) {
+        if (allFields[uOff[0]]>=0.999) {
           allFields[uOff[0]] = 1.0;
-        } else if (allFields[uOff[0]]<0.01) {
+        } else if (allFields[uOff[0]]<=0.001) {
           allFields[uOff[0]] = 0.0;
         }
     }

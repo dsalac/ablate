@@ -1152,7 +1152,7 @@ SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
       xDMPlexPointLocalRef(auxDM, cell, cellNormalID, auxArray, &n);
       for (PetscInt d = 0; d < dim; ++d ) n[d] = 0.0;
 
-      if ( ((*vofVal) > 0.01) && ((*vofVal) < 0.99) ) {
+      if ( ((*vofVal) > 0.001) && ((*vofVal) < 0.999) ) {
 
         cellMask[c] = 1;    // Mark as a cut-cell
 
@@ -1202,21 +1202,23 @@ SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
       cellMask[c] = (nCut==1 ? 2 : 1); // If nCut equals 1 then the center cell is the only cut cell, so temporarily mark it as 2.
 
 
-      if (cellMask[c]==1) {
+      const PetscScalar *n = nullptr;
+      xDMPlexPointLocalRead(auxDM, cell, cellNormalID, auxArray, &n) >> ablate::utilities::PetscUtilities::checkError; // VOF normal
 
+      if (cellMask[c]==1 && ablate::utilities::MathUtilities::MagVector(dim, n)>PETSC_SMALL) {
         // Now check for two-deep cut-cells.
         const PetscScalar *n = nullptr;
         xDMPlexPointLocalRead(auxDM, cell, cellNormalID, auxArray, &n) >> ablate::utilities::PetscUtilities::checkError; // VOF normal
 
         // Compute the cell in the direction of the normal
-//        PetscInt forwardCell;
-//        DMPlexGetForwardCell(auxDM, cell, n, +1.0, &forwardCell) >> ablate::utilities::PetscUtilities::checkError;
+        PetscInt forwardCell;
+        DMPlexGetForwardCell(auxDM, cell, n, +1.0, &forwardCell) >> ablate::utilities::PetscUtilities::checkError;
 
         // Compute the cell in the opposite direction of the normal
-        PetscInt backwardCell;
-        DMPlexGetForwardCell(auxDM, cell, n, -1.0, &backwardCell) >> ablate::utilities::PetscUtilities::checkError;
+//        PetscInt backwardCell;
+//        DMPlexGetForwardCell(auxDM, cell, n, -1.0, &backwardCell) >> ablate::utilities::PetscUtilities::checkError;
 
-        PetscInt id = reverseCellRange.GetIndex(backwardCell);
+        PetscInt id = reverseCellRange.GetIndex(forwardCell);
         cellMask[c] = (cellMask[id]>0 ? 2 : 1); // If the cell behind the gradient of VOF is ALSO a cut cell then deactivate this one.
 
 

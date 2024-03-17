@@ -51,7 +51,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
     h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
 
-    ablate::levelSet::Utilities::Reinitialize(flow, subDomain, locX, vofField, 6, lsField, vertexNormalField, cellNormalField, curvField);
+    ablate::levelSet::Utilities::Reinitialize(flow, subDomain, locX, vofField, 8, lsField, vertexNormalField, cellNormalField, curvField);
 
     DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
