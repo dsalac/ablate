@@ -862,6 +862,15 @@ void CurvatureViaGaussian(DM dm, const PetscInt c, const PetscInt cell, const Ve
 }
 
 
+#define saveData
+
+#ifdef saveData
+static PetscInt saveIter = 0;
+#endif
+
+
+
+
 //vofField: cell-based field containing the target volume-of-fluid
 //lsField: vertex-based field for level set values
 //normalField: cell-based vector field containing normals
@@ -877,6 +886,10 @@ void ablate::levelSet::Utilities::Reinitialize(
   const ablate::domain::Field *cellNormalField,
   const ablate::domain::Field *curvField
 ) {
+
+#ifdef saveData
+  ++saveIter;
+#endif
 
   // Note: Need to write a unit test where the vof and ls fields aren't in the same DM, e.g. one is a SOL vector and one is an AUX vector.
 
@@ -968,43 +981,75 @@ void ablate::levelSet::Utilities::Reinitialize(
   cellMask -= cellRange.start; // offset so that we can use start->end
 
 
-//SaveCellData(solDM, solVec, "vof.txt", vofField, 1, subDomain);
+  Vec workVec, workVecGlobal;
+  PetscScalar *workArray = nullptr;
+  DMGetLocalVector(auxDM, &workVec);
+  DMGetGlobalVector(auxDM, &workVecGlobal);
+  VecGetArray(workVec, &workArray);
+  VecZeroEntries(workVec);
 
-
-
-//int rank;
-//MPI_Comm_rank(PETSC_COMM_WORLD, &rank) >> ablate::utilities::MpiUtilities::checkError;
-//{
-
-//  char fname[255];
-//  sprintf(fname, "pointsWO%d.txt", rank);
-//  FILE *f1 = fopen(fname, "w");
-//  for (PetscInt c = cellRangeWithoutGhost.start; c < cellRangeWithoutGhost.end; ++c) {
-//    PetscInt cell = cellRangeWithoutGhost.GetPoint(c);
-//    PetscReal x[3];
-//    DMPlexComputeCellGeometryFVM(auxDM, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-//    fprintf(f1, "%+f\t%+f\n", x[0], x[1]);
-//  }
-//  fclose(f1);
-
-//  sprintf(fname, "points%d.txt", rank);
-//  f1 = fopen(fname, "w");
-//  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//    PetscInt cell = cellRange.GetPoint(c);
-//    PetscReal x[3];
-//    DMPlexComputeCellGeometryFVM(auxDM, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-//    fprintf(f1, "%+f\t%+f\n", x[0], x[1]);
-//  }
-//  fclose(f1);
-//}
-//MPI_Barrier(PETSC_COMM_WORLD);
-
-
-
+#ifdef saveData
+  char fname[255];
+  sprintf(fname, "vof0_%03ld.txt", saveIter);
+  SaveCellData(solDM, solVec, fname, vofField, 1, subDomain);
+#endif
 
   if ( interpCellList==nullptr ) {
     BuildInterpCellList(auxDM, cellRangeWithoutGhost);
   }
+
+//for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
+//  const PetscInt vert = vertRange.GetPoint(v);
+
+//  PetscScalar *smoothVOF = nullptr;
+//  xDMPlexPointLocalRef(auxDM, vert, lsID, auxArray, &smoothVOF);
+//  *smoothVOF = 0.0;
+
+//  PetscInt nCells, *cellList;
+//  DMPlexVertexGetCells(auxDM, vert, &nCells, &cellList);
+//  for (PetscInt i = 0; i < nCells; ++i) {
+//    const PetscScalar *vof = nullptr;
+//    xDMPlexPointLocalRead(solDM, cellList[i], vofID, solArray, &vof);
+
+//    *smoothVOF += *vof;
+//  }
+//  *smoothVOF /= nCells;
+
+//  DMPlexVertexRestoreCells(auxDM, vert, &nCells, &cellList);
+//}
+//subDomain->UpdateAuxLocalVector();
+
+//for (PetscInt c = cellRangeWithoutGhost.start; c < cellRangeWithoutGhost.end; ++c){
+//  const PetscInt cell = cellRangeWithoutGhost.GetPoint(c);
+
+//  PetscScalar *cellVOF = nullptr;
+//  xDMPlexPointLocalRef(auxDM, cell, vofID, workArray, &cellVOF);
+//  *cellVOF = 0.0;
+
+//  PetscInt nVert, *vertList;
+//  DMPlexCellGetVertices(auxDM, cell, &nVert, &vertList);
+//  for (PetscInt i = 0; i < nVert; ++i) {
+//    PetscScalar *vertVOF = nullptr;
+//    xDMPlexPointLocalRef(auxDM, vertList[i], lsID, auxArray, &vertVOF);
+//    *cellVOF += *vertVOF;
+//  }
+
+//  *cellVOF /= nVert;
+//  DMPlexCellRestoreVertices(auxDM, cell, &nVert, &vertList);
+//}
+
+//VecRestoreArray(workVec, &workArray);
+//DMLocalToGlobal(auxDM, workVec, INSERT_VALUES, workVecGlobal) >> utilities::PetscUtilities::checkError;
+//DMGlobalToLocal(auxDM, workVecGlobal, INSERT_VALUES, workVec) >> utilities::PetscUtilities::checkError;
+//VecGetArray(workVec, &workArray);
+
+
+#ifdef saveData
+sprintf(fname, "vof1_%03ld.txt", saveIter);
+SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
+#endif
+
+
 
 /**************** Determine the cut-cells and initial unit normal *************************************/
 
@@ -1049,6 +1094,103 @@ void ablate::levelSet::Utilities::Reinitialize(
 
 
 
+
+
+// Turn off any "cut cells" where the cell is not surrounded by any other cut cells.
+// To avoid cut-cells two cells-thick turn off any cut-cells which have a neighoring gradient passing through them.
+//for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+
+//  if (cellMask[c]==1) {
+
+//    const PetscInt cell = cellRange.GetPoint(c);
+
+//    PetscInt nCells, *cells;
+//    DMPlexGetNeighbors(solDM, cell, 1, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
+
+//    PetscInt nCut = 0;
+//    for (PetscInt i = 0; i < nCells; ++i) {
+//      PetscInt id = reverseCellRange.GetIndex(cells[i]);
+//      nCut += (cellMask[id] > 0);
+//    }
+
+//    DMPlexRestoreNeighbors(solDM, cell, 1, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
+
+//    cellMask[c] = (nCut==1 ? 2 : 1); // If nCut equals 1 then the center cell is the only cut cell, so temporarily mark it as 2.
+
+
+//    const PetscScalar *n = nullptr;
+//    xDMPlexPointLocalRead(auxDM, cell, cellNormalID, auxArray, &n) >> ablate::utilities::PetscUtilities::checkError; // VOF normal
+
+//    if (cellMask[c]==1 && ablate::utilities::MathUtilities::MagVector(dim, n)>PETSC_SMALL) {
+//      // Now check for two-deep cut-cells.
+//      const PetscScalar *n = nullptr;
+//      xDMPlexPointLocalRead(auxDM, cell, cellNormalID, auxArray, &n) >> ablate::utilities::PetscUtilities::checkError; // VOF normal
+
+//      // Compute the cell in the direction of the normal
+//      PetscInt forwardCell;
+//      DMPlexGetForwardCell(auxDM, cell, n, +1.0, &forwardCell) >> ablate::utilities::PetscUtilities::checkError;
+
+//      // Compute the cell in the opposite direction of the normal
+////        PetscInt backwardCell;
+////        DMPlexGetForwardCell(auxDM, cell, n, -1.0, &backwardCell) >> ablate::utilities::PetscUtilities::checkError;
+
+//      PetscInt id = reverseCellRange.GetIndex(forwardCell);
+//      cellMask[c] = (cellMask[id]>0 ? 2 : 1); // If the cell behind the gradient of VOF is ALSO a cut cell then deactivate this one.
+
+
+////        PetscScalar centerFcn;
+////        const PetscScalar *centerVOF = nullptr;
+////        xDMPlexPointLocalRead(auxDM, cell, vofID, workArray, &centerVOF) >> ablate::utilities::PetscUtilities::checkError;
+////        centerFcn = (*centerVOF)*(1.0 - *centerVOF);
+
+
+////        if (backwardCell > -1) {
+////            const PetscScalar *vof = nullptr;
+////            xDMPlexPointLocalRead(auxDM, backwardCell, vofID, workArray, &vof) >> ablate::utilities::PetscUtilities::checkError;
+////            const PetscScalar neighborFcn = (*vof)*(1.0 - *vof);
+////            if (PetscAbsScalar(centerFcn - neighborFcn)<PETSC_SMALL) {
+////              cellMask[c] = (*centerVOF > *vof) ? 1 : 2; // Take the one with the larger volume fraction
+////            }
+////            else {
+////              cellMask[c] = (centerFcn > neighborFcn) ? 1 : 2; // If the neighbor cell is closer to 0.5 then deactivate this cell
+////            }
+////        }
+
+
+
+////        if (forwardCell > -1 && cellMask[c]==1) { // Check the forward cell only if the center cell isn't deactivated
+////            const PetscScalar *vof = nullptr;
+////            xDMPlexPointLocalRead(auxDM, forwardCell, vofID, workArray, &vof) >> ablate::utilities::PetscUtilities::checkError;
+////            const PetscScalar neighborFcn = (*vof)*(1.0 - *vof);
+////            if (PetscAbsScalar(centerFcn - neighborFcn)<PETSC_SMALL) {
+////              cellMask[c] = (*centerVOF > *vof) ? 1 : 2; // Take the one with the larger volume fraction
+////            }
+////            else {
+////              cellMask[c] = (centerFcn > neighborFcn) ? 1 : 2; // If the neighbor cell is closer to 0.5 then deactivate this cell
+////            }
+////        }
+//    }
+
+//  }
+//}
+
+//for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+//  cellMask[c] = (cellMask[c]==2 ? 0 : cellMask[c]);
+//}
+
+
+
+#ifdef saveData
+  sprintf(fname, "cellNormal_%03ld.txt", saveIter);
+  SaveCellData(auxDM, auxVec, fname, cellNormalField, dim, subDomain);
+#endif
+
+
+
+
+
+
+
 /**************** Iterate to get the level-set values at vertices *************************************/
 
   // Temporary level-set work array to store old values
@@ -1063,7 +1205,7 @@ void ablate::levelSet::Utilities::Reinitialize(
 
 //SaveCellData(auxDM, auxVec, "normal0.txt", cellNormalField, dim, subDomain);
 
-  PetscReal cRange[2] = {PETSC_MAX_REAL, -PETSC_MAX_REAL};
+
   while ( maxDiff > 1e-3*h && iter<500 ) {
 
     ++iter;
@@ -1096,8 +1238,6 @@ void ablate::levelSet::Utilities::Reinitialize(
 
     // Now compute the difference on this processor
     maxDiff = -1.0;
-    cRange[0] = PETSC_MAX_REAL;
-    cRange[1] = -PETSC_MAX_REAL;
     for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
 
       if (vertMask[v] == 1) {
@@ -1106,28 +1246,20 @@ void ablate::levelSet::Utilities::Reinitialize(
         xDMPlexPointLocalRead(auxDM, vert, lsID, auxArray, &newLS) >> ablate::utilities::PetscUtilities::checkError;
 
         maxDiff = PetscMax(maxDiff, PetscAbsReal(tempLS[v] - *newLS));
-
-        cRange[0] = PetscMin(cRange[0], *newLS);
-        cRange[1] = PetscMax(cRange[1], *newLS);
-
       }
     }
     // Get the maximum change across all processors. This also acts as a sync point
     MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, auxCOMM);
-
-//    PetscPrintf(PETSC_COMM_WORLD, "Cut Cells %" PetscInt_FMT": %+e\n", iter, maxDiff) >> ablate::utilities::PetscUtilities::checkError;
+#ifdef saveData
+    PetscPrintf(PETSC_COMM_WORLD, "Cut Cells %" PetscInt_FMT": %+e\n", iter, maxDiff) >> ablate::utilities::PetscUtilities::checkError;
+#endif
   }
 
-  if (maxDiff > 1e-3*h) {
-//    SaveCellData(auxDM, auxVec, "normalERROR.txt", cellNormalField, dim, subDomain);
-//    SaveVertexData(auxDM, auxVec, "ls0ERROR.txt", lsField, subDomain);
-    throw std::runtime_error("Interface reconstruction has failed. Please check the number of cut-cells.\n");
-  }
 
-  cRange[0] *= -1.0;
-  MPI_Allreduce(MPI_IN_PLACE, cRange, 2, MPIU_REAL, MPIU_MAX, auxCOMM);
-  cRange[0] *= -1.0;
-
+#ifdef saveData
+  sprintf(fname, "ls1_%03ld.txt", saveIter);
+  SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
+#endif
 
 
 /**************** Set the data in the rest of the domain to be a large value *************************************/
@@ -1167,23 +1299,10 @@ void ablate::levelSet::Utilities::Reinitialize(
 
 
 
-
-//SaveVertexData(auxDM, auxVec, "ls0.txt", lsField, subDomain);
-
-
-
-
 /**************** Mark the cells that need to be udpated via the reinitialization equation *************************************/
 //PetscPrintf(PETSC_COMM_WORLD, "Marking cells\n");
   // Mark all of the cells neighboring cells level-by-level.
   // Note that DMPlexGetNeighbors has an issue in parallel whereby cells will be missed due to the unknown partitioning -- Need to investigate
-  Vec workVec, workVecGlobal;
-  PetscScalar *workArray = nullptr;
-  DMGetLocalVector(auxDM, &workVec);
-  DMGetGlobalVector(auxDM, &workVecGlobal);
-  VecGetArray(workVec, &workArray);
-  VecZeroEntries(workVec);
-
 
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     PetscInt cell = cellRange.GetPoint(c);
@@ -1271,7 +1390,16 @@ void ablate::levelSet::Utilities::Reinitialize(
   VecRestoreArrayRead(solVec, &solArray) >> ablate::utilities::PetscUtilities::checkError;
 
   subDomain->UpdateAuxLocalVector();
-//SaveVertexData(auxDM, auxVec, "ls1.txt", lsField, subDomain);
+
+
+#ifdef saveData
+  sprintf(fname, "mask_%03ld.txt", saveIter);
+  SaveCellData(auxDM, workVec, fname, vofID, 1, subDomain);
+  sprintf(fname, "ls2_%03ld.txt", saveIter);
+  SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
+#endif
+
+
 
 //exit(0);
 //PetscPrintf(PETSC_COMM_WORLD, "Reinit\n");
@@ -1356,14 +1484,19 @@ void ablate::levelSet::Utilities::Reinitialize(
     MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, auxCOMM);
 
 
-
-//    PetscPrintf(PETSC_COMM_WORLD, "Reinit %3" PetscInt_FMT": %e\n", iter, maxDiff);
+#ifdef saveData
+    PetscPrintf(PETSC_COMM_WORLD, "Reinit %3" PetscInt_FMT": %e\n", iter, maxDiff);
+#endif
 
   }
-//SaveVertexData(auxDM, auxVec, "ls2.txt", lsField, subDomain);
-//printf("1617\n");
 
 
+#ifdef saveData
+  sprintf(fname, "ls3_%03ld.txt", saveIter);
+  SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
+#endif
+
+exit(0);
   // Calculate unit normal vector based on the updated level set values at the vertices
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     if (cellMask[c] > 0) {
