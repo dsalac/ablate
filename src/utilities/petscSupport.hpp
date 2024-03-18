@@ -6,6 +6,23 @@
 #include <string>
 #include <vector>
 
+/**
+ * Calculate the neighboring cell which a given vector points into.
+ * Inputs:
+ *  dm - The mesh
+ *  cell - The cell where the vector originates from. It's assumed that the vector is from the cell-center.
+ *  v - Vector centered at the cell-center
+ *  direction - +1 to find the cell in the direction of v, -1 to find the cell in the opposite direction of v
+ *
+ * Outputs:
+ *  nCell - The neighbor cell which the vector points into. Returns -1 if the neighboring cell doesn't exist
+ *
+ * Note: In almost all cases this will be via a shared face. Try that first and then only check vertices
+ */
+ PetscErrorCode DMPlexGetForwardCell(DM dm, const PetscInt cell, const PetscReal v[], const PetscScalar direction, PetscInt *nCellID);
+
+
+
 PetscErrorCode DMPlexCornerSurfaceAreaNormal(DM dm, const PetscInt v, const PetscInt c, PetscReal N[]);
 PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscInt face, PetscReal *centroid, PetscReal *n);
 
@@ -15,16 +32,16 @@ PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscIn
  * maxLevels - Number of neighboring cells/vertices to check
  * maxDist - Maximum distance to include
  * numberCells - The number of cells/vertices to return.
- * useCells -
+ * useSharedFace - Return cells/vertices which share a common face (PETSC_TRUE) or a shared vertex (PETSC_FALSE)
  * returnVertices - Return vertices surrounding the center cell (PETSC_TRUE) or cells surrounding the center cell (PETSC_FALSE)
  * nCells - Number of neighboring cells/vertices
  * cells - The list of neighboring cell/vertices IDs
  *
  * Note: The intended use is to use either maxLevels OR maxDist OR minNumberCells.
  */
-PetscErrorCode DMPlexRestoreNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscReal maxDist, PetscInt numberCells, PetscBool useCells, PetscBool returnVertices, PetscInt *nCells,
+PetscErrorCode DMPlexRestoreNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscReal maxDist, PetscInt numberCells, PetscBool useSharedFace, PetscBool returnVertices, PetscInt *nCells,
                                   PetscInt **cells);
-PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt levels, PetscReal maxDist, PetscInt minNumberCells, PetscBool useCells, PetscBool returnNeighborVertices, PetscInt *nCells,
+PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt levels, PetscReal maxDist, PetscInt minNumberCells, PetscBool useSharedFace, PetscBool returnNeighborVertices, PetscInt *nCells,
                                   PetscInt **cells);
 
 /**
