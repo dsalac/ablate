@@ -1240,7 +1240,7 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
         const PetscInt *sharedCells;
         PetscCall(DMPlexGetSupportSize(dm, faces[f], &nSharedCells));
         PetscCall(DMPlexGetSupport(dm, faces[f], &sharedCells));
-        PetscCheck(nSharedCells < 3, PETSC_COMM_SELF, PETSC_ERR_ARG_INCOMP, "More than two cells are sharing a face.");F
+        PetscCheck(nSharedCells < 3, PETSC_COMM_SELF, PETSC_ERR_ARG_INCOMP, "More than two cells are sharing a face.");
 
         PetscReal vAve = 0.0, vSum = 0.0;
         for (PetscInt j = 0; j < nSharedCells; ++j) {
