@@ -734,6 +734,23 @@ static PetscInt FindCell(DM dm, const PetscReal x0[], const PetscInt nCells, con
 static PetscInt *interpCellList = nullptr;
 
 
+//   Hermite-Gauss quadrature points
+static PetscInt nQuad = 4; // Size of the 1D quadrature
+
+//   The quadrature is actually sqrt(2) times the quadrature points. This is as we are integrating
+//      against the normal distribution, not exp(-x^2)
+static PetscReal quad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+                           0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+                          -2.3344142183389772393175122672103621944890707102161406718291603341725665622712306,
+                           2.3344142183389772393175122672103621944890707102161406718291603341725665622712306};
+
+// The weights are the true weights divided by sqrt(pi)
+static PetscReal weights[4] = {0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+                             0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+                             0.045875854768068491816892993774509050669504376611944155963942286062419968545223748,
+                             0.045875854768068491816892993774509050669504376611944155963942286062419968545223748};
+
+static PetscReal sigmaFactor = 1.0;
 
 void BuildInterpCellList(DM dm, const ablate::domain::Range cellRange) {
 
@@ -741,17 +758,8 @@ void BuildInterpCellList(DM dm, const ablate::domain::Range cellRange) {
   PetscReal h;
   DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
   h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
-  const PetscReal sigma = h;
+  const PetscReal sigma = sigmaFactor*h;
 
-  //   Hermite-Gauss quadrature points
-  const PetscInt nQuad = 4; // Size of the 1D quadrature
-
-//   The quadrature is actually sqrt(2) times the quadrature points. This is as we are integrating
-//      against the normal distribution, not exp(-x^2)
-  const PetscReal quad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
-                             0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
-                            -2.3344142183389772393175122672103621944890707102161406718291603341725665622712306,
-                             2.3344142183389772393175122672103621944890707102161406718291603341725665622712306};
 
   PetscInt dim;
   DMGetDimension(dm, &dim) >> ablate::utilities::PetscUtilities::checkError;
@@ -809,30 +817,12 @@ void CurvatureViaGaussian(DM dm, const PetscInt c, const PetscInt cell, const Ve
 //  const PetscReal quad[] = {0.0, PetscSqrtReal(3.0), -PetscSqrtReal(3.0)};
 //  const PetscReal weights[] = {2.0/3.0, 1.0/6.0, 1.0/6.0};
 
-
-//   Hermite-Gauss quadrature points
-  const PetscInt nQuad = 4; // Size of the 1D quadrature
-
-//   The quadrature is actually sqrt(2) times the quadrature points. This is as we are integrating
-//      against the normal distribution, not exp(-x^2)
-  const PetscReal quad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
-                             0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
-                            -2.3344142183389772393175122672103621944890707102161406718291603341725665622712306,
-                             2.3344142183389772393175122672103621944890707102161406718291603341725665622712306};
-
-// The weights are the true weights divided by sqrt(pi)
-  const PetscReal weights[4] = {0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
-                               0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
-                               0.045875854768068491816892993774509050669504376611944155963942286062419968545223748,
-                               0.045875854768068491816892993774509050669504376611944155963942286062419968545223748};
-
-
   PetscReal x0[dim], vol;
   DMPlexComputeCellGeometryFVM(dm, cell, &vol, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
 
   // Mabye relate this to PETSC_SQRT_MACHINE_EPSILON or similar?
   //  The would probably require that the derivative factor be re-done to account for round-off.
-  const PetscReal sigma = h;
+  const PetscReal sigma = sigmaFactor*h;
 
   PetscReal cx = 0.0, cy = 0.0, cxx = 0.0, cyy = 0.0, cxy = 0.0;
 
@@ -862,7 +852,102 @@ void CurvatureViaGaussian(DM dm, const PetscInt c, const PetscInt cell, const Ve
 }
 
 
-#define saveData
+// Calculate the curvature from a vertex-based level set field using Gaussian convolution.
+// Right now this is just 2D for testing purposes.
+PetscReal LaplacianViaGaussian(DM dm, const PetscInt c, const PetscInt cell, const Vec vec, const ablate::domain::Field *lsField) {
+
+  PetscInt dim;
+  DMGetDimension(dm, &dim) >> ablate::utilities::PetscUtilities::checkError;
+
+  PetscReal h;
+  DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
+  h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
+
+//  const PetscInt nQuad = 3; // Size of the 1D quadrature
+//  const PetscReal quad[] = {0.0, PetscSqrtReal(3.0), -PetscSqrtReal(3.0)};
+//  const PetscReal weights[] = {2.0/3.0, 1.0/6.0, 1.0/6.0};
+
+  PetscReal x0[dim], vol;
+  DMPlexComputeCellGeometryFVM(dm, cell, &vol, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
+
+  // Mabye relate this to PETSC_SQRT_MACHINE_EPSILON or similar?
+  //  The would probably require that the derivative factor be re-done to account for round-off.
+  const PetscReal sigma = sigmaFactor*h;
+
+  PetscReal cxx = 0.0, cyy = 0.0;
+
+  for (PetscInt i = 0; i < nQuad; ++i) {
+    for (PetscInt j = 0; j < nQuad; ++j) {
+
+      const PetscReal dist[2] = {sigma*quad[i], sigma*quad[j]};
+      PetscReal x[2] = {x0[0] + dist[0], x0[1] + dist[1]};
+
+//      const PetscInt interpCell = FindCell(dm, x, nCells, cellList, NULL);
+      const PetscInt interpCell = interpCellList[c*16 + i*4 + j];
+
+      const PetscReal lsVal = vertRBF->Interpolate(lsField, vec, interpCell, x);
+
+      const PetscReal wt = weights[i]*weights[j];
+
+      cxx += wt*GaussianDerivativeFactor(dim, dist, sigma, 2, 0, 0)*lsVal;
+      cyy += wt*GaussianDerivativeFactor(dim, dist, sigma, 0, 2, 0)*lsVal;
+    }
+  }
+
+  return (cxx + cyy);
+
+}
+
+
+
+// Calculate the curvature from a vertex-based level set field using Gaussian convolution.
+// Right now this is just 2D for testing purposes.
+PetscReal SmoothingViaGaussian(DM dm, const PetscInt c, const PetscInt cell, const Vec vec, const ablate::domain::Field *field) {
+
+  PetscInt dim;
+  DMGetDimension(dm, &dim) >> ablate::utilities::PetscUtilities::checkError;
+
+  PetscReal h;
+  DMPlexGetMinRadius(dm, &h) >> ablate::utilities::PetscUtilities::checkError;
+  h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
+
+//  const PetscInt nQuad = 3; // Size of the 1D quadrature
+//  const PetscReal quad[] = {0.0, PetscSqrtReal(3.0), -PetscSqrtReal(3.0)};
+//  const PetscReal weights[] = {2.0/3.0, 1.0/6.0, 1.0/6.0};
+
+  PetscReal x0[dim], vol;
+  DMPlexComputeCellGeometryFVM(dm, cell, &vol, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
+
+  // Mabye relate this to PETSC_SQRT_MACHINE_EPSILON or similar?
+  //  The would probably require that the derivative factor be re-done to account for round-off.
+  const PetscReal sigma = sigmaFactor*h;
+
+  PetscReal newVal = 0.0;
+
+  for (PetscInt i = 0; i < nQuad; ++i) {
+    for (PetscInt j = 0; j < nQuad; ++j) {
+
+      const PetscReal dist[2] = {sigma*quad[i], sigma*quad[j]};
+      PetscReal x[2] = {x0[0] + dist[0], x0[1] + dist[1]};
+
+      const PetscInt interpCell = interpCellList[c*16 + i*4 + j];
+
+      const PetscReal lsVal = vertRBF->Interpolate(field, vec, interpCell, x);
+
+      const PetscReal wt = weights[i]*weights[j];
+
+      newVal += wt*GaussianDerivativeFactor(dim, dist, sigma, 0, 0, 0)*lsVal;
+    }
+  }
+
+  return (newVal);
+
+}
+
+
+
+
+//#define saveData
 
 #ifdef saveData
 static PetscInt saveIter = 0;
@@ -886,6 +971,7 @@ void ablate::levelSet::Utilities::Reinitialize(
   const ablate::domain::Field *cellNormalField,
   const ablate::domain::Field *curvField
 ) {
+
 
 #ifdef saveData
   ++saveIter;
@@ -1045,8 +1131,8 @@ VecGetArray(workVec, &workArray);
 
 
 #ifdef saveData
-sprintf(fname, "vof1_%03ld.txt", saveIter);
-SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
+  sprintf(fname, "vof1_%03ld.txt", saveIter);
+  SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
 #endif
 
 
@@ -1490,6 +1576,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
 
       if (vertMask[v] > 1) {
+
         PetscInt vert = vertRange.GetPoint(v);
 
         PetscReal *phi = nullptr;
@@ -1516,7 +1603,8 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
           *phi = tempLS[v] - 0.5*h*sgn*(nrm - 1.0);
 
-          maxDiff = PetscMax(maxDiff, PetscAbsReal(nrm - 1.0));
+          // In parallel runs VertexUpwindGrad may return g=0 as there aren't any upwind nodes. Don't incldue that in the diff check
+          if (ablate::utilities::MathUtilities::MagVector(dim, g) > PETSC_SMALL) maxDiff = PetscMax(maxDiff, PetscAbsReal(nrm - 1.0));
         }
 
 
@@ -1524,6 +1612,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     }
 
     subDomain->UpdateAuxLocalVector();
+
 
      // Get the maximum change across all processors. This also acts as a sync point
     MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, auxCOMM);
@@ -1535,13 +1624,11 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
   }
 
-
 #ifdef saveData
   sprintf(fname, "ls3_%03ld.txt", saveIter);
   SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
 #endif
 
-exit(0);
   // Calculate unit normal vector based on the updated level set values at the vertices
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     if (cellMask[c] > 0) {
@@ -1553,7 +1640,10 @@ exit(0);
     }
   }
 
-
+#ifdef saveData
+  sprintf(fname, "mask3_%03ld.txt", saveIter);
+  SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
+#endif
 
   for (PetscInt c = cellRangeWithoutGhost.start; c < cellRangeWithoutGhost.end; ++c) {
     PetscInt cell = cellRangeWithoutGhost.GetPoint(c);
@@ -1564,7 +1654,7 @@ exit(0);
     xDMPlexPointLocalRef(auxDM, cell, vofID, workArray, &maskVal) >> ablate::utilities::PetscUtilities::checkError;
 
 //    if ((PetscAbsScalar(*maskVal - 1.0) < PETSC_SMALL) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
-    if ((*maskVal > 0.5) && (*maskVal < (nLevels-1)) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
+    if ( (*maskVal > 0.5) && (*maskVal < (nLevels-1)) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
       CurvatureViaGaussian(auxDM, c - cellRangeWithoutGhost.start, cell, auxVec, lsField, H);
     }
     else {
@@ -1573,31 +1663,12 @@ exit(0);
   }
 
   subDomain->UpdateAuxLocalVector();
-//SaveCellData(auxDM, auxVec, "curvGaussian.txt", curvField, 1, subDomain);
+#ifdef saveData
+  sprintf(fname, "curv0_%03ld.txt", saveIter);
+  SaveCellData(auxDM, auxVec, fname, curvID, 1, subDomain);
+#endif
 
 
-  // Curvature
-
-//  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-
-//    PetscInt cell = cellRange.GetPoint(c);
-//    PetscScalar *H = nullptr;
-//    xDMPlexPointLocalRef(auxDM, cell, curvID, auxArray, &H);
-
-//    if (cellMask[c] == 1 ) {
-//      *H = ablate::levelSet::geometry::Curvature(vertRBF, lsField, cell);
-//    }
-//    else {
-//      *H = 0.0;
-//    }
-
-//  }
-
-//  subDomain->UpdateAuxLocalVector();
-//SaveCellData(auxDM, auxVec, "curvRBF.txt", curvField, 1, subDomain);
-
-
-#if 0
   // Extension
   PetscInt vertexCurvID = lsID; // Store the vertex curvatures in the work vec at the same location as the level-set
 
@@ -1617,7 +1688,7 @@ exit(0);
 
         const PetscInt cm = cellMask[reverseCellRange.GetIndex(cells[c])];
 
-        if (cm > 0 && cm < (nLevels-1)) {
+        if (cm > 0 ) {
 
           PetscScalar *cellH = nullptr;
           xDMPlexPointLocalRef(auxDM, cells[c], curvID, auxArray, &cellH);
@@ -1640,7 +1711,10 @@ exit(0);
 
 
 
-//  SaveVertexData(auxDM, workVec, "vertexH0.txt", lsField, subDomain);
+#ifdef saveData
+  sprintf(fname, "vertH0_%03ld.txt", saveIter);
+  SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
+#endif
 
 
   for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
@@ -1657,7 +1731,7 @@ exit(0);
 
   maxDiff = PETSC_MAX_REAL;
   iter = 0;
-  while ( maxDiff>5e-2 && iter<10) {
+  while ( maxDiff>5e-2 && iter<3*(nLevels+1)) {
     ++iter;
 
     // Curvature gradient at the cell-center
@@ -1669,8 +1743,6 @@ exit(0);
         DMPlexCellGradFromVertex(auxDM, cell, workVec, vertexCurvID, 0, g);
       }
     }
-
-    PetscReal oldMaxDiff = maxDiff;
 
     maxDiff = -PETSC_MAX_REAL;
 
@@ -1706,8 +1778,6 @@ exit(0);
     DMLocalToGlobal(auxDM, workVec, INSERT_VALUES, workVecGlobal) >> utilities::PetscUtilities::checkError;
     DMGlobalToLocal(auxDM, workVecGlobal, INSERT_VALUES, workVec) >> utilities::PetscUtilities::checkError;
 
-
-
 //     This is temporary until after the review.
 //     The norm magnitude is incorrect at the edge of processor domains. There needs to be a way to identify
 //      cell which are ghost cells as they will have incorrect answers.
@@ -1724,22 +1794,77 @@ exit(0);
      // Get the maximum change across all processors. This also acts as a sync point
     MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, auxCOMM);
 
-//    PetscPrintf(PETSC_COMM_WORLD, "Extension %3" PetscInt_FMT": %e\n", iter, maxDiff);
-
-
-    if ((maxDiff > oldMaxDiff) && (maxDiff<1e-1)) iter = PETSC_INT_MAX;
-
-
+#ifdef saveData
+    PetscPrintf(PETSC_COMM_WORLD, "Extension %3" PetscInt_FMT": %e\n", iter, maxDiff);
+#endif
   }
 
-//  SaveVertexData(auxDM, workVec, "vertexCurv.txt", lsField, subDomain);
+
+#ifdef saveData
+  sprintf(fname, "vertH1_%03ld.txt", saveIter);
+  SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
+#endif
+
+
+
+   for (PetscInt iter = 0; iter < 5; ++iter) {
+
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+      if (cellMask[c] > 0) {
+        PetscInt cell = cellRange.GetPoint(c);
+        PetscScalar *g = nullptr;
+        xDMPlexPointLocalRef(auxDM, cell, cellNormalID, workArray, &g) >> ablate::utilities::PetscUtilities::checkError;
+        DMPlexCellGradFromVertex(auxDM, cell, workVec, vertexCurvID, 0, g);
+
+        const PetscScalar *n = nullptr;
+        xDMPlexPointLocalRead(auxDM, cell, cellNormalID, auxArray, &n);
+
+        const PetscReal dot = ablate::utilities::MathUtilities::DotVector(dim, n, g);
+
+        for (PetscInt d = 0; d < dim; ++d) g[d] -= dot*n[d];
+
+      }
+    }
+    DMLocalToGlobal(auxDM, workVec, INSERT_VALUES, workVecGlobal) >> utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(auxDM, workVecGlobal, INSERT_VALUES, workVec) >> utilities::PetscUtilities::checkError;
+
+
+    for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
+      if (vertMask[v] > 0) {
+        PetscInt vert = vertRange.GetPoint(v);
+        PetscReal div = 0.0;
+
+        for (PetscInt d = 0; d < dim; ++d) {
+          PetscReal g[dim];
+          DMPlexVertexGradFromCell(auxDM, vert, workVec, cellNormalID, d, g);
+          div += g[d];
+        }
+
+        PetscReal *H = nullptr;
+        xDMPlexPointLocalRef(auxDM, vert, vertexCurvID, workArray, &H);
+
+        *H += 0.5*h*h*div;
+
+      }
+    }
+    DMLocalToGlobal(auxDM, workVec, INSERT_VALUES, workVecGlobal) >> utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(auxDM, workVecGlobal, INSERT_VALUES, workVec) >> utilities::PetscUtilities::checkError;
+  }
+
+
+
+#ifdef saveData
+  sprintf(fname, "vertH2_%03ld.txt", saveIter);
+  SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
+#endif
+
 
 
   // Now set the curvature at the cell-center via averaging
 
-  for (PetscInt c = cellRangeWithoutGhost.start; c < cellRangeWithoutGhost.end; ++c) {
+  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     if (cellMask[c] > 0) {
-      PetscInt cell = cellRangeWithoutGhost.GetPoint(c);
+      PetscInt cell = cellRange.GetPoint(c);
 
       PetscScalar *cellH = nullptr;
       xDMPlexPointLocalRef(auxDM, cell, curvID, auxArray, &cellH) >> utilities::PetscUtilities::checkError;
@@ -1762,11 +1887,11 @@ exit(0);
 
   subDomain->UpdateAuxLocalVector();
 
-
-//  SaveCellData(auxDM, auxVec, "H.txt", curvField, 1, subDomain);
+#ifdef saveData
+  sprintf(fname, "cellH0_%03ld.txt", saveIter);
+  SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
 #endif
 
-//  SaveVertexData(auxDM, workVec, "vertexH1.txt", lsField, subDomain);
   VecRestoreArray(workVec, &workArray);
   DMRestoreLocalVector(auxDM, &workVec) >> utilities::PetscUtilities::checkError;
   DMRestoreGlobalVector(auxDM, &workVecGlobal) >> utilities::PetscUtilities::checkError;
@@ -1786,6 +1911,5 @@ exit(0);
   flow.RestoreRange(cellRangeWithoutGhost);
 
   VecRestoreArray(auxVec, &auxArray) >> utilities::PetscUtilities::checkError;
-
 
 }
