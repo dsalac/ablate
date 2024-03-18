@@ -162,24 +162,10 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
     const PetscInt MAXIT = 1000;
     PetscInt i = 0;
 
-    do  // Newton's method
-    {
-        expansionShockCalculation(pstar, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
-        expansionShockCalculation(pstar, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
+    PetscReal alpha[5] = {1.0, 0.5, 0.2, 0.1, 0.05};
 
-        pold = pstar;
-        pstar = pold - (f_L_0 + f_R_0 + del_u) / (f_L_1 + f_R_1);  // new guess
+    for (PetscInt iter=0;iter<5;++iter) {
 
-        // A stiffened gas will have p0L and p0R as positive numbers. If they're both zero (or close enough) then don't allow
-        //  for a negative pstar. Set the value to something just above zero.
-        if (pstar < 0 && (p0L < ablate::utilities::Constants::tiny || p0R < ablate::utilities::Constants::tiny)) {
-            pstar = ablate::utilities::Constants::small;
-        }
-
-        i++;
-    } while (PetscAbsReal((pstar - pold) / pstar) > tol && i <= MAXIT);
-
-    if (i > MAXIT) {
       i = 0;
       pstar = pstar0;
       do  // Newton's method
@@ -188,7 +174,7 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
           expansionShockCalculation(pstar, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
 
           pold = pstar;
-          pstar = pold - 0.5*(f_L_0 + f_R_0 + del_u) / (f_L_1 + f_R_1);  // new guess
+          pstar = pold - alpha[iter]*(f_L_0 + f_R_0 + del_u) / (f_L_1 + f_R_1);  // new guess
 
           // A stiffened gas will have p0L and p0R as positive numbers. If they're both zero (or close enough) then don't allow
           //  for a negative pstar. Set the value to something just above zero.
@@ -199,35 +185,14 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
           i++;
       } while (PetscAbsReal((pstar - pold) / pstar) > tol && i <= MAXIT);
 
-      if (i > MAXIT) {
-        i = 0;
-        pstar = pstar0;
-        do  // Newton's method
-        {
-            expansionShockCalculation(pstar, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
-            expansionShockCalculation(pstar, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
-
-            pold = pstar;
-            pstar = pold - 0.25*(f_L_0 + f_R_0 + del_u) / (f_L_1 + f_R_1);  // new guess
-
-            // A stiffened gas will have p0L and p0R as positive numbers. If they're both zero (or close enough) then don't allow
-            //  for a negative pstar. Set the value to something just above zero.
-            if (pstar < 0 && (p0L < ablate::utilities::Constants::tiny || p0R < ablate::utilities::Constants::tiny)) {
-                pstar = ablate::utilities::Constants::small;
-            }
-
-            i++;
-        } while (PetscAbsReal((pstar - pold) / pstar) > tol && i <= MAXIT);
-
-      }
-
-      if (i >MAXIT) {
-        throw std::runtime_error("Can't find pstar; Iteration not converging; Go back and do it again");
-      }
-
-
-
+      if (i < MAXIT) iter=6;
     }
+
+
+    if (i >MAXIT) {
+      throw std::runtime_error("Can't find pstar; Iteration not converging; Go back and do it again");
+    }
+
 
     return riemannDirection(pstar, uL, aL, rhoL, p0L, pL, gammaL, f_L_0, uR, aR, rhoR, p0R, pR, gammaR, f_R_0, massFlux, p12);
 }
