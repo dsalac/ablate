@@ -185,7 +185,7 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
           i++;
       } while (PetscAbsReal((pstar - pold) / pstar) > tol && i <= MAXIT);
 
-      if (i < MAXIT) iter=6;
+      if (i < MAXIT) break;
     }
 
 

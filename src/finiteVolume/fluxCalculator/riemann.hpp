@@ -1,25 +1,25 @@
-#ifndef ABLATELIBRARY_RIEMANN_H
-#define ABLATELIBRARY_RIEMANN_H
+#ifndef ABLATELIBRARY_RIEMAN_H
+#define ABLATELIBRARY_RIEMAN_H
 #include <eos/eos.hpp>
 #include <memory>
-#include "riemannSolver.hpp"
+#include "fluxCalculator.hpp"
 
 namespace ablate::finiteVolume::fluxCalculator {
 
 /*
- * Computes the flux by treating all surfaces as Rieman problems.
+ * Computes the flux by treating all surfaces as Riemann problems.
  */
-class Riemann : public RiemannSolver {
+class Riemann : public fluxCalculator::FluxCalculator {
    private:
-    static Direction RiemannFluxFunction(void *, PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL, PetscReal uR, PetscReal aR, PetscReal rhoR, PetscReal pR, PetscReal *massFlux,
-                                         PetscReal *p12);
+    static Direction RiemanFluxFunction(void *, PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL, PetscReal uR, PetscReal aR, PetscReal rhoR, PetscReal pR, PetscReal *massFlux,
+                                        PetscReal *p12);
     PetscReal gamma;
 
    public:
-    FluxCalculatorFunction GetFluxCalculatorFunction() override { return RiemannFluxFunction; }
+    FluxCalculatorFunction GetFluxCalculatorFunction() override { return RiemanFluxFunction; }
     void *GetFluxCalculatorContext() override { return (void *)&gamma; }
     explicit Riemann(std::shared_ptr<eos::EOS> eos);
 };
 }  // namespace ablate::finiteVolume::fluxCalculator
 
-#endif  // ABLATELIBRARY_RIEMANN_H
+#endif  // ABLATELIBRARY_RIEMAN_H
