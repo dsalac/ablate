@@ -255,7 +255,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
 PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime) {
     PetscFunctionBegin;
     // Get flow field data
-    const auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
+    auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
     ablate::domain::Range cellRange;
     fvSolver.GetCellRangeWithoutGhost(cellRange);
     PetscInt dim;
@@ -310,10 +310,12 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Multipha
         decoder->DecodeTwoPhaseEulerState(
             dim, uOff, allFields, norm, &density, &densityG, &densityL, &normalVelocity, velocity, &internalEnergy, &internalEnergyG, &internalEnergyL, &aG, &aL, &MG, &ML, &p, &t, &alpha);
         // maybe save other values for use later, would interpolation to the face be the same as calculating at face?
-        allFields[uOff[0]] = alpha;  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
+        allFields[uOff[0]] = PetscMax(PetscMin(alpha, 1.0), 0.0);  // sets volumeFraction field, does every iteration of time step (euler=1, rk=4)
     }
     // clean up
+
     fvSolver.RestoreRange(cellRange);
+
     PetscFunctionReturn(0);
 }
 
@@ -475,7 +477,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
     PetscReal alphaMin = PetscMin(alphaR, alphaL);
     PetscReal alphaDif = PetscAbs(alphaL - alphaR);
     PetscReal alphaLiq;
-    fluxCalculator::Direction directionL;
+    fluxCalculator::Direction directionL = fluxCalculator::NA;
     if ((alphaMin + alphaDif) >= (1.0 - 1e-12)) {
         alphaLiq = 0.0;
         massFluxLL = 0.0;
@@ -485,7 +487,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
         directionL = twoPhaseEulerAdvection->fluxCalculatorLiquidLiquid->GetFluxCalculatorFunction()(
             twoPhaseEulerAdvection->fluxCalculatorLiquidLiquid->GetFluxCalculatorContext(), normalVelocityL, aL_L, densityL_L, pL, normalVelocityR, aL_R, densityL_R, pR, &massFluxLL, &p12LL);
     }
-    fluxCalculator::Direction directionGL;
+    fluxCalculator::Direction directionGL = fluxCalculator::NA;
     if (alphaL > alphaR) {
         // gas on left, liquid on right
         directionGL = twoPhaseEulerAdvection->fluxCalculatorGasLiquid->GetFluxCalculatorFunction()(
@@ -932,6 +934,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasPerfectG
     *internalEnergyG = eG;
     *internalEnergyL = eL;
     *alpha = densityVF / (*densityG);
+    *alpha = PetscMax(PetscMin(*alpha, 1.0), 0.0);
     *p = pG;  // pressure equilibrium, pG = pL
     *aG = a1;
     *aL = a2;
@@ -1119,6 +1122,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
     *internalEnergyG = eG;
     *internalEnergyL = eL;
     *alpha = densityVF / (*densityG);
+    *alpha = PetscMax(PetscMin(*alpha, 1.0), 0.0);
     *p = pG;  // pressure equilibrium, pG = pL
     *aG = a1;
     *aL = a2;
@@ -1287,6 +1291,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::StiffenedGasStiffe
     *internalEnergyG = eG;
     *internalEnergyL = eL;
     *alpha = densityVF / (*densityG);
+    *alpha = PetscMax(PetscMin(*alpha, 1.0), 0.0);
     *p = pG;  // pressure equilibrium, pG = pL
     *aG = a1;
     *aL = a2;
