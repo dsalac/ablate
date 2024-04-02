@@ -4,6 +4,117 @@
 
 using namespace ablate::domain::rbf;
 
+
+
+static void RBF::Normal1D(const ablate::domain::Field *field, const PetscInt c, PetscScalar *n) {
+
+  PetscReal cx = 0.0, g = 0.0;
+
+  cx = RBF::EvalDer(field, c, 1, 0, 0);
+  g = PetscSqrtReal(cx*cx);
+
+  n[0] = cx/g;
+}
+
+static void RBF::Normal2D(const ablate::domain::Field *field, const PetscInt c, PetscScalar *n) {
+
+  PetscReal   cx = 0.0, cy = 0.0, g = 0.0;
+
+  cx = RBF::EvalDer(field, c, 1, 0, 0);
+  cy = RBF::EvalDer(field, c, 0, 1, 0);
+  g = PetscSqrtReal(cx*cx + cy*cy);
+
+  n[0] = cx/g;
+  n[1] = cy/g;
+
+
+}
+
+void RBF::Normal3D(const ablate::domain::Field *field, const PetscInt c, PetscReal *n) {
+
+  PetscReal   cx = 0.0, cy = 0.0, cz = 0.0, g = 0.0;
+
+  cx = RBF::EvalDer(field, c, 1, 0, 0);
+  cy = RBF::EvalDer(field, c, 0, 1, 0);
+  cz = RBF::EvalDer(field, c, 0, 0, 1);
+  g = sqrt(cx*cx + cy*cy + cz*cz);
+
+  n[0] = cx/g;
+  n[1] = cy/g;
+  n[2] = cz/g;
+}
+
+void RBF::Normal(const ablate::domain::Field *field, const PetscInt c, PetscReal *n) {
+  switch (RBF::subDomain->GetDimensions()) {
+    case 1:
+      RBF::Normal1D(field, c, n);
+      break;
+    case 2:
+      RBF::Normal2D(field, c, n);
+      break;
+    case 3:
+      RBF::Normal3D(field, c, n);
+      break;
+    default:
+      throw std::runtime_error("ablate::levelSet::geometry::Normal encountered an unknown dimension.");
+  }
+}
+
+
+
+static PetscReal RBF::Curvature2D(const ablate::domain::Field *field, const PetscInt c) {
+
+  PetscReal k = 0.0;
+  PetscReal cx, cy, cxx, cyy, cxy;
+
+  cx = RBF::EvalDer(field, c, 1, 0, 0);
+  cy = RBF::EvalDer(field, c, 0, 1, 0);
+  cxx = RBF::EvalDer(field, c, 2, 0, 0);
+  cyy = RBF::EvalDer(field, c, 0, 2, 0);
+  cxy = RBF::EvalDer(field, c, 1, 1, 0);
+
+  k = (cxx*cy*cy + cyy*cx*cx - 2.0*cxy*cx*cy)/pow(cx*cx+cy*cy,1.5);
+
+  return k;
+}
+
+static PetscReal RBF::Curvature3D(const ablate::domain::Field *field, const PetscInt c) {
+
+  PetscReal k = 0.0;
+  PetscReal cx, cy, cz;
+  PetscReal cxx, cyy, czz;
+  PetscReal cxy, cxz, cyz;
+
+  cx = RBF::EvalDer(field, c, 1, 0, 0);
+  cy = RBF::EvalDer(field, c, 0, 1, 0);
+  cz = RBF::EvalDer(field, c, 0, 0, 1);
+  cxx = RBF::EvalDer(field, c, 2, 0, 0);
+  cyy = RBF::EvalDer(field, c, 0, 2, 0);
+  czz = RBF::EvalDer(field, c, 0, 0, 2);
+  cxy = RBF::EvalDer(field, c, 1, 1, 0);
+  cxz = RBF::EvalDer(field, c, 1, 0, 1);
+  cyz = RBF::EvalDer(field, c, 0, 1, 1);
+
+  k = (cxx*(cy*cy + cz*cz) + cyy*(cx*cx + cz*cz) + czz*(cx*cx + cy*cy) - 2.0*(cxy*cx*cy + cxz*cx*cz + cyz*cy*cz))/pow(cx*cx+cy*cy+cz*cz,1.5);
+
+  return k;
+}
+
+
+PetscReal RBF::Curvature(const ablate::domain::Field *field, const PetscInt c) {
+  switch (RBF::subDomain->GetDimensions()) {
+    case 1:
+      return 0.0;
+    case 2:
+      return RBF::Curvature2D(field, c);
+    case 3:
+      return RBF::Curvature3D(field, c);
+    default:
+      throw std::runtime_error("ablate::levelSet::geometry::Curvature encountered an unknown dimension.");
+  }
+}
+
+
 // Return an array of length-3 containing the location, even for 1D or 2D domains
 void RBF::Loc3D(PetscInt dim, PetscReal xIn[], PetscReal x[3]) {
     PetscInt d;

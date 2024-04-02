@@ -156,6 +156,22 @@ class RBF {
      *
      */
     inline PetscInt GetDimensions() { return RBF::subDomain->GetDimensions(); }
+
+    /**
+     * Unit normal of a field at a point
+     * @param field
+     * @param c
+     * @param n
+     */
+    void Normal(const ablate::domain::Field *field, const PetscInt c, PetscReal *n);
+
+    /**
+     * Total curvature of a field at a point
+     * @param field
+     * @param c
+     */
+    PetscReal Curvature(const ablate::domain::Field *field, const PetscInt c);
+
 };
 
 }  // namespace ablate::domain::rbf
