@@ -1,13 +1,21 @@
 target_sources(ablateLibrary
         PRIVATE
         LS-VOF.cpp
+        levelSetFields.cpp
+        levelSetSolver.cpp
         levelSetUtilities.cpp
         vofMathFunction.cpp
         cellGrad.cpp
+        geometry.cpp
+        interfaceReconstruction.cpp
 
         PUBLIC
         LS-VOF.hpp
+        levelSetFields.hpp
+        levelSetSolver.hpp
         levelSetUtilities.hpp
         vofMathFunction.hpp
         cellGrad.hpp
+        geometry.hpp
+        interfaceReconstruction.hpp
         )

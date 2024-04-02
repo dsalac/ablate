@@ -3,6 +3,9 @@
 
 #include "domain/RBF/rbf.hpp"
 #include "domain/subDomain.hpp"
+#include "finiteVolume/finiteVolumeSolver.hpp"
+
+
 
 namespace ablate::levelSet::Utilities {
 
@@ -152,7 +155,11 @@ void VertexUpwindGrad(DM dm, PetscReal *gradArray, AO cellToIndex, const PetscIn
  * @param lsSubDomain - The domain containing the LS data
  * @param lsField - Location of vertex-based LS data
  */
-void Reinitialize(std::shared_ptr<ablate::domain::SubDomain> subDomain, const ablate::domain::Field *vofField, const PetscInt nLevels, const ablate::domain::Field *lsField);
+void Reinitialize(
+  const ablate::finiteVolume::FiniteVolumeSolver &flow,
+  std::shared_ptr<ablate::domain::SubDomain> subDomain, const Vec solVec, const ablate::domain::Field *vofField, const PetscInt nLevels, const ablate::domain::Field *lsField, const ablate::domain::Field *vertexNormalField, const ablate::domain::Field *cellNormalField, const ablate::domain::Field *curvField);
+
+bool ValidCell(DM dm, PetscInt p);
 
 }  // namespace ablate::levelSet::Utilities
 #endif  // ABLATELIBRARY_LEVELSETUTILITIES_HPP
