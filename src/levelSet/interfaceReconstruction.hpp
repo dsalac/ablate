@@ -22,66 +22,52 @@ namespace ablate::levelSet {
 
     private:
 
+
+
+      void BuildInterpCellList(DM dm, const ablate::domain::Range cellRange);
+
+      //   Hermite-Gauss quadrature points
+      const PetscInt nQuad = 4; // Size of the 1D quadrature
+      //   The quadrature is actually sqrt(2) times the quadrature points. This is as we are integrating
+      //      against the normal distribution, not exp(-x^2)
+      const PetscReal quad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+                                 0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+                                -2.3344142183389772393175122672103621944890707102161406718291603341725665622712306,
+                                 2.3344142183389772393175122672103621944890707102161406718291603341725665622712306};
+      // The weights are the true weights divided by sqrt(pi)
+      const PetscReal weights[4] = {0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+                                   0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+                                   0.045875854768068491816892993774509050669504376611944155963942286062419968545223748,
+                                   0.045875854768068491816892993774509050669504376611944155963942286062419968545223748};
+      // Factor to multiply the grid spacing by to get the standard deviation
+      const PetscReal sigmaFactor = 1.0;
+      // Interpolation list for fast integration
+      PetscInt *interpCellList = nullptr;
+
+
+
+
       std::shared_ptr<ablate::domain::rbf::RBF> vertRBF = nullptr;
       std::shared_ptr<ablate::domain::rbf::RBF> cellRBF = nullptr;
 
-      std::shared_ptr<ablate::domain::SubDomain> subDomain = nullptr;
+      const std::shared_ptr<ablate::domain::SubDomain> subDomain = {};
+      const ablate::domain::Range cellRange = {};
 
+      DM vertDM;  // DM for vertex-based data
+      DM cellDM;  // DM for cell-center data
 
-      void CurvatureViaGaussian(DM dm, const PetscInt cell, const Vec vec, const ablate::domain::Field *lsField, double *H);
-
-      void CutCellLevelSetValues(std::shared_ptr<ablate::domain::SubDomain> subDomain, ablate::domain::Range cellRange, ablate::domain::Range vertRange, ablate::domain::ReverseRange reverseVertRange, const PetscInt *cellMask, DM solDM, Vec solVec, const PetscInt vofID, DM auxDM, Vec auxVec, const PetscInt normalID, const PetscInt lsID);
-
-      void VertexUpwindGrad(DM dm, PetscScalar *gradArray, const PetscInt gradID, const PetscInt v, const PetscReal direction, PetscReal *g);
-
+      Vec lsVec_local, lsVec_global;  // Vertex-based vectors for level sets
 
     public:
-      Reconstruction(std::shared_ptr<ablate::domain::SubDomain> subDomain);
+      Reconstruction(ablate::domain::Range cellRange, const std::shared_ptr<ablate::domain::SubDomain> subDomain);
       ~Reconstruction();
 
-      void ComputeCurvature(const Vec solVec, const ablate::domain::Field *vofField, const PetscInt nLevels, const ablate::domain::Field *lsField, const ablate::domain::Field *vertexNormalField, const ablate::domain::Field *cellNormalField, const ablate::domain::Field *curvField);
+
+      // Given a cell-centered VOF field compute the level-set field
+      void ToLevelSet(const ablate::domain::Field vofField);
 
   };
 
 
 }  // namespace ablate::levelSet::Reconstruction
 #endif  // ABLATELIBRARY_INTERFACERECONSTRUCTION_HPP
-
-
-
-//namespace ablate::finiteVolume::processes {
-
-//  class SurfaceForce : public Process {
-
-
-//    private:
-
-//    PetscReal sigma;
-
-
-
-//    public:
-
-
-//    explicit SurfaceForce(PetscReal sigma);
-
-
-//    ~SurfaceForce() override;
-
-//    void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
-//    void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
-
-//    /**
-//     * static function private function to compute surface force and add source to eulerset
-//     * @param solver
-//     * @param dm - DM of the cell-centered data
-//     * @param time - Current time of data in locX
-//     * @param locX - Local vector containing current solution
-//     * @param fVec - Vector to store the Cell-centered body-force
-//     * @param ctx - Pointer to ablate::finiteVolume::processes::SurfaceForce
-//     * @return
-//     */
-//    static PetscErrorCode ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
-//  };
-//}  // namespace ablate::finiteVolume::processes
-//#endif
