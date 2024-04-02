@@ -5,59 +5,52 @@
 #include <memory>
 #include <vector>
 #include "domain/range.hpp"
+#include "domain/RBF/rbf.hpp"
+#include "domain/reverseRange.hpp"
 #include "finiteVolume/fluxCalculator/fluxCalculator.hpp"
 #include "flowProcess.hpp"
 #include "process.hpp"
 #include "solver/solver.hpp"
 #include "twoPhaseEulerAdvection.hpp"
 
+
 namespace ablate::finiteVolume::processes {
 
-class SurfaceForce : public Process {
+  class SurfaceForce : public Process {
+
+
+    private:
+
     PetscReal sigma;
 
-   private:
-    /**
-     * struct to hold the vortex stencil
-     */
-    struct VertexStencil {
-        /** The points in the stencil*/
-        std::vector<PetscInt> stencil;
-        /** The size of stencil*/
-        PetscInt stencilSize;
-        /** The point*/
-        PetscInt vertexId;
-        /** The weights */
-        std::vector<PetscScalar> gradientWeights;
-        /** Coordinate of the vertex */
-        std::vector<PetscScalar> stencilCoord;
-    };
-    DM dmData;
 
-   public:
-    // Hold a list of VortexStencils
-    std::vector<VertexStencil> vertexStencils;
+    std::shared_ptr<ablate::domain::SubDomain> subDomain;
+
+//    std::shared_ptr<ablate::levelSet::Reconstruction> reconstruction;
+
+    public:
+
+
 
     explicit SurfaceForce(PetscReal sigma);
 
-    /**
-     * public function to link this process with the flow
-     * a@param flow
-     */
+
     ~SurfaceForce() override;
 
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
+    void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
+
     /**
      * static function private function to compute surface force and add source to eulerset
      * @param solver
-     * @param dm
-     * @param time
-     * @param locX
-     * @param fVec
-     * @param ctx
+     * @param dm - DM of the cell-centered data
+     * @param time - Current time of data in locX
+     * @param locX - Local vector containing current solution
+     * @param fVec - Vector to store the Cell-centered body-force
+     * @param ctx - Pointer to ablate::finiteVolume::processes::SurfaceForce
      * @return
      */
-    static PetscErrorCode ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
-};
+    static PetscErrorCode ComputeSource(const ablate::finiteVolume::FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
+  };
 }  // namespace ablate::finiteVolume::processes
 #endif
