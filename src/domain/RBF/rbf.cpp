@@ -6,7 +6,7 @@ using namespace ablate::domain::rbf;
 
 
 
-static void RBF::Normal1D(const ablate::domain::Field *field, const PetscInt c, PetscScalar *n) {
+void RBF::Normal1D(const ablate::domain::Field *field, const PetscInt c, PetscScalar *n) {
 
   PetscReal cx = 0.0, g = 0.0;
 
@@ -16,7 +16,7 @@ static void RBF::Normal1D(const ablate::domain::Field *field, const PetscInt c, 
   n[0] = cx/g;
 }
 
-static void RBF::Normal2D(const ablate::domain::Field *field, const PetscInt c, PetscScalar *n) {
+void RBF::Normal2D(const ablate::domain::Field *field, const PetscInt c, PetscScalar *n) {
 
   PetscReal   cx = 0.0, cy = 0.0, g = 0.0;
 
@@ -62,7 +62,7 @@ void RBF::Normal(const ablate::domain::Field *field, const PetscInt c, PetscReal
 
 
 
-static PetscReal RBF::Curvature2D(const ablate::domain::Field *field, const PetscInt c) {
+PetscReal RBF::Curvature2D(const ablate::domain::Field *field, const PetscInt c) {
 
   PetscReal k = 0.0;
   PetscReal cx, cy, cxx, cyy, cxy;
@@ -78,7 +78,8 @@ static PetscReal RBF::Curvature2D(const ablate::domain::Field *field, const Pets
   return k;
 }
 
-static PetscReal RBF::Curvature3D(const ablate::domain::Field *field, const PetscInt c) {
+
+PetscReal RBF::Curvature3D(const ablate::domain::Field *field, const PetscInt c) {
 
   PetscReal k = 0.0;
   PetscReal cx, cy, cz;

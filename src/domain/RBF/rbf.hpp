@@ -51,6 +51,12 @@ class RBF {
 
     void FreeStencilData();
 
+    void Normal1D(const ablate::domain::Field *field, const PetscInt c, PetscScalar *n);
+    void Normal2D(const ablate::domain::Field *field, const PetscInt c, PetscScalar *n);
+    void Normal3D(const ablate::domain::Field *field, const PetscInt c, PetscReal *n);
+    PetscReal Curvature2D(const ablate::domain::Field *field, const PetscInt c);
+    PetscReal Curvature3D(const ablate::domain::Field *field, const PetscInt c);
+
    protected:
     PetscReal DistanceSquared(PetscInt dim, PetscReal x[], PetscReal y[]);
     PetscReal DistanceSquared(PetscInt dim, PetscReal x[]);
