@@ -239,6 +239,11 @@ class FiniteVolumeSolver : public solver::CellSolver,
         dm = meshCharacteristicsDm;
         vec = meshCharacteristicsLocalVec;
     }
+
+    /**
+     * Returns the region used by the solver without any ghost cells
+    */
+    inline std::shared_ptr<domain::Region> GetRegionWithoutGhost() noexcept { return solverRegionMinusGhost; }
 };
 }  // namespace ablate::finiteVolume
 

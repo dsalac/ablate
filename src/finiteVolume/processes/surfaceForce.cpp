@@ -14,7 +14,6 @@
 
 
 
-
 #define xexit(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr, \
   "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n", \
   __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(0);}
@@ -28,14 +27,84 @@ void ablate::finiteVolume::processes::SurfaceForce::Setup(ablate::finiteVolume::
 }
 
 // Called every time the mesh changes
-void ablate::finiteVolume::processes::SurfaceForce::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
-  SurfaceForce::subDomain = solver.GetSubDomainPtr();
+void ablate::finiteVolume::processes::SurfaceForce::Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) {
 
-//  SurfaceForce::reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(subDomain);
+  SurfaceForce::subDomain = flow.GetSubDomainPtr();
 
+//  if (SurfaceForce::reconstruction) {
+//    xexit("");
+//    SurfaceForce::reconstruction.reset();
+//  }
+
+//  SurfaceForce::reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(SurfaceForce::subDomain, flow.GetRegionWithoutGhost());
 }
 
 
+void SurfaceForce_SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id, PetscInt Nc, std::shared_ptr<ablate::domain::SubDomain> subDomain) {
+
+  ablate::domain::Range range;
+  const PetscScalar *array;
+  PetscInt      dim = subDomain->GetDimensions();
+  MPI_Comm      comm = PetscObjectComm((PetscObject)dm);
+  int rank, size;
+  MPI_Comm_size(comm, &size);
+  MPI_Comm_rank(comm, &rank);
+
+  subDomain->GetCellRange(nullptr, range);
+
+  VecGetArrayRead(vec, &array) >> ablate::utilities::PetscUtilities::checkError;
+
+  PetscInt boundaryCellStart;
+  DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr) >> ablate::utilities::PetscUtilities::checkError;
+
+
+  for (PetscInt r = 0; r < size; ++r) {
+    if ( rank==r ) {
+
+      FILE *f1;
+      if ( rank==0 ) f1 = fopen(fname, "w");
+      else f1 = fopen(fname, "a");
+
+
+//      char rankName[255];
+//      sprintf(rankName, "%s.%d", fname, rank);
+//      f1  = fopen(rankName, "w");
+
+      for (PetscInt c = range.start; c < range.end; ++c) {
+        PetscInt cell = range.points ? range.points[c] : c;
+
+        DMPolytopeType ct;
+        DMPlexGetCellType(dm, cell, &ct) >> ablate::utilities::PetscUtilities::checkError;
+
+
+
+        if (ct < 12) {
+
+          PetscReal x0[3];
+          DMPlexComputeCellGeometryFVM(dm, cell, NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
+          for (PetscInt d = 0; d < dim; ++d) {
+            fprintf(f1, "%+e\t", x0[d]);
+          }
+
+          const PetscScalar *val;
+          DMPlexPointLocalFieldRead(dm, cell, id, array, &val) >> ablate::utilities::PetscUtilities::checkError;
+          for (PetscInt i = 0; i < Nc; ++i) {
+            fprintf(f1, "%+e\t", val[i]);
+          }
+
+          fprintf(f1, "\n");
+        }
+      }
+      fclose(f1);
+    }
+
+    MPI_Barrier(PETSC_COMM_WORLD);
+  }
+
+
+  VecRestoreArrayRead(vec, &array) >> ablate::utilities::PetscUtilities::checkError;
+  ablate::domain::RestoreRange(range);
+}
 
 inline PetscReal SmoothDirac(PetscReal c, PetscReal c0, PetscReal t) {
   return (PetscAbsReal(c-c0) < t ? 0.5*(1.0 + cos(M_PI*(c - c0)/t))/t : 0);
@@ -50,11 +119,23 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     ablate::domain::Range cellRange;
 
     const ablate::domain::Field *vofField = &(subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD));
+
+
+
+SurfaceForce_SaveCellData(subDomain->GetFieldDM(*vofField), subDomain->GetVec(*vofField), "vof.txt", vofField->id, 1, subDomain);
+exit(0);
+
+//process->reconstruction->ToLevelSet(*vofField);
+
+
     const ablate::domain::Field *lsField = &(subDomain->GetField("levelSet"));
     const ablate::domain::Field *vertexNormalField = &(subDomain->GetField("vertexNormal"));
     const ablate::domain::Field *curvField = &(subDomain->GetField("curvature"));
     const ablate::domain::Field *cellNormalField = &(subDomain->GetField("cellNormal"));
     const ablate::domain::Field *eulerField = &(subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD));
+
+
+
 
     DM eulerDM = subDomain->GetFieldDM(*eulerField); // Get an euler-specific DM in case it's not in the same solution vector as the VOF field
     const PetscReal sigma = process->sigma; // Surface tension coefficient

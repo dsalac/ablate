@@ -12,6 +12,7 @@
 #include "process.hpp"
 #include "solver/solver.hpp"
 #include "twoPhaseEulerAdvection.hpp"
+#include "levelSet/interfaceReconstruction.hpp"
 
 
 namespace ablate::finiteVolume::processes {
@@ -24,9 +25,9 @@ namespace ablate::finiteVolume::processes {
     PetscReal sigma;
 
 
-    std::shared_ptr<ablate::domain::SubDomain> subDomain;
+    std::shared_ptr<ablate::domain::SubDomain> subDomain = nullptr;
 
-//    std::shared_ptr<ablate::levelSet::Reconstruction> reconstruction;
+    std::shared_ptr<ablate::levelSet::Reconstruction> reconstruction = nullptr;
 
     public:
 

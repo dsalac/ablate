@@ -8,6 +8,7 @@
 #include "domain/RBF/phs.hpp"
 #include "domain/RBF/rbf.hpp"
 #include "domain/subDomain.hpp"
+#include "utilities/petscUtilities.hpp"
 
 
 
@@ -22,9 +23,17 @@ namespace ablate::levelSet {
 
     private:
 
+      enum VecLoc { LOCAL , GLOBAL };
 
 
-      void BuildInterpCellList(DM dm, const ablate::domain::Range cellRange);
+      static inline void UpdateVec(DM dm, Vec lv, Vec gv, PetscScalar **array) {
+        VecRestoreArray(lv, array) >> utilities::PetscUtilities::checkError;
+        DMLocalToGlobal(dm, lv, INSERT_VALUES, gv) >> utilities::PetscUtilities::checkError;
+        DMGlobalToLocal(dm, gv, INSERT_VALUES, lv) >> utilities::PetscUtilities::checkError;
+        VecGetArray(lv, array);
+      }
+
+      void BuildInterpCellList();
 
       //   Hermite-Gauss quadrature points
       const PetscInt nQuad = 4; // Size of the 1D quadrature
@@ -44,22 +53,36 @@ namespace ablate::levelSet {
       // Interpolation list for fast integration
       PetscInt *interpCellList = nullptr;
 
-
+      PetscInt *globalIndices = nullptr;
 
 
       std::shared_ptr<ablate::domain::rbf::RBF> vertRBF = nullptr;
       std::shared_ptr<ablate::domain::rbf::RBF> cellRBF = nullptr;
 
-      const std::shared_ptr<ablate::domain::SubDomain> subDomain = {};
-      const ablate::domain::Range cellRange = {};
+      std::shared_ptr<ablate::domain::Region> region = nullptr;
+      std::shared_ptr<ablate::domain::SubDomain> subDomain = nullptr;
 
-      DM vertDM;  // DM for vertex-based data
-      DM cellDM;  // DM for cell-center data
+      DM vertDM = nullptr, vertGradDM = nullptr;  // DM for vertex-based data
+      DM cellDM = nullptr, cellGradDM = nullptr;  // DM for cell-center data
 
-      Vec lsVec_local, lsVec_global;  // Vertex-based vectors for level sets
+      Vec vertVec[2] = {nullptr, nullptr}, vertGradVec[2] = {nullptr, nullptr};  // Vertex-based data
+      Vec cellVec[2] = {nullptr, nullptr}, cellGradVec[2] = {nullptr, nullptr};  // Cell-based data
+
+      // Store the cell and vert ranges so that they don't have to be re-computed every iteration
+      ablate::domain::Range cellRange = {};
+      ablate::domain::Range vertRange = {};
+      ablate::domain::ReverseRange reverseVertRange = {};
+      ablate::domain::ReverseRange reverseCellRange = {};
+
+      // The cell and vertex lists where to perform calculations
+      PetscInt nCellList = 0, *cellList = nullptr, *reverseCellList = nullptr;
+      PetscInt nVertList = 0, *vertList = nullptr, *reverseVertList = nullptr;
+
+
 
     public:
-      Reconstruction(ablate::domain::Range cellRange, const std::shared_ptr<ablate::domain::SubDomain> subDomain);
+
+      Reconstruction(const std::shared_ptr<ablate::domain::SubDomain> subDomain, std::shared_ptr<ablate::domain::Region> region = nullptr);
       ~Reconstruction();
 
 
