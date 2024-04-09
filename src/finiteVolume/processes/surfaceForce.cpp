@@ -31,12 +31,12 @@ void ablate::finiteVolume::processes::SurfaceForce::Initialize(ablate::finiteVol
 
   SurfaceForce::subDomain = flow.GetSubDomainPtr();
 
-//  if (SurfaceForce::reconstruction) {
-//    xexit("");
-//    SurfaceForce::reconstruction.reset();
-//  }
+  if (SurfaceForce::reconstruction) {
+    xexit("");
+    SurfaceForce::reconstruction.reset();
+  }
 
-//  SurfaceForce::reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(SurfaceForce::subDomain, flow.GetRegionWithoutGhost());
+  SurfaceForce::reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(SurfaceForce::subDomain, flow.GetRegionWithoutGhost());
 }
 
 
@@ -122,10 +122,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
 
 
-SurfaceForce_SaveCellData(subDomain->GetFieldDM(*vofField), subDomain->GetVec(*vofField), "vof.txt", vofField->id, 1, subDomain);
-exit(0);
-
-//process->reconstruction->ToLevelSet(*vofField);
+process->reconstruction->ToLevelSet(dm, locX, *vofField);
 
 
     const ablate::domain::Field *lsField = &(subDomain->GetField("levelSet"));

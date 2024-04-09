@@ -75,8 +75,12 @@ namespace ablate::levelSet {
       ablate::domain::ReverseRange reverseCellRange = {};
 
       // The cell and vertex lists where to perform calculations
-      PetscInt nCellList = 0, *cellList = nullptr, *reverseCellList = nullptr;
-      PetscInt nVertList = 0, *vertList = nullptr, *reverseVertList = nullptr;
+      PetscInt nLocalCell = 0, nTotalCell = 0, *cellList = nullptr, *reverseCellList = nullptr;
+      PetscInt nLocalVert = 0, nTotalVert = 0, *vertList = nullptr, *reverseVertList = nullptr;
+
+      void SaveData(DM dm, const PetscInt *array, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
+      void SaveData(DM dm, const PetscScalar *array, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
+      void SaveData(DM dm, const Vec vec, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
 
 
 
@@ -87,7 +91,7 @@ namespace ablate::levelSet {
 
 
       // Given a cell-centered VOF field compute the level-set field
-      void ToLevelSet(const ablate::domain::Field vofField);
+      void ToLevelSet(DM vofDM, Vec vofVec, const ablate::domain::Field vofField);
 
   };
 
