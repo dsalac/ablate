@@ -148,6 +148,7 @@ process->reconstruction->ToLevelSet(dm, locX, *vofField);
 
     ablate::levelSet::Utilities::Reinitialize(flow, subDomain, locX, vofField, 8, lsField, vertexNormalField, cellNormalField, curvField);
 
+xexit("");
     DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
 
