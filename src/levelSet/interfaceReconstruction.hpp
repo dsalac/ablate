@@ -23,8 +23,9 @@ namespace ablate::levelSet {
 
     private:
 
-      enum VecLoc { LOCAL , GLOBAL };
+      const PetscInt nLevels = 8;
 
+      enum VecLoc { LOCAL , GLOBAL };
 
       static inline void UpdateVec(DM dm, Vec lv, Vec gv, PetscScalar **array) {
         VecRestoreArray(lv, array) >> utilities::PetscUtilities::checkError;
@@ -87,10 +88,11 @@ namespace ablate::levelSet {
 
       void SmoothVOF(DM vofDM, Vec vofVec, const PetscInt vofID, DM smoothVOFDM, Vec smoothVOFVec[2], const PetscInt* subpointIndices);
 
-//      void CutCellLevelSetValues(DM vofDM, Vec vofVec, const PetscInt vofID, DM cellMaskDM, Vec cellMaskVec, const PetscInt *vertMask, DM cellGradDM, Vec cellGradVec, DM lsDM, Vec lsVec[2]);
       void InitalizeLevelSet(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
 
+      void ReinitializeLevelSet(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
 
+      void VertexUpwind(const PetscScalar *gradArray, const PetscInt v, const PetscReal direction, PetscReal *g);
 
 
 
