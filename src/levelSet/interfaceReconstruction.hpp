@@ -88,7 +88,7 @@ namespace ablate::levelSet {
       void SmoothVOF(DM vofDM, Vec vofVec, const PetscInt vofID, DM smoothVOFDM, Vec smoothVOFVec[2], const PetscInt* subpointIndices);
 
 //      void CutCellLevelSetValues(DM vofDM, Vec vofVec, const PetscInt vofID, DM cellMaskDM, Vec cellMaskVec, const PetscInt *vertMask, DM cellGradDM, Vec cellGradVec, DM lsDM, Vec lsVec[2]);
-      void CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
+      void InitalizeLevelSet(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
 
 
 

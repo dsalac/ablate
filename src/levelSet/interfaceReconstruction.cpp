@@ -588,7 +588,7 @@ void Reconstruction::SetMasks(const PetscInt nLevels, PetscInt *cellMask, PetscI
 }
 
 // vofVec MUST have ghost cell information
-void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]) {
+void Reconstruction::InitalizeLevelSet(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]) {
 
   MPI_Comm lsCOMM = PetscObjectComm((PetscObject)vertDM);
 
@@ -651,7 +651,6 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
     ++iter;
 
     PetscScalar *lsArray[2] = {nullptr, nullptr};
-
     VecZeroEntries(lsVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
     VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
@@ -718,13 +717,63 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
 
   }
 
-  VecRestoreArrayRead(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError;
+
   DMRestoreWorkArray(vertDM, nLocalVert, MPIU_INT, &lsCount) >> ablate::utilities::PetscUtilities::checkError;
   DMRestoreWorkArray(cellGradDM, nTotalCell*dim, MPIU_REAL, &cellGrad) >> ablate::utilities::PetscUtilities::checkError;
 
   if (maxDiff > 1e-3*h) {
     throw std::runtime_error("Interface reconstruction has failed.\n");
   }
+
+
+  /*********   Set the values in the rest of the domain ******************/
+
+  // Range of level-set values
+  PetscReal lsRange[2] = {-PETSC_MAX_REAL, PETSC_MAX_REAL};
+  VecMin(lsVec[GLOBAL], NULL, &lsRange[0]);
+  VecMax(lsVec[GLOBAL], NULL, &lsRange[1]);
+
+  // Maximum distance in the domain
+  PetscReal gMin[3], gMax[3];
+  DMGetBoundingBox(vertDM, gMin, gMax) >> ablate::utilities::PetscUtilities::checkError;
+
+  PetscReal maxDist = 0.0;
+  for (PetscInt d = 0; d < dim; ++d) {
+    maxDist += PetscSqr(gMax[d] - gMin[d]);
+  }
+  maxDist = PetscSqrtReal(maxDist);
+
+
+  PetscScalar *lsGlobalArray = nullptr;
+  VecGetArray(lsVec[GLOBAL], &lsGlobalArray) >> ablate::utilities::PetscUtilities::checkError;
+  for (PetscInt c = 0 ; c < nLocalCell; ++c) {
+    const PetscInt cell = cellList[c];
+    PetscInt nVerts, *verts;
+
+    DMPlexCellGetVertices(vertDM, cell, &nVerts, &verts) >> utilities::PetscUtilities::checkError;
+
+    const PetscReal lsSetValues[2] = {lsRange[ vofArray[c] < 0.5 ? 1 : 0 ], PetscSignReal(0.5 - vofArray[c])*maxDist};
+
+    for (PetscInt v = 0; v < nVerts; ++v) {
+      const PetscInt id = reverseVertList[verts[v]];
+
+      if (id < nLocalVert) {
+
+        if(vertMask[id] > 1) lsGlobalArray[id] = lsSetValues[0];
+        else if (vertMask[id] == 0) lsGlobalArray[id] = lsSetValues[1];
+      }
+    }
+
+    DMPlexCellRestoreVertices(vertDM, cell, &nVerts, &verts) >> utilities::PetscUtilities::checkError;
+  }
+
+  VecRestoreArrayRead(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError;
+  VecRestoreArray(lsVec[GLOBAL], &lsGlobalArray) >> ablate::utilities::PetscUtilities::checkError;
+
+  DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+
+
 
 }
 
@@ -867,7 +916,7 @@ MPI_Comm_size(PETSC_COMM_WORLD, &size);
 SaveData(cellDM, cellMask, nTotalCell, cellList, "cellMask.txt", 1);
 SaveData(vertDM, vertMask, nTotalVert, vertList, "vertMask.txt", 1);
 
-  CutCellLevelSetValues(smoothVOFVec[LOCAL], cellMask, vertMask, lsVec);
+  InitalizeLevelSet(smoothVOFVec[LOCAL], cellMask, vertMask, lsVec);
 
 
 
@@ -880,86 +929,6 @@ SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS_G.txt", 1);
 
   DMRestoreLocalVector(cellDM, &smoothVOFVec[LOCAL]);
   DMRestoreGlobalVector(cellDM, &smoothVOFVec[GLOBAL]);
-
-
-
-
-
-///**************** Iterate to get the level-set values at vertices *************************************/
-
-//  // Temporary level-set work array to store old values
-//  PetscScalar *tempLS;
-//  DMGetWorkArray(auxDM, vertRange.end - vertRange.start, MPIU_SCALAR, &tempLS) >> ablate::utilities::PetscUtilities::checkError;
-//  tempLS -= vertRange.start;
-
-//  PetscReal maxDiff = 1.0;
-//  PetscInt iter = 0;
-
-//  MPI_Comm auxCOMM = PetscObjectComm((PetscObject)auxDM);
-
-////SaveCellData(auxDM, auxVec, "normal0.txt", cellNormalField, dim, subDomain);
-
-
-//  while ( maxDiff > 1e-3*h && iter<100 ) {
-
-//    ++iter;
-
-//    for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
-//      if (vertMask[v]==1) {
-//        PetscInt vert = vertRange.GetPoint(v);
-//        const PetscReal *oldLS = nullptr;
-//        xDMPlexPointLocalRead(auxDM, vert, lsID, auxArray, &oldLS) >> ablate::utilities::PetscUtilities::checkError;
-//        tempLS[v] = *oldLS;
-//      }
-//    }
-
-//    // Note: The unit normal and CutCellLevelSetValues must work on the same set of datat.
-
-//    // This updates the lsField by taking the average vertex values necessary to match the VOF in cutcells
-//    CutCellLevelSetValues(subDomain, cellRange, vertRange, reverseVertRange, cellMask, cutCellDM, cutCellVec, vofID, auxDM, auxVec, cellNormalID, lsID);
-
-//    //     Update the normals
-//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//      if (cellMask[c] == 1) {
-//        PetscInt cell = cellRange.GetPoint(c);
-//        PetscScalar *n = nullptr;
-//        xDMPlexPointLocalRef(auxDM, cell, cellNormalID, auxArray, &n);
-//        DMPlexCellGradFromVertex(auxDM, cell, auxVec, lsID, 0, n) >> ablate::utilities::PetscUtilities::checkError;
-//        ablate::utilities::MathUtilities::NormVector(dim, n);
-//      }
-//    }
-
-//    subDomain->UpdateAuxLocalVector();
-
-
-//    // Now compute the difference on this processor
-//    maxDiff = -1.0;
-//    for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
-
-//      if (vertMask[v] == 1) {
-//        PetscInt vert = vertRange.GetPoint(v);
-//        const PetscReal *newLS = nullptr;
-//        xDMPlexPointLocalRead(auxDM, vert, lsID, auxArray, &newLS) >> ablate::utilities::PetscUtilities::checkError;
-
-//        maxDiff = PetscMax(maxDiff, PetscAbsReal(tempLS[v] - *newLS));
-//      }
-//    }
-//    // Get the maximum change across all processors. This also acts as a sync point
-//    MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, auxCOMM);
-//#ifdef saveData
-//    PetscPrintf(PETSC_COMM_WORLD, "Cut Cells %" PetscInt_FMT": %+e\n", iter, maxDiff) >> ablate::utilities::PetscUtilities::checkError;
-//#endif
-//  }
-
-//  if (maxDiff > 1e-3*h) {
-//    throw std::runtime_error("Interface reconstruction has failed.\n");
-//  }
-
-
-//#ifdef saveData
-//  sprintf(fname, "ls1_%03ld.txt", saveIter);
-//  SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
-//#endif
 
 
 ///**************** Set the data in the rest of the domain to be a large value *************************************/
