@@ -185,8 +185,6 @@ Reconstruction::Reconstruction(const std::shared_ptr<ablate::domain::SubDomain> 
   Reconstruction_CopyDM(subAuxDM, cStart, cEnd, 1, &cellDM);
   Reconstruction_CopyDM(subAuxDM, cStart, cEnd, dim, &cellGradDM);
 
-
-
   // Form the list of cells that will have calculations. The list will have local values
   //    in 0 -> nLocal-1 and ghost values from nLocal->nTotal-1
 
@@ -465,9 +463,9 @@ void Reconstruction::SaveData(DM dm, const Vec vec, const PetscInt nList, const 
 //
 //  Instead we'll use an accumulator approach where new cells are marked. An ADD_VALUES operation is then done and
 //    new cells at that level are added to a temporary array. This SHOULD only require one-level of overlap
-void Reconstruction::SetMasksAndNormal(const PetscInt nLevels, PetscInt *cellMask, PetscInt *vertMask, Vec vofVec[2], Vec vofGradVec[2]) {
+void Reconstruction::SetMasks(const PetscInt nLevels, PetscInt *cellMask, PetscInt *vertMask, Vec vofVec[2]) {
 
-  PetscScalar *vofArray = nullptr, *cellMaskVecArray = nullptr, *vofGradArray = nullptr;
+  PetscScalar *vofArray = nullptr, *cellMaskVecArray = nullptr;
   Vec cellMaskVec[2] = {nullptr, nullptr};
 
 
@@ -476,31 +474,16 @@ void Reconstruction::SetMasksAndNormal(const PetscInt nLevels, PetscInt *cellMas
   DMGetGlobalVector(cellDM, &cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
   VecGetArray(vofVec[LOCAL], &vofArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArray(vofGradVec[LOCAL], &vofGradArray) >> ablate::utilities::PetscUtilities::checkError;
   VecGetArray(cellMaskVec[LOCAL], &cellMaskVecArray);
   for (PetscInt c = 0; c < nTotalCell; ++c) {
-
-    if ((vofArray[c] > 0.001) && (vofArray[c] < 0.999)) {
-      cellMaskVecArray[c] = cellMask[c] =  1;
-
-
-      const PetscInt cell = cellList[c];
-
-      PetscScalar *n;
-      DMPlexPointLocalRef(cellGradDM, cell, vofGradArray, &n) >> ablate::utilities::PetscUtilities::checkError;
-
-      DMPlexCellGradFromCell(cellDM, cell, vofVec[LOCAL], -1, 0, n) >> ablate::utilities::PetscUtilities::checkError;
-    }
-    else {
-      cellMask[c] = 0;
-    }
+    cellMaskVecArray[c] = cellMask[c] = ((vofArray[c] > 0.001) && (vofArray[c] < 0.999));
   }
 
 
 //   Turn off any "cut cells" where the cell is not surrounded by any other cut cells.
 //   To avoid cut-cells two cells-thick turn off any cut-cells which have a neighoring gradient passing through them.
   const PetscInt    dim = subDomain->GetDimensions();
-  for (PetscInt c = 0; c < nLocalCell; ++c) {
+  for (PetscInt c = 0; c < nTotalCell; ++c) {
 
     if (cellMask[c] == 1) {
 
@@ -515,11 +498,10 @@ void Reconstruction::SetMasksAndNormal(const PetscInt nLevels, PetscInt *cellMas
       }
       DMPlexRestoreNeighbors(cellDM, cell, 1, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
 
-      cellMask[c] = (nCut==1 ? 0 : 1); // If nCut equals 1 then the center cell is the only cut cell, so temporarily mark it as 1.
+      cellMask[c] = (nCut>1); // If nCut equals 1 then the center cell is the only cut cell, so deactivate it
 
-
-      const PetscScalar *n = nullptr;
-      DMPlexPointLocalRead(cellGradDM, cell, vofGradArray, &n) >> ablate::utilities::PetscUtilities::checkError; // VOF normal
+      PetscScalar n[dim];
+      DMPlexCellGradFromCell(cellDM, cell, vofVec[LOCAL], -1, 0, n) >> ablate::utilities::PetscUtilities::checkError;
 
       if (cellMask[c]==1 && ablate::utilities::MathUtilities::MagVector(dim, n)>PETSC_SMALL) {
         // Now check for two-deep cut-cells.
@@ -541,7 +523,6 @@ void Reconstruction::SetMasksAndNormal(const PetscInt nLevels, PetscInt *cellMas
   }
 
   VecRestoreArray(vofVec[LOCAL], &vofArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArray(vofGradVec[LOCAL], &vofGradArray) >> ablate::utilities::PetscUtilities::checkError;
   VecRestoreArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
 
 
@@ -556,9 +537,8 @@ void Reconstruction::SetMasksAndNormal(const PetscInt nLevels, PetscInt *cellMas
         PetscInt nCells, *cells;
         DMPlexGetNeighbors(cellDM, cell, 1, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
         for (PetscInt i = 0; i < nCells; ++i) {
-          PetscScalar *neighborMaskVal = nullptr;
-          DMPlexPointLocalRef(cellDM, cells[i], cellMaskVecArray, &neighborMaskVal) >> ablate::utilities::PetscUtilities::checkError;
-          ++(*neighborMaskVal);
+          const PetscInt id = reverseCellList[cells[i]];
+          ++cellMaskVecArray[id];
         }
         DMPlexRestoreNeighbors(cellDM, cell, 1, -1.0, -1, PETSC_FALSE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
       }
@@ -617,7 +597,7 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
   // First get the number of cut-cells associated with each vertex
   PetscInt *lsCount = nullptr;
   DMGetWorkArray(vertDM, nLocalVert, MPIU_INT, &lsCount) >> ablate::utilities::PetscUtilities::checkError;
-  for (PetscInt v = 0; v < nTotalVert; ++v) {
+  for (PetscInt v = 0; v < nLocalVert; ++v) {
 
     lsCount[v] = 0;
     if (vertMask[v]==1) {
@@ -644,9 +624,10 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
   }
 
   // Approximate the unit normal at the cell center using the VOF data
-  PetscReal *cellGrad = nullptr;
-  DMGetWorkArray(cellGradDM, nLocalCell, MPIU_REAL, &cellGrad) >> ablate::utilities::PetscUtilities::checkError;
-  for (PetscInt c = 0; c < nLocalCell; ++c) {
+  PetscScalar *cellGrad = nullptr;
+
+  DMGetWorkArray(cellGradDM, nTotalCell*dim, MPIU_REAL, &cellGrad) >> ablate::utilities::PetscUtilities::checkError;
+  for (PetscInt c = 0; c < nTotalCell; ++c) {
     if (cellMask[c] == 1) {
       DMPlexCellGradFromCell(cellDM, cellList[c], vofVec, -1, 0, &cellGrad[c*dim]) >> ablate::utilities::PetscUtilities::checkError;
       ablate::utilities::MathUtilities::NormVector(dim, &cellGrad[c*dim]);
@@ -673,7 +654,8 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
 
     VecZeroEntries(lsVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
     VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-    for (PetscInt c = 0; c < nLocalCell; ++c) {
+
+    for (PetscInt c = 0; c < nTotalCell; ++c) {
 
       // Only worry about cut-cells
       if ( cellMask[c] == 1 ) {
@@ -692,23 +674,11 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
         // Level set values at the vertices
         ablate::levelSet::Utilities::VertexLevelSet_VOF(vertDM, cell, *vofVal, &cellGrad[c*dim], &lsVertVals);
 
-//{
-//  PetscReal x[dim];
-//  DMPlexComputeCellGeometryFVM(vertDM, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-//  printf("Reconstruction\n");
-//  printf("Cell %ld: %+f\t%+f\n", cell, x[0], x[1]);
-//  for (PetscInt v = 0; v < nv; ++v) {
-//    PetscReal x[dim];
-//    DMPlexComputeCellGeometryFVM(vertDM, verts[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-//    printf("Vert %ld: %+f\t%+f\t%+e\n", verts[v], x[0], x[1], lsVertVals[v]);
-//  }
-//  xexit("");
-
-//}
-
         for (PetscInt v = 0; v < nv; ++v) {
           const PetscInt id = reverseVertList[verts[v]];
-          lsArray[GLOBAL][id] += lsVertVals[v];
+          if (id < nLocalVert){
+            lsArray[GLOBAL][id] += lsVertVals[v];
+          }
         }
 
         DMRestoreWorkArray(vertDM, nv, MPIU_REAL, &lsVertVals) >> ablate::utilities::PetscUtilities::checkError;
@@ -717,22 +687,15 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
     }
 
     VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+
     maxDiff = -1.0;
-//FILE *f1 = fopen("Reconstruction.txt","w");
     for (PetscInt v = 0; v < nLocalVert; ++v) {
       if (vertMask[v] == 1) {
         lsArray[GLOBAL][v] /= lsCount[v];
-//PetscReal x[dim];
-//DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-//fprintf(f1, "%f\t%f\t%ld\t%+e\n", x[0], x[1], lsCount[v],lsArray[GLOBAL][v]);
-
-
         maxDiff = PetscMax(maxDiff, PetscAbsReal(lsArray[GLOBAL][v] - lsArray[LOCAL][v]));
-
       }
     }
-//fclose(f1);
-//xexit("");
+
     // Get the maximum change across all processors. This also acts as a sync point
     MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, lsCOMM);
 
@@ -744,7 +707,7 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
     DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
 
     // Update the cell-center normal using the level-set data
-    for (PetscInt c = 0; c < nLocalCell; ++c) {
+    for (PetscInt c = 0; c < nTotalCell; ++c) {
       if (cellMask[c] == 1) {
         DMPlexCellGradFromVertex(vertDM, cellList[c], lsVec[LOCAL], -1, 0, &cellGrad[c*dim]) >> ablate::utilities::PetscUtilities::checkError;
         ablate::utilities::MathUtilities::NormVector(dim, &cellGrad[c*dim]);
@@ -757,16 +720,11 @@ void Reconstruction::CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask,
 
   VecRestoreArrayRead(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError;
   DMRestoreWorkArray(vertDM, nLocalVert, MPIU_INT, &lsCount) >> ablate::utilities::PetscUtilities::checkError;
-  DMRestoreWorkArray(cellGradDM, nLocalCell, MPIU_REAL, &cellGrad) >> ablate::utilities::PetscUtilities::checkError;
+  DMRestoreWorkArray(cellGradDM, nTotalCell*dim, MPIU_REAL, &cellGrad) >> ablate::utilities::PetscUtilities::checkError;
 
-SaveData(vertDM, lsVec[LOCAL], nTotalVert, vertList, "vertLS_L.txt", 1);
-SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS_G.txt", 1);
-
-//xexit("");
-
-//  if (maxDiff > 1e-3*h) {
-//    throw std::runtime_error("Interface reconstruction has failed.\n");
-//  }
+  if (maxDiff > 1e-3*h) {
+    throw std::runtime_error("Interface reconstruction has failed.\n");
+  }
 
 }
 
@@ -904,7 +862,7 @@ MPI_Comm_size(PETSC_COMM_WORLD, &size);
   DMGetWorkArray(cellDM, nTotalCell, MPIU_INT, &cellMask) >> ablate::utilities::PetscUtilities::checkError;
 
 
-  SetMasksAndNormal(3, cellMask, vertMask, smoothVOFVec, vofGradVec);
+  SetMasks(3, cellMask, vertMask, smoothVOFVec);
 
 SaveData(cellDM, cellMask, nTotalCell, cellList, "cellMask.txt", 1);
 SaveData(vertDM, vertMask, nTotalVert, vertList, "vertMask.txt", 1);

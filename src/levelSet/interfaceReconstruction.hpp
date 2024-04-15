@@ -83,7 +83,7 @@ namespace ablate::levelSet {
       void SaveData(DM dm, const PetscScalar *array, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
       void SaveData(DM dm, const Vec vec, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
 
-      void SetMasksAndNormal(const PetscInt nLevels, PetscInt *cellMask, PetscInt *vertMask, Vec vofVec[2], Vec vofGradVec[2]);
+      void SetMasks(const PetscInt nLevels, PetscInt *cellMask, PetscInt *vertMask, Vec vofVec[2]);
 
       void SmoothVOF(DM vofDM, Vec vofVec, const PetscInt vofID, DM smoothVOFDM, Vec smoothVOFVec[2], const PetscInt* subpointIndices);
 
