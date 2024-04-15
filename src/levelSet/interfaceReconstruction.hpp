@@ -65,8 +65,9 @@ namespace ablate::levelSet {
       DM vertDM = nullptr, vertGradDM = nullptr;  // DM for vertex-based data
       DM cellDM = nullptr, cellGradDM = nullptr;  // DM for cell-center data
 
-      Vec vertVec[2] = {nullptr, nullptr}, vertGradVec[2] = {nullptr, nullptr};  // Vertex-based data
-      Vec cellVec[2] = {nullptr, nullptr}, cellGradVec[2] = {nullptr, nullptr};  // Cell-based data
+      Vec lsVec[2] = {nullptr, nullptr};
+//      vertGradVec[2] = {nullptr, nullptr};  // Vertex-based data
+//      Vec cellVec[2] = {nullptr, nullptr}, cellGradVec[2] = {nullptr, nullptr};  // Cell-based data
 
       // Store the cell and vert ranges so that they don't have to be re-computed every iteration
       ablate::domain::Range cellRange = {};
@@ -81,6 +82,17 @@ namespace ablate::levelSet {
       void SaveData(DM dm, const PetscInt *array, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
       void SaveData(DM dm, const PetscScalar *array, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
       void SaveData(DM dm, const Vec vec, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
+
+      void SetMasksAndNormal(const PetscInt nLevels, PetscInt *cellMask, PetscInt *vertMask, Vec vofVec[2], Vec vofGradVec[2]);
+
+      void SmoothVOF(DM vofDM, Vec vofVec, const PetscInt vofID, DM smoothVOFDM, Vec smoothVOFVec[2], const PetscInt* subpointIndices);
+
+//      void CutCellLevelSetValues(DM vofDM, Vec vofVec, const PetscInt vofID, DM cellMaskDM, Vec cellMaskVec, const PetscInt *vertMask, DM cellGradDM, Vec cellGradVec, DM lsDM, Vec lsVec[2]);
+      void CutCellLevelSetValues(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
+
+
+
+
 
 
 
