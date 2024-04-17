@@ -562,6 +562,9 @@ PetscReal RBF::EvalDer(DM dm, Vec vec, const PetscInt fid, PetscInt c, PetscInt 
 
 /************ Begin Interpolation Code **********************/
 PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, PetscReal xEval[3]) {
+
+    RBF::CheckField(field);
+
     DM dm = RBF::subDomain->GetFieldDM(*field);
 
     PetscInt c;
@@ -579,20 +582,21 @@ PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, PetscReal 
                                  std::to_string(xEval[2]) + ") on rank " + std::to_string(rank) + ".");
     }
 
-    return RBF::Interpolate(field, f, c, xEval);
+    return RBF::Interpolate(dm, field->id, f, c, xEval);
 }
 
 PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, const PetscInt c, PetscReal xEval[3]) {
+    return RBF::Interpolate(RBF::subDomain->GetFieldDM(*field), field->id, f, c, xEval);
+}
+
+
+PetscReal RBF::Interpolate(DM dm, const PetscInt fid, Vec f, const PetscInt c, PetscReal xEval[3]) {
     PetscInt i, nCells, *lst;
     PetscScalar *vals, *v;
     const PetscScalar *fvals;
     PetscReal *x, x0[3];
     Mat A;
     Vec weights, rhs;
-    DM dm = RBF::subDomain->GetFieldDM(*field);
-    const PetscInt fid = field->id;
-
-    RBF::CheckField(field);
 
     if (RBF::RBFMatrix[c] == nullptr) {
         RBF::Matrix(c);
