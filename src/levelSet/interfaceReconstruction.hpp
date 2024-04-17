@@ -37,20 +37,24 @@ namespace ablate::levelSet {
       void BuildInterpCellList();
 
       //   Hermite-Gauss quadrature points
-      const PetscInt nQuad = 4; // Size of the 1D quadrature
+      const PetscInt gaussianNQuad = 4; // Size of the 1D quadrature
       //   The quadrature is actually sqrt(2) times the quadrature points. This is as we are integrating
       //      against the normal distribution, not exp(-x^2)
-      const PetscReal quad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
+      const PetscReal gaussianQuad[4] = {-0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
                                  0.74196378430272585764851359672636022482952014750891895361147387899499975465000530,
                                 -2.3344142183389772393175122672103621944890707102161406718291603341725665622712306,
                                  2.3344142183389772393175122672103621944890707102161406718291603341725665622712306};
       // The weights are the true weights divided by sqrt(pi)
-      const PetscReal weights[4] = {0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
+      const PetscReal gaussianWeights[4] = {0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
                                    0.45412414523193150818310700622549094933049562338805584403605771393758003145477625,
                                    0.045875854768068491816892993774509050669504376611944155963942286062419968545223748,
                                    0.045875854768068491816892993774509050669504376611944155963942286062419968545223748};
       // Factor to multiply the grid spacing by to get the standard deviation
       const PetscReal sigmaFactor = 1.0;
+
+      PetscInt nGaussStencil = -1;
+
+
       // Interpolation list for fast integration
       PetscInt *interpCellList = nullptr;
 
@@ -92,9 +96,13 @@ namespace ablate::levelSet {
 
       void ReinitializeLevelSet(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
 
-      void VertexUpwind(const PetscScalar *gradArray, const PetscInt v, const PetscReal direction, PetscReal *g);
+      void VertexUpwind(const PetscScalar *gradArray, const PetscInt v, const PetscReal direction, const PetscInt *cellMask, PetscReal *g);
+      void CellUpwind(const PetscScalar *gradArray, const PetscInt c, const PetscReal direction, const PetscInt *vertMask, PetscReal *g);
 
+      void CalculateCellCurvatures(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], Vec curvVec[2]);
 
+      // Extension of cell-based values
+      void Extension(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], Vec F[2]);
 
 
 
