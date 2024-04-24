@@ -192,6 +192,7 @@ TEST_P(RBFSupportTestFixture_NeighborCells, ShouldReturnNeighborCells) {
                 ASSERT_EQ(cells[i], testingParam.expectedList[rank][i]);
             }
 
+
             // Restore the neighbors
             DMPlexRestoreNeighbors(mesh->GetDM(),
                                    testingParam.centerCell[rank],
@@ -282,7 +283,7 @@ INSTANTIATE_TEST_SUITE_P(
                                              .useCells = PETSC_FALSE,
                                              .returnNeighborVertices = PETSC_FALSE,
                                              .expectedSizeOfList = {10, 10},
-                                             .expectedList = {{56, 60, 57, 40, 55, 45, 58, 71, 41, 54}, {19, 21, 17, 22, 16, 23, 35, 18, 20, 102}}},
+                                             .expectedList = {{40, 41, 45, 54, 55, 56, 57, 58, 60, 71}, {16, 17, 18, 19, 21, 22, 23, 35, 36, 52}}},
         (RBFSupportParameters_NeighborCells){
             .mpiTestParameter = testingResources::MpiTestParameter("2DQuadVertOverlap", 4),
             .meshFaces = {10, 10},
