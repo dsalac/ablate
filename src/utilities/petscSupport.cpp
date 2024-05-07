@@ -265,6 +265,11 @@ static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], Pe
 
     maxDist = PetscSqr(maxDist) + PETSC_MACHINE_EPSILON;  // So we don't need PetscSqrtReal in the check
 
+    PetscInt boundaryCellStart;
+    PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr));
+
+    cEnd = PetscMin(cEnd, boundaryCellStart); // Ignore any FV ghost cells.
+
     for (cl = 0; cl < nClosure * 2; cl += 2) {
         if (closure[cl] >= vStart && closure[cl] < vEnd) {                                       // Only use the points corresponding to either a vertex or edge/face.
             PetscCall(DMPlexGetTransitiveClosure(dm, closure[cl], PETSC_FALSE, &nStar, &star));  // Get all points using this vertex or edge/face.
@@ -327,6 +332,9 @@ static PetscErrorCode DMPlexGetNeighborVertices_Internal(DM dm, PetscReal x0[3],
 
     if (useCells) {
         PetscCall(DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd));  // Range of cells
+         PetscInt boundaryCellStart;
+        PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr));
+        cEnd = PetscMin(cEnd, boundaryCellStart); // Ignore any FV ghost cells.
     } else {
         PetscCall(DMPlexGetHeightStratum(dm, 1, &cStart, &cEnd));  // Range of edges (2D) or faces (3D)
     }
@@ -414,7 +422,11 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
     // Declare the internal function pointer
     PetscErrorCode (*neighborFunc)(DM, PetscReal[3], PetscInt, PetscReal, PetscBool, PetscInt *, PetscInt **);
 
-    // Determine which internal function to call in while loop; if retutnNeighborVertices is false, the function returns the neighboring cells, and for true value, it returns vertices.
+
+    PetscInt boundaryCellStart;
+    PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr));
+
+    // Determine which internal function to call in while loop; if returnNeighborVertices is false, the function returns the neighboring cells, and for true value, it returns vertices.
     currentLevelLoc = 0; // Current level
     if (returnNeighborVertices == PETSC_FALSE) { // Return cells
       neighborFunc = &DMPlexGetNeighborCells_Internal;
@@ -422,23 +434,28 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
       PetscInt nCells, *cells;
       DMPlexVertexGetCells(dm, p, &nCells, &cells); // Get all cells associated with this point
       for (PetscInt c = 0; c < nCells; ++c) {
-        list[c] = cells[c];
-        levelList[0][c] = cells[c];
+        if (cells[c] < boundaryCellStart) { // Ignore any FV ghost cells
+          list[n] = cells[c];
+          levelList[0][n++] = cells[c];
+        }
       }
-      nLevelList[0] = nCells;
+      nLevelList[0] = n;
       DMPlexVertexRestoreCells(dm, p, &nCells, &cells); // Return all cells associated with this point
     }
     else {
       neighborFunc = &DMPlexGetNeighborVertices_Internal;
+
       PetscInt nVerts, *verts;
       DMPlexCellGetVertices(dm, p, &nVerts, &verts); // Get all vertices associated with this point
       for (PetscInt v = 0; v < nVerts; ++v) {
-        list[v] = verts[v];
-        levelList[0][v] = verts[v];
+        list[n] = verts[v];
+        levelList[0][n++] = verts[v];
       }
-      nLevelList[0] = nVerts;
+      nLevelList[0] = n;
       DMPlexCellRestoreVertices(dm, p, &nVerts, &verts); // Return all vertices associated with this point
     }
+
+
     PetscCall(PetscIntSortSemiOrdered(nLevelList[0], levelList[0]));
     PetscCall(PetscIntSortSemiOrdered(nLevelList[0], list));
 
