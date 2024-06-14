@@ -5,6 +5,7 @@ target_sources(ablateLibrary
         mq.cpp
         phs.cpp
         hybrid.cpp
+        intMQ.cpp
         rbf.cpp
 
         PUBLIC
@@ -13,5 +14,6 @@ target_sources(ablateLibrary
         mq.hpp
         phs.hpp
         hybrid.hpp
+        intMQ.hpp
         rbf.hpp
         )

@@ -521,6 +521,10 @@ PetscReal RBF::EvalDer(const ablate::domain::Field *field, PetscInt c, PetscInt 
 }
 
 PetscReal RBF::EvalDer(DM dm, Vec vec, const PetscInt fid, PetscInt c, PetscInt dx, PetscInt dy, PetscInt dz) {
+  return RBF::EvalDer(dm, vec, fid, 0, c, dx, dy, dz);
+}
+
+PetscReal RBF::EvalDer(DM dm, Vec vec, const PetscInt fid, const PetscInt offset, PetscInt c, PetscInt dx, PetscInt dy, PetscInt dz) {
     PetscReal *wt = nullptr;
     PetscScalar val = 0.0, *f;
     const PetscScalar *array;
@@ -551,7 +555,7 @@ PetscReal RBF::EvalDer(DM dm, Vec vec, const PetscInt fid, PetscInt c, PetscInt 
             DMPlexPointLocalRead(dm, lst[i], array, &f) >> utilities::PetscUtilities::checkError;
         }
 
-        val += wt[i * numDer + derID] * (*f);
+        val += wt[i * numDer + derID] * f[offset];
     }
 
     VecRestoreArrayRead(vec, &array) >> utilities::PetscUtilities::checkError;
@@ -591,9 +595,23 @@ PetscReal RBF::Interpolate(const ablate::domain::Field *field, Vec f, const Pets
 
 
 PetscReal RBF::Interpolate(DM dm, const PetscInt fid, Vec f, const PetscInt c, PetscReal xEval[3]) {
+    return RBF::Interpolate(dm, fid, f, 0, c, xEval);
+}
+
+PetscReal RBF::Interpolate(DM dm, const PetscInt fid, Vec f, PetscInt offset, const PetscInt c, PetscReal xEval[3]) {
+  const PetscScalar *fvals;
+  VecGetArrayRead(f, &fvals) >> utilities::PetscUtilities::checkError;
+  PetscReal result = RBF::Interpolate(dm, fid, fvals, offset, c, xEval);
+  VecRestoreArrayRead(f, &fvals) >> utilities::PetscUtilities::checkError;
+
+  return result;
+
+}
+
+PetscReal RBF::Interpolate(DM dm, const PetscInt fid, const PetscScalar *fvals, PetscInt offset, const PetscInt c, PetscReal xEval[3]) {
     PetscInt i, nCells, *lst;
     PetscScalar *vals, *v;
-    const PetscScalar *fvals;
+
     PetscReal *x, x0[3];
     Mat A;
     Vec weights, rhs;
@@ -613,7 +631,7 @@ PetscReal RBF::Interpolate(DM dm, const PetscInt fid, Vec f, const PetscInt c, P
     VecZeroEntries(rhs) >> utilities::PetscUtilities::checkError;
 
     // The function values
-    VecGetArrayRead(f, &fvals) >> utilities::PetscUtilities::checkError;
+
     VecGetArray(rhs, &vals) >> utilities::PetscUtilities::checkError;
 
     for (i = 0; i < nCells; ++i) {
@@ -623,10 +641,9 @@ PetscReal RBF::Interpolate(DM dm, const PetscInt fid, Vec f, const PetscInt c, P
             DMPlexPointLocalRead(dm, lst[i], fvals, &v) >> utilities::PetscUtilities::checkError;
         }
 
-        vals[i] = *v;
+        vals[i] = v[offset];
     }
 
-    VecRestoreArrayRead(f, &fvals) >> utilities::PetscUtilities::checkError;
     VecRestoreArray(rhs, &vals) >> utilities::PetscUtilities::checkError;
 
     MatSolve(A, rhs, weights) >> utilities::PetscUtilities::checkError;

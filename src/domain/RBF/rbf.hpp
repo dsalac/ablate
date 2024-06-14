@@ -110,7 +110,43 @@ class RBF {
      */
     PetscReal EvalDer(DM dm, Vec vec, const PetscInt fid, PetscInt c, PetscInt dx, PetscInt dy, PetscInt dz);  // Evaluate a derivative
 
+
+    /**
+     * Return the derivative of a field at a given location
+     * @param dm - The mesh
+     * @param vec - Vector containing the data
+     * @param fid - Field id.
+     * @param offset - The offset if Field id is a vector
+     * @param c - The location in ablate::domain::Range
+     * @param dx, dy, dz - The derivative
+     */
+    PetscReal EvalDer(DM dm, Vec vec, const PetscInt fid, const PetscInt offset, PetscInt c, PetscInt dx, PetscInt dy, PetscInt dz);
+
+
     // Interpolation stuff
+
+    /**
+     * Return the interpolation of a field at a given location
+     * @param dm - DM which contains the field
+     * @param fid - DMPlex ID of the field to interpolate
+     * @param fvals - The local array containing the data
+     * @param offset - The offset if Field id is a vector
+     * @param c - Cell containing the evaluation point
+     * @param xEval - The location where to perform the interpolation
+     */
+    PetscReal Interpolate(DM dm, const PetscInt fid, const PetscScalar *fvals, PetscInt offset, const PetscInt c, PetscReal xEval[3]);
+
+
+    /**
+     * Return the interpolation of a field at a given location
+     * @param dm - DM which contains the field
+     * @param fid - DMPlex ID of the field to interpolate
+     * @param f - The local vector containing the data
+     * @param offset - The offset if Field id is a vector
+     * @param c - Cell containing the evaluation point
+     * @param xEval - The location where to perform the interpolation
+     */
+    PetscReal Interpolate(DM dm, const PetscInt fid, Vec f, PetscInt offset, const PetscInt c, PetscReal xEval[3]);
 
     /**
      * Return the interpolation of a field at a given location
