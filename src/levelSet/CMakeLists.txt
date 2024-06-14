@@ -8,6 +8,7 @@ target_sources(ablateLibrary
         cellGrad.cpp
         geometry.cpp
         interfaceReconstruction.cpp
+        gaussianConvolution.cpp
 
         PUBLIC
         LS-VOF.hpp
@@ -18,4 +19,5 @@ target_sources(ablateLibrary
         cellGrad.hpp
         geometry.hpp
         interfaceReconstruction.hpp
+        gaussianConvolution.hpp
         )
