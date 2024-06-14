@@ -267,6 +267,7 @@ static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], Pe
 
     PetscInt boundaryCellStart;
     PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr));
+    boundaryCellStart = (boundaryCellStart < 0) ? PETSC_MAX_INT : boundaryCellStart;
 
     cEnd = PetscMin(cEnd, boundaryCellStart); // Ignore any FV ghost cells.
 
@@ -402,6 +403,7 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
     PetscCheck(
         ((maxLevels > 0) + (maxDist > 0) + (numberCells > 0)) == 1, PETSC_COMM_SELF, PETSC_ERR_ARG_INCOMP, "Only one of maxLevels, maxDist, and minNumberCells can be set. The others whould be <0.");
 
+
     // Use minNumberCells if provided
     if (numberCells > 0) {
         maxLevels = PETSC_MAX_INT;
@@ -423,8 +425,10 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
     PetscErrorCode (*neighborFunc)(DM, PetscReal[3], PetscInt, PetscReal, PetscBool, PetscInt *, PetscInt **);
 
 
+    // If there are not cells of type DM_POLYTOPE_FV_GHOST then set this to the maximum possible integer number to make comparisions easy
     PetscInt boundaryCellStart;
     PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr));
+    boundaryCellStart = (boundaryCellStart < 0) ? PETSC_MAX_INT : boundaryCellStart;
 
     // Determine which internal function to call in while loop; if returnNeighborVertices is false, the function returns the neighboring cells, and for true value, it returns vertices.
     currentLevelLoc = 0; // Current level
@@ -482,6 +486,7 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
             PetscCall(PetscArraycpy(&levelList[currentLevelLoc][nLevelList[currentLevelLoc]], addList, numNew));
             nLevelList[currentLevelLoc] += numNew;
         }
+
         PetscCall(PetscSortRemoveDupsInt(&nLevelList[currentLevelLoc], levelList[currentLevelLoc]));
 
         // This removes any cells which are already in the list. Not point in re-doing the search for those.

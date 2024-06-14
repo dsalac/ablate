@@ -663,7 +663,7 @@ bool ablate::levelSet::Utilities::ValidCell(DM dm, PetscInt p) {
     DMPolytopeType ct;
     DMPlexGetCellType(dm, p, &ct) >> ablate::utilities::PetscUtilities::checkError;
 
-    return (ct < 12);
+    return (ct < DM_POLYTOPE_FV_GHOST);
 }
 
 
@@ -947,7 +947,7 @@ PetscReal SmoothingViaGaussian(DM dm, const PetscInt c, const PetscInt cell, con
 
 
 
-//#define saveData
+#define saveData
 
 #ifdef saveData
 static PetscInt saveIter = 0;
@@ -1653,8 +1653,8 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     PetscScalar *maskVal;
     xDMPlexPointLocalRef(auxDM, cell, vofID, workArray, &maskVal) >> ablate::utilities::PetscUtilities::checkError;
 
-//    if ((PetscAbsScalar(*maskVal - 1.0) < PETSC_SMALL) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
-    if ( (*maskVal > 0.5) && (*maskVal < (nLevels-1)) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
+    if ((PetscAbsScalar(*maskVal - 1.0) < PETSC_SMALL) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
+//    if ( (*maskVal > 0.5) && (*maskVal < (nLevels-1)) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
       CurvatureViaGaussian(auxDM, c - cellRangeWithoutGhost.start, cell, auxVec, lsField, H);
     }
     else {
@@ -1667,7 +1667,6 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
   sprintf(fname, "curv0_%03ld.txt", saveIter);
   SaveCellData(auxDM, auxVec, fname, curvID, 1, subDomain);
 #endif
-
 
   // Extension
   PetscInt vertexCurvID = lsID; // Store the vertex curvatures in the work vec at the same location as the level-set
