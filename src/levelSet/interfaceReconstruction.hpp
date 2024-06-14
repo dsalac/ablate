@@ -5,10 +5,12 @@
 #include "domain/RBF/hybrid.hpp"
 #include "domain/RBF/imq.hpp"
 #include "domain/RBF/mq.hpp"
+#include "domain/RBF/intMQ.hpp"
 #include "domain/RBF/phs.hpp"
 #include "domain/RBF/rbf.hpp"
 #include "domain/subDomain.hpp"
 #include "utilities/petscUtilities.hpp"
+#include "gaussianConvolution.hpp"
 
 
 
@@ -23,7 +25,7 @@ namespace ablate::levelSet {
 
     private:
 
-      const PetscInt nLevels = 8;
+      const PetscInt nLevels = 12;
 
       enum VecLoc { LOCAL , GLOBAL };
 
@@ -34,7 +36,7 @@ namespace ablate::levelSet {
         VecGetArray(lv, array);
       }
 
-      void BuildInterpCellList();
+      void BuildInterpGaussianList();
 
       //   Hermite-Gauss quadrature points
       const PetscInt gaussianNQuad = 4; // Size of the 1D quadrature
@@ -56,7 +58,7 @@ namespace ablate::levelSet {
 
 
       // Interpolation list for fast integration
-      PetscInt *interpCellList = nullptr;
+      PetscInt *interpGaussianList = nullptr;
 
       PetscInt *globalIndices = nullptr;
 
@@ -92,18 +94,22 @@ namespace ablate::levelSet {
 
       void SmoothVOF(DM vofDM, Vec vofVec, const PetscInt vofID, DM smoothVOFDM, Vec smoothVOFVec[2], const PetscInt* subpointIndices);
 
-      void InitalizeLevelSet(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
+      void InitalizeLevelSet(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], PetscReal *closestPoint, PetscInt *cpCell);
 
       void ReinitializeLevelSet(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
 
       void VertexUpwind(const PetscScalar *gradArray, const PetscInt v, const PetscReal direction, const PetscInt *cellMask, PetscReal *g);
       void CellUpwind(const PetscScalar *gradArray, const PetscInt c, const PetscReal direction, const PetscInt *vertMask, PetscReal *g);
 
-      void CalculateCellCurvatures(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], Vec curvVec[2]);
+      void CalculateVertexCurvatures(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], PetscReal *closestPoint, PetscInt *cpCell, Vec curvVec[2]);
 
       // Extension of cell-based values
-      void Extension(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], Vec F[2]);
+      void Extension(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], PetscReal *closestPoint, PetscInt *cpCell, Vec fVec[2]);
+      void Smooth(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], Vec fVec[2]);
 
+      void FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
+
+      std::shared_ptr<ablate::levelSet::GaussianConvolution> convolution = nullptr;
 
 
     public:

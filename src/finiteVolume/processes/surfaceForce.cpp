@@ -120,10 +120,7 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 
     const ablate::domain::Field *vofField = &(subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD));
 
-
-
 process->reconstruction->ToLevelSet(dm, locX, *vofField);
-
 
     const ablate::domain::Field *lsField = &(subDomain->GetField("levelSet"));
     const ablate::domain::Field *vertexNormalField = &(subDomain->GetField("vertexNormal"));
@@ -149,6 +146,7 @@ process->reconstruction->ToLevelSet(dm, locX, *vofField);
     ablate::levelSet::Utilities::Reinitialize(flow, subDomain, locX, vofField, 8, lsField, vertexNormalField, cellNormalField, curvField);
 
 xexit("");
+
     DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
 
