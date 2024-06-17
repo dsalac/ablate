@@ -108,6 +108,10 @@ namespace ablate::levelSet {
       void Smooth(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], Vec fVec[2]);
 
       void FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
+      void FMM_CellBased(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
+      void FMM_VertexBased_V1(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
+      void FMM_VertexBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
+
 
       std::shared_ptr<ablate::levelSet::GaussianConvolution> convolution = nullptr;
 
