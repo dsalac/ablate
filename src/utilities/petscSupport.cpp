@@ -465,7 +465,7 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
 
     // When the number of cells added at a particular level is zero then terminate the loop. This is for the case where
     // maxLevels is set very large but all cells within the maximum distance have already been found.
-    PetscCall(PetscMalloc1(maxLevelListSize, &addList));
+    PetscCall(DMGetWorkArray(dm, maxLevelListSize, MPIU_INT, &addList));
     l = 0;
     while (l < maxLevels && n < numberCells && nLevelList[currentLevelLoc] > 0) {
         ++l;
@@ -500,7 +500,7 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
         PetscCall(PetscIntSortSemiOrdered(n, list));
     }
 
-    PetscCall(PetscFree(addList));
+    PetscCall(DMRestoreWorkArray(dm, maxLevelListSize, MPIU_INT, &addList));
 
     if (type == 0 && returnNeighborVertices == PETSC_FALSE) {
         // Now only include the the numberCells closest cells
