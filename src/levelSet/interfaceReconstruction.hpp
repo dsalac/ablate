@@ -109,9 +109,12 @@ namespace ablate::levelSet {
 
       void FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
       void FMM_CellBased(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
-      void FMM_VertexBased_V1(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
+      void FMM_CellBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
+      void FMM_CellBased_V3(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
+      void FMM_VertexBased_V1(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
       void FMM_VertexBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
-      PetscInt FFM_VertexBased_Solve(const PetscInt dim, const PetscReal x0[], const PetscInt nVert, PetscInt verts[], PetscScalar *updatedVertex, PetscReal *lsArray, PetscReal *updatedLS);
+      PetscInt FFM_VertexBased_Solve(const PetscInt dim, const PetscInt minVerts, const PetscReal x0[], const PetscInt nVert, PetscInt verts[], PetscScalar *updatedVertex, PetscScalar *lsArray, PetscReal *updatedLS);
+
 
 
       std::shared_ptr<ablate::levelSet::GaussianConvolution> convolution = nullptr;
