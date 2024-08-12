@@ -5,8 +5,9 @@
 #include "petscfe.h"
 #include "utilities/petscSupport.hpp"
 
-ablate::levelSet::VOFMathFunction::VOFMathFunction(std::shared_ptr<ablate::domain::Domain> domain, std::shared_ptr<ablate::mathFunctions::MathFunction> levelSet)
-    : FunctionPointer(VOFMathFunctionPetscFunction, this), domain(std::move(domain)), levelSet(std::move(levelSet)) {}
+ablate::levelSet::VOFMathFunction::VOFMathFunction(std::shared_ptr<ablate::domain::Domain> domain, std::shared_ptr<ablate::mathFunctions::MathFunction> levelSet, std::shared_ptr<ablate::mathFunctions::MathFunction> boundaryVOF)
+    : FunctionPointer(VOFMathFunctionPetscFunction, this), domain(std::move(domain)), levelSet(std::move(levelSet)), boundaryVOF(std::move(boundaryVOF)) {}
+
 #include <signal.h>
 PetscErrorCode ablate::levelSet::VOFMathFunction::VOFMathFunctionPetscFunction(PetscInt dim, PetscReal time, const PetscReal *x, PetscInt Nf, PetscScalar *u, void *ctx) {
     PetscFunctionBegin;
@@ -20,18 +21,24 @@ PetscErrorCode ablate::levelSet::VOFMathFunction::VOFMathFunctionPetscFunction(P
     PetscCall(DMPlexGetMinRadius(dm, &h));
     h *= 0.5;
 
-    PetscCall(DMPlexFindCell(dm, x, h, &cell));
+    PetscCall(DMPlexFindCell(dm, x, -1, &cell));
 
-    if (PetscDefined(USE_DEBUG)) {
-        PetscInt cStart, cEnd;
-        PetscCall(DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd));
-        PetscCheck(cell > -1, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "No cell was found.\n");
-        PetscCheck((cell >= cStart) && (cell < cEnd), PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "The DAG point found is not a cell.\n");
-    }
+//    if (PetscDefined(USE_DEBUG)) {
+//        PetscInt cStart, cEnd;
+//        PetscCall(DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd));
+//        PetscCheck(cell > -1, PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "No cell was found.\n");
+//        PetscCheck((cell >= cStart) && (cell < cEnd), PETSC_COMM_SELF, PETSC_ERR_ARG_OUTOFRANGE, "The DAG point found is not a cell.\n");
+//    }
 
     // call the support call to compute vof in the cell
     try {
-        ablate::levelSet::Utilities::VOF(dm, cell, vofMathFunction->levelSet, u, nullptr, nullptr);
+        if (cell < 0) {
+          *u = vofMathFunction->boundaryVOF->Eval(x, dim, time);
+          exit(0);
+        }
+        else {
+          ablate::levelSet::Utilities::VOF(dm, cell, vofMathFunction->levelSet, u, nullptr, nullptr);
+        }
     } catch (std::exception &exp) {
         SETERRQ(PETSC_COMM_SELF, PETSC_ERR_LIB, "%s", exp.what());
     }
@@ -42,4 +49,5 @@ PetscErrorCode ablate::levelSet::VOFMathFunction::VOFMathFunctionPetscFunction(P
 #include "registrar.hpp"
 REGISTER(ablate::mathFunctions::MathFunction, ablate::levelSet::VOFMathFunction, " Return the vertex level set values assuming a straight interface in the cell with a given normal vector.",
          ARG(ablate::domain::Domain, "domain", "domain to enable access to the cell information at a given point"),
-         ARG(ablate::mathFunctions::MathFunction, "levelSet", "function used to calculate the level set values at the vertices"));
+         ARG(ablate::mathFunctions::MathFunction, "levelSet", "function used to calculate the level set values at the vertices"),
+         OPT(ablate::mathFunctions::MathFunction, "boundaryVOF", "function used to calculate the level set values at the vertices"));

@@ -36,14 +36,34 @@ PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const F
 
     VecGetArray(auxVec, &auxArray);
 
+//    const ablate::domain::Field *eulerField = &(subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD));
+//    DM eulerDM = subDomain->GetFieldDM(*eulerField); // Get an euler-specific DM in case it's not in the same solution vector as the VOF field
+//    const ablate::domain::Field *cellVelocity = &(subDomain->GetField("cellVelocity"));
+//    const PetscInt dim = subDomain->GetDimensions();
+//    const PetscScalar *xArray = nullptr;
+//    VecGetArrayRead(locX, &xArray) >> utilities::PetscUtilities::checkError;
+
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c){
       const PetscInt cell = cellRange.GetPoint(c);
 
       PetscScalar *x;
       xDMPlexPointLocalRef(auxDM, cell, cellLocs->id, auxArray, &x) >> ablate::utilities::PetscUtilities::checkError;
-
       DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+
+
+//      const PetscScalar *euler = nullptr;
+//      xDMPlexPointLocalRead(eulerDM, cell, eulerField->id, xArray, &euler) >> utilities::PetscUtilities::checkError;
+//      const PetscScalar density = euler[ablate::finiteVolume::CompressibleFlowFields::RHO];
+
+//      PetscScalar *vel;
+//      xDMPlexPointLocalRef(auxDM, cell, cellVelocity->id, auxArray, &vel) >> ablate::utilities::PetscUtilities::checkError;
+
+//      for (PetscInt d = 0; d < dim; ++d) {
+//        vel[d] = euler[ablate::finiteVolume::CompressibleFlowFields::RHOU + d] / density;
+//      }
     }
+
+//    VecRestoreArrayRead(locX, &xArray) >> utilities::PetscUtilities::checkError;
 
     for (PetscInt v = vertRange.start; v < vertRange.end; ++v){
       const PetscInt vert = vertRange.GetPoint(v);

@@ -90,11 +90,11 @@ namespace ablate::levelSet {
       void SaveData(DM dm, const PetscScalar *array, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
       void SaveData(DM dm, const Vec vec, const PetscInt nList, const PetscInt *list, const char fname[255], PetscInt Nc);
 
-      void SetMasks(const PetscInt nLevels, PetscInt *cellMask, PetscInt *vertMask, Vec vofVec[2]);
+      void SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field vofField, const PetscInt nLevels, PetscInt *cellMask, PetscInt *vertMask);
 
       void SmoothVOF(DM vofDM, Vec vofVec, const PetscInt vofID, DM smoothVOFDM, Vec smoothVOFVec[2], const PetscInt* subpointIndices);
 
-      void InitalizeLevelSet(Vec vofVec, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], PetscReal *closestPoint, PetscInt *cpCell);
+      void InitalizeLevelSet(DM vofDM, Vec vofVec, const ablate::domain::Field vofField, const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], PetscReal *closestPoint, PetscInt *cpCell);
 
       void ReinitializeLevelSet(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
 
@@ -102,6 +102,8 @@ namespace ablate::levelSet {
       void CellUpwind(const PetscScalar *gradArray, const PetscInt c, const PetscReal direction, const PetscInt *vertMask, PetscReal *g);
 
       void CalculateVertexCurvatures(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], PetscReal *closestPoint, PetscInt *cpCell, Vec curvVec[2]);
+
+
 
       // Extension of cell-based values
       void Extension(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], PetscReal *closestPoint, PetscInt *cpCell, Vec fVec[2]);

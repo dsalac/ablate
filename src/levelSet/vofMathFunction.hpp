@@ -20,6 +20,9 @@ class VOFMathFunction : public mathFunctions::FunctionPointer {
     //! function used to calculate the level set values at the vertices
     std::shared_ptr<ablate::mathFunctions::MathFunction> levelSet;
 
+    //! function used to calculate the vof for boundary cells
+    std::shared_ptr<ablate::mathFunctions::MathFunction> boundaryVOF;
+
     /**
      * Static VOFMathFunctionPetscFunction that can be passed into petsc calls
      */
@@ -31,7 +34,13 @@ class VOFMathFunction : public mathFunctions::FunctionPointer {
      * @param domain Hold a pointer to the domain to enable access to the cell information at a given point
      * @param levelSet function used to calculate the level set values at the vertices
      */
-    VOFMathFunction(std::shared_ptr<ablate::domain::Domain> domain, std::shared_ptr<ablate::mathFunctions::MathFunction> levelSet);
+    VOFMathFunction(std::shared_ptr<ablate::domain::Domain> domain, std::shared_ptr<ablate::mathFunctions::MathFunction> levelSet, std::shared_ptr<ablate::mathFunctions::MathFunction> boundaryVOF);
 };
+
+//PetscScalar EvalVOF(std::shared_ptr<ablate::mathFunctions::MathFunction> vofFunc, PetscInt dim, PetscReal time, const PetscReal x[]) {
+//  return vofFunc->eval(x, dim, time);
+//}
+
+
 }  // namespace ablate::levelSet
 #endif  // ABLATELIBRARY_VOFMATHFUNCTION_HPP
