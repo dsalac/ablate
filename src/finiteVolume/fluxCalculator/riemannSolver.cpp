@@ -150,6 +150,8 @@ static Direction riemannDirection(const PetscReal pstar, const PetscReal uL, con
     return (uX > 0 ? Direction::LEFT : Direction::RIGHT);
 }
 
+//static PetscInt cnt = 0;
+
 // Solve the non-linear equation
 Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, const PetscReal rhoL, const PetscReal p0L, const PetscReal pL, const PetscReal gammaL, const PetscReal uR,
                                        const PetscReal aR, const PetscReal rhoR, const PetscReal p0R, const PetscReal pR, const PetscReal gammaR, const PetscReal pstar0, PetscReal *massFlux,
@@ -161,6 +163,19 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
     const PetscReal gamRm1 = gammaR - 1.0, gamRp1 = gammaR + 1.0;
     const PetscInt MAXIT = 100;
     PetscInt i = 0;
+//++cnt;
+
+//if (cnt==28446) {
+//  FILE *f1 = fopen("pstar.txt", "w");
+//  printf("%+e\n", pstar0);
+//  for (PetscReal p = 0; p <= 5; p += 5/1e6) {
+//    expansionShockCalculation(p, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
+//    expansionShockCalculation(p, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
+//    fprintf(f1, "%+e\t%+e\n", p, f_L_0 + f_R_0 + del_u);
+//  }
+//  fclose(f1);
+////  exit(0);
+//}
 
     do  // Newton's method
     {
@@ -168,7 +183,8 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
         expansionShockCalculation(pstar, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
 
         pold = pstar;
-        pstar = pold - (f_L_0 + f_R_0 + del_u) / (f_L_1 + f_R_1);  // new guess
+        pstar = pold - 0.5*(f_L_0 + f_R_0 + del_u) / (f_L_1 + f_R_1);  // new guess
+
 
         // A stiffened gas will have p0L and p0R as positive numbers. If they're both zero (or close enough) then don't allow
         //  for a negative pstar. Set the value to something just above zero.
@@ -177,11 +193,67 @@ Direction RiemannSolver::riemannSolver(const PetscReal uL, const PetscReal aL, c
         }
 
         i++;
+
+//        if (cnt==28446) printf("%ld: %+e\t%e\t%+e\n", i, pstar, PetscAbsReal((pstar - pold) / pstar),f_L_0 + f_R_0 + del_u);
     } while (PetscAbsReal((pstar - pold) / pstar) > tol && i <= MAXIT);
 
     if (i > MAXIT) {
+      PetscReal a = 0.0, b = pstar0, m;
+      PetscReal fa, fb;
+
+      expansionShockCalculation(a, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
+      expansionShockCalculation(a, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
+      fa = f_L_0 + f_R_0 + del_u;
+
+      expansionShockCalculation(b, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
+      expansionShockCalculation(b, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
+      fb = f_L_0 + f_R_0 + del_u;
+
+      if (fa*fb>0.0) {
+        FILE *f1 = fopen("pstar.txt", "w");
+        printf("%+e\n", pstar0);
+        for (PetscReal p = 0; p <= pstar0; p += pstar0/1e7) {
+          expansionShockCalculation(p, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
+          expansionShockCalculation(p, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
+          fprintf(f1, "%+e\t%+e\n", p, f_L_0 + f_R_0 + del_u);
+        }
+        fclose(f1);
+
+        throw std::runtime_error("Can't find pstar; No valid bracket. "+std::to_string(fa)+" "+std::to_string(fb));
+      }
+
+      i = 0;
+      do
+      {
+        m = (b*fa - a*fb)/(fa - fb);
+        expansionShockCalculation(m, gammaL, gamLm1, gamLp1, p0L, pL, aL, rhoL, &f_L_0, &f_L_1);
+        expansionShockCalculation(m, gammaR, gamRm1, gamRp1, p0R, pR, aR, rhoR, &f_R_0, &f_R_1);
+        PetscReal fm = f_L_0 + f_R_0 + del_u;
+
+        if (fa*fm<=0.0) {
+          b = m;
+          fb = fm;
+        }
+        else {
+          a = m;
+          fa = fm;
+        }
+
+//        printf("%ld: %+e\t%+e\t%e\t%+e\n", i, a, b, (b-a)/m, fm);
+        i++;
+
+      } while ((b - a)/m > tol && i <= MAXIT);
+//exit(0);
+      if (i > MAXIT) {
         throw std::runtime_error("Can't find pstar; Iteration not converging; Go back and do it again");
+//        throw std::runtime_error("Can't find pstar; Iteration not converging; Go back and do it again " + std::to_string(cnt));
+      }
+
+      pstar = m;
+
+
     }
+
 
     return riemannDirection(pstar, uL, aL, rhoL, p0L, pL, gammaL, f_L_0, uR, aR, rhoR, p0R, pR, gammaR, f_R_0, massFlux, p12);
 }
