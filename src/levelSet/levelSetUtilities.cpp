@@ -1304,7 +1304,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 //SaveCellData(auxDM, auxVec, "normal0.txt", cellNormalField, dim, subDomain);
 
 
-  while ( maxDiff > 1e-3*h && iter<100 ) {
+  while ( maxDiff > 1e-3*h && iter<1000 ) {
 
     ++iter;
 
