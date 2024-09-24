@@ -88,15 +88,15 @@ Cones:
 coordinates with 1 fields
   field 0 with 2 components
 Process 0:
-  (   4) dim  2 offset   0 0. 0.
-  (   5) dim  2 offset   2 0.5 0.
-  (   6) dim  2 offset   4 1. 0.
-  (   7) dim  2 offset   6 0. 0.5
-  (   8) dim  2 offset   8 0.5 0.5
-  (   9) dim  2 offset  10 1. 0.5
-  (  10) dim  2 offset  12 0. 1.
-  (  11) dim  2 offset  14 0.5 1.
-  (  12) dim  2 offset  16 1. 1.
+  (   4) dof  2 offset   0 0. 0.
+  (   5) dof  2 offset   2 0.5 0.
+  (   6) dof  2 offset   4 1. 0.
+  (   7) dof  2 offset   6 0. 0.5
+  (   8) dof  2 offset   8 0.5 0.5
+  (   9) dof  2 offset  10 1. 0.5
+  (  10) dof  2 offset  12 0. 1.
+  (  11) dof  2 offset  14 0.5 1.
+  (  12) dof  2 offset  16 1. 1.
 Labels:
 Label 'marker':
 [0]: 4 (4)
@@ -161,10 +161,10 @@ DM Object: (.*) 1 MPI process<expects> *
   Number of 1-cells per rank: 12
   Number of 2-cells per rank: 4
 Labels:
-  marker: 4 strata with value/size (4 (5), 2 (5), 1 (5), 3 (5))
-  Face Sets: 4 strata with value/size (4 (2), 2 (2), 1 (2), 3 (2))
+  marker: 4 strata with value/size (1 (5), 2 (5), 3 (5), 4 (5))
+  Face Sets: 4 strata with value/size (1 (2), 2 (2), 3 (2), 4 (2))
   depth: 3 strata with value/size (0 (9), 1 (12), 2 (4))
-  celltype: 3 strata with value/size (4 (4), 0 (9), 1 (12))
+  celltype: 3 strata with value/size (0 (9), 1 (12), 4 (4))
 Field velocity:
   adjacency FEM
 Field pressure:
@@ -178,10 +178,10 @@ DM Object: (.*) 1 MPI process<expects> *
   Number of 1-cells per rank: 12
   Number of 2-cells per rank: 4
 Labels:
-  marker: 4 strata with value/size (4 (5), 2 (5), 1 (5), 3 (5))
-  Face Sets: 4 strata with value/size (4 (2), 2 (2), 1 (2), 3 (2))
+  marker: 4 strata with value/size (1 (5), 2 (5), 3 (5), 4 (5))
+  Face Sets: 4 strata with value/size (1 (2), 2 (2), 3 (2), 4 (2))
   depth: 3 strata with value/size (0 (9), 1 (12), 2 (4))
-  celltype: 3 strata with value/size (4 (4), 0 (9), 1 (12))
+  celltype: 3 strata with value/size (0 (9), 1 (12), 4 (4))
 Field velocity:
   adjacency FEM
 Field pressure:
@@ -195,10 +195,10 @@ DM Object: (.*) 1 MPI process<expects> *
   Number of 1-cells per rank: 12
   Number of 2-cells per rank: 4
 Labels:
-  marker: 4 strata with value/size (4 (5), 2 (5), 1 (5), 3 (5))
-  Face Sets: 4 strata with value/size (4 (2), 2 (2), 1 (2), 3 (2))
+  marker: 4 strata with value/size (1 (5), 2 (5), 3 (5), 4 (5))
+  Face Sets: 4 strata with value/size (1 (2), 2 (2), 3 (2), 4 (2))
   depth: 3 strata with value/size (0 (9), 1 (12), 2 (4))
-  celltype: 3 strata with value/size (4 (4), 0 (9), 1 (12))
+  celltype: 3 strata with value/size (0 (9), 1 (12), 4 (4))
 Field velocity:
   adjacency FEM
 Field pressure:
