@@ -2422,14 +2422,14 @@ SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS0_G.txt", 1);
 
 SaveData(vertDM, lsVec[LOCAL], nTotalVert, vertList, "vertLS1_L.txt", 1);
 SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS1_G.txt", 1);
-
+xexit("");
   Vec curv[2];
   DMGetLocalVector(vertDM, &curv[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
   DMGetGlobalVector(vertDM, &curv[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
   CalculateVertexCurvatures(cellMask, vertMask, lsVec, closestPoint, cpCell, curv);
 SaveData(vertDM, curv[LOCAL], nLocalVert, vertList, "curv0.txt", 1);
 
-xexit("");
+
 
 
 //  Smooth(cellMask, vertMask, lsVec, curv);
