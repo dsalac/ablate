@@ -120,6 +120,10 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
     const PetscInt dim = subDomain->GetDimensions();
     ablate::domain::Range cellRange;
 
+
+const ablate::domain::Field *vofField = &(subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD));
+process->reconstruction->ToLevelSet(dm, locX, *vofField);
+
     const ablate::domain::Field *eulerField = &(subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD));
     DM eulerDM = subDomain->GetFieldDM(*eulerField); // Get an euler-specific DM in case it's not in the same solution vector as the VOF field
     const PetscReal sigma = process->sigma; // Surface tension coefficient

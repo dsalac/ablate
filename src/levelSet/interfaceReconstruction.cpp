@@ -578,7 +578,7 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
   VecRestoreArray(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError;
   VecRestoreArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
 
-xexit("");
+//xexit("");
 
   // Now label the surrounding cells
   for (PetscInt l = 1; l <= nLevels; ++l) {
