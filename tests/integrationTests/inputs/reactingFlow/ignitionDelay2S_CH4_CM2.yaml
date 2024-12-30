@@ -3,7 +3,7 @@
 ---
 test:
   # a unique test name for this integration tests
-  name: ignitionDelay2S_CH4_CM2
+  name: ignitionDelay2S_CH4_CM2Tchem
   # create a default assert that compares the log file
   assert: !testingResources::asserts::TextFileAssert
     expected: "inputs/reactingFlow/ignitionDelay2S_CH4_CM2.Temperature.txt"

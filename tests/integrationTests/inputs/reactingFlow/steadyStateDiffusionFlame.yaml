@@ -3,12 +3,12 @@
 ---
 test:
   # a unique test name for this integration tests
-  name: steadyStateDiffusionFlame
+  name: steadyStateDiffusionFlameTchem
   # create a default assert that compares the log file
   assert: "inputs/reactingFlow/steadyStateDiffusionFlame.txt"
 
 environment:
-  title: _steadyStateDiffusionFlame
+  title: _steadyStateDiffusionFlameTchem
   tagDirectory: false
 arguments: { }
 # Create a stead state stepper.  The Stead State Stepper marches the solution in time until a set of criteria is met
