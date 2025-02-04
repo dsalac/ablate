@@ -4,24 +4,28 @@
 ablate::particles::initializers::CellInitializer::CellInitializer(int particlesPerCellPerDim) : particlesPerCell(particlesPerCellPerDim) {}
 
 void ablate::particles::initializers::CellInitializer::Initialize(ablate::domain::SubDomain &flow, DM particleDm) {
-    auto particlesPerCellLocal = (PetscInt)this->particlesPerCell;
 
-    PetscInt cStart, cEnd;
-    DMPlexGetHeightStratum(flow.GetDM(), 0, &cStart, &cEnd) >> utilities::PetscUtilities::checkError;
-    DMSwarmSetLocalSizes(particleDm, (cEnd - cStart) * particlesPerCellLocal, 0) >> utilities::PetscUtilities::checkError;
+    throw std::runtime_error("DMSwarmPICField_cellid is no longer available in PETSc and ablate::particles::initializers::CellInitializer::Initialize must be fixed.\n");
 
-    // set the cell ids
-    PetscInt *cellid;
-    DMSwarmGetField(particleDm, DMSwarmPICField_cellid, nullptr, nullptr, (void **)&cellid) >> utilities::PetscUtilities::checkError;
-    for (PetscInt c = cStart; c < cEnd; ++c) {
-        for (PetscInt p = 0; p < particlesPerCellLocal; ++p) {
-            const PetscInt n = c * particlesPerCellLocal + p;
-            cellid[n] = c;
-        }
-    }
+//    auto particlesPerCellLocal = (PetscInt)this->particlesPerCell;
 
-    DMSwarmRestoreField(particleDm, DMSwarmPICField_cellid, nullptr, nullptr, (void **)&cellid) >> utilities::PetscUtilities::checkError;
-    DMSwarmSetPointCoordinatesRandom(particleDm, particlesPerCellLocal) >> utilities::PetscUtilities::checkError;
+//    PetscInt cStart, cEnd;
+//    DMPlexGetHeightStratum(flow.GetDM(), 0, &cStart, &cEnd) >> utilities::PetscUtilities::checkError;
+//    DMSwarmSetLocalSizes(particleDm, (cEnd - cStart) * particlesPerCellLocal, 0) >> utilities::PetscUtilities::checkError;
+
+
+//    // set the cell ids
+//    PetscInt *cellid;
+//    DMSwarmGetField(particleDm, DMSwarmPICField_cellid, nullptr, nullptr, (void **)&cellid) >> utilities::PetscUtilities::checkError;
+//    for (PetscInt c = cStart; c < cEnd; ++c) {
+//        for (PetscInt p = 0; p < particlesPerCellLocal; ++p) {
+//            const PetscInt n = c * particlesPerCellLocal + p;
+//            cellid[n] = c;
+//        }
+//    }
+
+//    DMSwarmRestoreField(particleDm, DMSwarmPICField_cellid, nullptr, nullptr, (void **)&cellid) >> utilities::PetscUtilities::checkError;
+//    DMSwarmSetPointCoordinatesRandom(particleDm, particlesPerCellLocal) >> utilities::PetscUtilities::checkError;
 }
 
 #include "registrar.hpp"

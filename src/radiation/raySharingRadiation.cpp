@@ -26,7 +26,8 @@ void ablate::radiation::RaySharingRadiation::IdentifyNewRaysOnRank(ablate::domai
     /** Get all of the ray information from the particle
      * Get the ntheta and nphi from the particle that is currently being looked at. This will be used to identify its ray and calculate its direction. */
     DMSwarmGetField(radSearch, IdentifierField, nullptr, nullptr, (void**)&identifiers) >> utilities::PetscUtilities::checkError;
-    DMSwarmGetField(radSearch, DMSwarmPICField_cellid, nullptr, nullptr, (void**)&index) >> utilities::PetscUtilities::checkError;
+    throw std::runtime_error("DMSwarmPICField_cellid is no longer available in PETSc.\n");
+//    DMSwarmGetField(radSearch, DMSwarmPICField_cellid, nullptr, nullptr, (void**)&index) >> utilities::PetscUtilities::checkError;
     DMSwarmGetField(radSearch, VirtualCoordField, nullptr, nullptr, (void**)&virtualcoord) >> utilities::PetscUtilities::checkError;
 
     for (PetscInt ipart = 0; ipart < npoints; ipart++) {
@@ -71,7 +72,7 @@ void ablate::radiation::RaySharingRadiation::IdentifyNewRaysOnRank(ablate::domai
         }
     }
     DMSwarmRestoreField(radSearch, IdentifierField, nullptr, nullptr, (void**)&identifiers) >> utilities::PetscUtilities::checkError;
-    DMSwarmRestoreField(radSearch, DMSwarmPICField_cellid, nullptr, nullptr, (void**)&index) >> utilities::PetscUtilities::checkError;
+//    DMSwarmRestoreField(radSearch, DMSwarmPICField_cellid, nullptr, nullptr, (void**)&index) >> utilities::PetscUtilities::checkError;
     DMSwarmRestoreField(radSearch, VirtualCoordField, nullptr, nullptr, (void**)&virtualcoord) >> utilities::PetscUtilities::checkError;
 }
 
@@ -92,7 +93,8 @@ void ablate::radiation::RaySharingRadiation::ParticleStep(ablate::domain::SubDom
      * Get the ntheta and nphi from the particle that is currently being looked at. This will be used to identify its ray and calculate its direction. */
     DMSwarmGetField(radSearch, IdentifierField, nullptr, nullptr, (void**)&identifiers) >> utilities::PetscUtilities::checkError;
     DMSwarmGetField(radSearch, VirtualCoordField, nullptr, nullptr, (void**)&virtualcoords) >> utilities::PetscUtilities::checkError;
-    DMSwarmGetField(radSearch, DMSwarmPICField_cellid, nullptr, nullptr, (void**)&index) >> utilities::PetscUtilities::checkError;
+    throw std::runtime_error("DMSwarmPICField_cellid is no longer available in PETSc.\n");
+//    DMSwarmGetField(radSearch, DMSwarmPICField_cellid, nullptr, nullptr, (void**)&index) >> utilities::PetscUtilities::checkError;
 
     for (PetscInt ipart = 0; ipart < npoints; ipart++) {
         /** Check that the particle is in a valid region */
@@ -160,7 +162,7 @@ void ablate::radiation::RaySharingRadiation::ParticleStep(ablate::domain::SubDom
     }
     DMSwarmRestoreField(radSearch, IdentifierField, nullptr, nullptr, (void**)&identifiers) >> utilities::PetscUtilities::checkError;
     DMSwarmRestoreField(radSearch, VirtualCoordField, nullptr, nullptr, (void**)&virtualcoords) >> utilities::PetscUtilities::checkError;
-    DMSwarmRestoreField(radSearch, DMSwarmPICField_cellid, nullptr, nullptr, (void**)&index) >> utilities::PetscUtilities::checkError;
+//    DMSwarmRestoreField(radSearch, DMSwarmPICField_cellid, nullptr, nullptr, (void**)&index) >> utilities::PetscUtilities::checkError;
 }
 
 #include "registrar.hpp"

@@ -28,7 +28,7 @@ void ablate::particles::initializers::BoxInitializer::Initialize(ablate::domain:
     DMGetDimension(particleDm, &dim) >> utilities::PetscUtilities::checkError;
 
     PetscInt Np = 1;
-    PetscInt *cellid, n[3];
+    PetscInt n[3];
     PetscReal x[3], dx[3];
     PetscScalar *coords;
     PetscMPIInt rank;
@@ -84,11 +84,15 @@ void ablate::particles::initializers::BoxInitializer::Initialize(ablate::domain:
         }
     }
     DMSwarmRestoreField(particleDm, DMSwarmPICField_coor, nullptr, nullptr, (void **)&coords) >> utilities::PetscUtilities::checkError;
-    DMSwarmGetField(particleDm, DMSwarmPICField_cellid, nullptr, nullptr, (void **)&cellid) >> utilities::PetscUtilities::checkError;
-    for (PetscInt p = 0; p < Np; ++p) {
-        cellid[p] = 0;
-    }
-    DMSwarmRestoreField(particleDm, DMSwarmPICField_cellid, nullptr, nullptr, (void **)&cellid) >> utilities::PetscUtilities::checkError;
+
+    throw std::runtime_error("DMSwarmPICField_cellid is no longer available in PETSc.\n");
+
+//    PetscInt *cellid;
+//    DMSwarmGetField(particleDm, DMSwarmPICField_cellid, nullptr, nullptr, (void **)&cellid) >> utilities::PetscUtilities::checkError;
+//    for (PetscInt p = 0; p < Np; ++p) {
+//        cellid[p] = 0;
+//    }
+//    DMSwarmRestoreField(particleDm, DMSwarmPICField_cellid, nullptr, nullptr, (void **)&cellid) >> utilities::PetscUtilities::checkError;
     DMSwarmMigrate(particleDm, PETSC_TRUE) >> utilities::PetscUtilities::checkError;
 }
 
