@@ -6,9 +6,6 @@
 #include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
 
-#define UNUSED(X) {(void)X;}
-
-
 void ablate::finiteVolume::processes::IntSharp::ClearData() {
   if (cellDM) DMDestroy(&cellDM);
   if (fluxDM) DMDestroy(&fluxDM);
@@ -238,9 +235,11 @@ void ablate::finiteVolume::processes::IntSharp::SetMasks(ablate::domain::Range &
 
 }
 
+static PetscInt cnt = 0;
+
+
 // Note: locX is a local vector, which means it contains all overlap cells
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
-
 
     PetscFunctionBegin;
 int rank;
@@ -250,10 +249,9 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
   // Everything in the IntSharp process must be declared, otherwise you get an "invalid use of member ... in static member function error
   DM cellDM = process->cellDM;
-  DM vertDM = process->vertDM;          UNUSED(vertDM);
-  DM fluxDM = process->fluxDM;  UNUSED(fluxDM);
-  const PetscScalar *phiRange = process->phiRange; UNUSED(phiRange);
-  PetscInt dim = solver.GetSubDomain().GetDimensions(); UNUSED(dim);
+  DM vertDM = process->vertDM;
+  DM fluxDM = process->fluxDM;
+  PetscInt dim = solver.GetSubDomain().GetDimensions();
 
   const ablate::domain::Field &phiField = solver.GetSubDomain().GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
   const ablate::domain::Field &eulerField = solver.GetSubDomain().GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
@@ -266,9 +264,48 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> cellGaussianConv = process->cellGaussianConv;
   std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> vertexGaussianConv = process->vertexGaussianConv;
 
+
   ablate::domain::Range cellRange;
   solver.GetCellRangeWithoutGhost(cellRange);
 
+
+//{
+
+//  PetscScalar *xArray;
+//  VecGetArray(locX, &xArray) >> ablate::utilities::PetscUtilities::checkError;
+
+////  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+////    PetscInt cell = cellRange.GetPoint(c);
+
+////    PetscReal x[2];
+////    DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL);
+
+////    PetscScalar *phiVal;
+////    xDMPlexPointLocalRef(dm, cell, phiField.id, xArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
+////    *phiVal = x[0];
+////  }
+
+//  SaveCellData(dm, locX, "phiField.txt", phiField.id, phiField.numberComponents, cellRange);
+
+//  PetscInt vStart, vEnd;
+//  DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
+
+//    for (PetscInt v = vStart; v < vEnd; ++v) {
+//    PetscReal x[2];
+//    DMPlexComputeCellGeometryFVM(vertDM, v, NULL, x, NULL);
+//    if (PetscAbsReal(x[0])<1e-5 && PetscAbsReal(x[1])<1e-5) {
+//      PetscReal g[2];
+//      PetscInt dx[2] = {1, 0};
+//      vertexGaussianConv->Evaluate(v, dx, dm, phiField.id, xArray, 0, 1, &g[0]);
+//      dx[0] = 0; dx[1] = 1;
+//      vertexGaussianConv->Evaluate(v, dx, dm, phiField.id, xArray, 0, 1, &g[1]);
+//      printf("%+e\t%+e\n", g[0], g[1]);
+//      DMPlexVertexGradFromCell(dm, v, locX, phiField.id, 0, g);
+//      printf("%+e\t%+e\n", g[0], g[1]);
+//    }
+//  }
+//  exit(0);
+//}
 //  SaveCellData(dm, locX, "phiField.txt", phiField.id, phiField.numberComponents, cellRange);
 //  SaveCellData(dm, locX, "eulerField.txt", eulerField.id, eulerField.numberComponents, cellRange);
 //  {
@@ -349,20 +386,31 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   const PetscScalar *gasDensityArray;
   VecGetArrayRead(gasDensityVec, &gasDensityArray);
 
+//char fname[255];
+//sprintf(fname, "force1_%05ld.txt", cnt);
+//FILE *f1 = fopen(fname, "w");
+cnt++;
+
   // Net force on the cell-center
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     PetscInt cell = cellRange.GetPoint(c);
 
-    const PetscScalar *phiVal;
-    xDMPlexPointLocalRead(dm, cell, phiField.id, xArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
+    const PetscScalar *maskVal;
+    DMPlexPointLocalRead(cellDM, cell, cellMaskArray[LOCAL], &maskVal) >> ablate::utilities::PetscUtilities::checkError;
 
-    if (*phiVal > phiRange[0] && *phiVal < phiRange[1]) {
+//    PetscReal fc = 0.0;
+
+    if (*maskVal > 0.5) {
+
+//    const PetscScalar *phiVal;
+//    xDMPlexPointLocalRead(dm, cell, phiField.id, xArray, &phiVal) >> ablate::utilities::PetscUtilities::checkError;
+
+      PetscReal *rhoG;
+      xDMPlexPointLocalRead(gasDensityDM, cell, gasDensityField.id, gasDensityArray, &rhoG);
+
       const PetscScalar *euler;
       xDMPlexPointLocalRead(dm, cell, eulerField.id, xArray, &euler) >> ablate::utilities::PetscUtilities::checkError;
 
-      PetscReal smoothRhoG;
-      cellGaussianConv->Evaluate(cell, nullptr, gasDensityDM, gasDensityField.id, gasDensityArray, 0, 1, &smoothRhoG);
-      smoothRhoG *= process->Gamma;
 
       PetscReal smoothPhi;
       cellGaussianConv->Evaluate(cell, nullptr, dm, phiField.id, xArray, 0, 1, &smoothPhi);
@@ -381,12 +429,19 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
         dx[d] = 1;
         cellGaussianConv->Evaluate(cell, dx, gasDensityDM, gasDensityField.id, gasDensityArray, 0, 1, &dRhoG);
 
-        *force -= smoothRhoG*fluxGrad[d] + 0.0*smoothPhi*u*dRhoG;
+//        fc += (process->Gamma)*(*rhoG)*fluxGrad[d];
+        *force -= (process->Gamma)*(*rhoG)*fluxGrad[d] + smoothPhi*u*dRhoG;
       }
 
     }
-  }
 
+//PetscReal x[3];
+//DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL);
+//fprintf(f1, "%+e\t%+e\t%+e\n", x[0], x[1], fc);
+
+  }
+//fclose(f1);
+//printf("Finished intSharp\n");
 
   VecRestoreArrayRead(gasDensityVec, &gasDensityArray);
   VecRestoreArrayRead(locX, &xArray) >> ablate::utilities::PetscUtilities::checkError;

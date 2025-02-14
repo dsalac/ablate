@@ -211,8 +211,10 @@ PetscInt GaussianConvolution::GetCellList(const PetscInt p, const PetscInt **cel
 }
 
 
-// dm - DM containing the data
+
 // p - Center cell of interest
+// dx - Derivatives in the [x, y, z]-directions
+// dataDM - DM containing the data
 // fid - field id
 // array - Array of the data
 // offset - Where the data of interest starts

@@ -1040,10 +1040,10 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
 
 
 
-    const PetscReal alphaMin = 1e-10;
-    const PetscReal alphaMax = 1000*alphaMin;
+    const PetscReal massFractionMin = 1e-10;
+    const PetscReal massFractionMax = 1000*massFractionMin;
 
-    if (Yg < alphaMin) { // All liquid
+    if (Yg < massFractionMin) { // All liquid
       rhoL = density;
       eL = internalEnergy;
       TL = (eL*rhoL - p0L)/(cvL*rhoL);
@@ -1079,7 +1079,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
       alphaG = 0.0;
 
     }
-    else if (Yl < alphaMin) { //All gas
+    else if (Yl < massFractionMin) { //All gas
       rhoG = density;
       eG = internalEnergy;
       TG = eG/cvG;
@@ -1148,19 +1148,19 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
       alphaG = densityVF / rhoG;
 
 //       Blend the pressure and energy
-      if (Yg < alphaMax) {
+      if (Yg < massFractionMax) {
         PetscReal pL0 = pL, pG0 = pG;
         PetscReal eL0 = eL, eG0 = eG;
-        PetscReal xi = (Yg - alphaMin) / (alphaMax - alphaMin);
+        PetscReal xi = (Yg - massFractionMin) / (massFractionMax - massFractionMin);
         PetscReal G = xi*xi*xi*(10 - 15*xi + 6*xi*xi);
         G = -xi*xi*(2.0*xi - 3.0);
         pG = G*pG0 + (1.0 - G)*pL0;
         eG = G*eG0 + (1.0 - G)*eL0;
       }
-      else if (Yl < alphaMax) {
+      else if (Yl < massFractionMax) {
         PetscReal pL0 = pL, pG0 = pG;
         PetscReal eL0 = eL, eG0 = eG;
-        PetscReal xi = (Yl - alphaMin) / (alphaMax - alphaMin);
+        PetscReal xi = (Yl - massFractionMin) / (massFractionMax - massFractionMin);
         PetscReal G = xi*xi*xi*(10 - 15*xi + 6*xi*xi);
         G = -xi*xi*(2.0*xi - 3.0);
         pL = G*pL0 + (1.0 - G)*pG0;
