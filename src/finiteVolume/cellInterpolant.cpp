@@ -384,12 +384,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
 
         // Do a sanity check on the number of cells connected to this face
         if (numCells != 2) {
-//PetscFVFaceGeom* fg;
-//DMPlexPointLocalRead(dmFace, face, faceGeometryArray, &fg);
-//printf("%+f\t%+f\n", fg->centroid[0], fg->centroid[1]);
-//printf("cellInterpolant::393\n");
-//exit(0);
-
             throw std::runtime_error("face " + std::to_string(face) + " has " + std::to_string(numCells) + " support points (cells): expected 2");
         }
 
@@ -481,9 +475,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeFieldGradients(const domain::
     DMRestoreGlobalVector(dmGrad, &gradGlobVec) >> utilities::PetscUtilities::checkError;
 }
 
-
-static PetscInt cnt = 0;
-
 void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscDS ds, PetscInt totDim, const PetscScalar* xArray, DM dmAux, PetscDS dsAux, PetscInt totDimAux,
                                                                    const PetscScalar* auxArray, DM faceDM, const PetscScalar* faceGeomArray, DM cellDM, const PetscScalar* cellGeomArray,
                                                                    std::vector<DM>& dmGrads, std::vector<const PetscScalar*>& locGradArrays, PetscScalar* locFArray,
@@ -544,13 +535,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
     DMLabel regionLabel = nullptr;
     PetscInt regionValue = 0;
     domain::Region::GetLabel(solverRegion, subDomain->GetDM(), regionLabel, regionValue);
-
-//PetscMPIInt  rank;
-//MPI_Comm_rank(PETSC_COMM_WORLD, &rank) >> ablate::utilities::PetscUtilities::checkError;
-
-++cnt;
-
-//static PetscReal flux3104 = 0;
 
     // March over each face in this region
     for (PetscInt f = faceRange.start; f < faceRange.end; ++f) {

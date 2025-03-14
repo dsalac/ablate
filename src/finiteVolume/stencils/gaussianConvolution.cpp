@@ -21,7 +21,7 @@ using namespace ablate::finiteVolume::stencil;
 // sigmaFactor - The standard deviation will be sigmaFactor*h. Recommendation is sigmaFactor = 1.0;
 // pointLoc - The depth or height of the points where the convolution will be calculated
 // d_or_h - Indicates if pointLoc is the depth or height
-GaussianConvolution::GaussianConvolution(DM geomDM, const PetscInt sigmaFactor, const PetscInt pointLoc, DepthOrHeight d_or_h) : geomDM(geomDM) {
+GaussianConvolution::GaussianConvolution(DM geomDM, const PetscReal sigmaFactor, const PetscInt pointLoc, DepthOrHeight d_or_h) : geomDM(geomDM) {
 
   Vec faceGeomVec;
   DMPlexComputeGeometryFVM(geomDM, &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
@@ -52,15 +52,20 @@ GaussianConvolution::GaussianConvolution(DM geomDM, const PetscInt sigmaFactor, 
   PetscReal h;
   DMPlexGetMinRadius(geomDM, &h) >> ablate::utilities::PetscUtilities::checkError;
   h *= 2.0;
-  sigma = sigmaFactor*h;
+  PetscReal sigma = sigmaFactor*h;
+
+  PetscInt dim;
+  DMGetDimension(geomDM, &dim);
+
+  fac = PetscSqrtReal(2.0*PETSC_PI)*sigma;
+  fac = PetscPowRealInt(fac, -dim);
+  sigmaSqr = PetscSqr(sigma);
 
 
   // Get the information about periodicity
   const PetscReal *maxCell, *L;
   DMGetPeriodicity(geomDM, &maxCell, NULL, &L) >> ablate::utilities::PetscUtilities::checkError;
 
-  PetscInt dim;
-  DMGetDimension(geomDM, &dim);
   for (PetscInt d = 0; d < dim; ++d) {
     if (maxCell[d] > 0.0) {
       // Assume that we will be using all cells within 3 standard deviations of a center point.
@@ -93,33 +98,31 @@ PetscInt derivativeHash(const PetscInt dim, const PetscInt dx[]) {
   return derHash;
 }
 
-PetscReal derivativeFactor(const PetscReal *x, const PetscReal s, const PetscInt derHash) {
+PetscReal derivativeFactor(const PetscReal *x, const PetscReal sigmaSqr, const PetscInt derHash) {
 
-  if (derHash > 0 && PetscAbsReal(s)<PETSC_SMALL) return (0.0);
-
-  const PetscReal s2 = PetscSqr(s);
+  if (derHash > 0 && sigmaSqr<PETSC_SMALL) return (0.0);
 
   switch (derHash) {
     case   0: // Value
       return (1.0);
     case 100: // x
-      return (x[0]/s2);
+      return (x[0]/sigmaSqr);
     case  10: // y
-      return (x[1]/s2);
+      return (x[1]/sigmaSqr);
     case   1: // z
-      return (x[2]/s2);
+      return (x[2]/sigmaSqr);
     case 200: // xx
-      return ((x[0]*x[0] - s2)/PetscSqr(s2));
+      return ((x[0]*x[0] - sigmaSqr)/PetscSqr(sigmaSqr));
     case  20: // yy
-      return ((x[1]*x[1] - s2)/PetscSqr(s2));
+      return ((x[1]*x[1] - sigmaSqr)/PetscSqr(sigmaSqr));
     case   2: // zz
-      return ((x[2]*x[2] - s2)/PetscSqr(s2));
+      return ((x[2]*x[2] - sigmaSqr)/PetscSqr(sigmaSqr));
     case 110: // xy
-      return (x[0]*x[1]/PetscSqr(s2));
+      return (x[0]*x[1]/PetscSqr(sigmaSqr));
     case 101: // xz
-      return (x[0]*x[2]/PetscSqr(s2));
+      return (x[0]*x[2]/PetscSqr(sigmaSqr));
     case  11: // yz
-      return (x[1]*x[2]/PetscSqr(s2));
+      return (x[1]*x[2]/PetscSqr(sigmaSqr));
     default:
       printf("%ld\n", derHash);
       throw std::runtime_error("Unknown derivative request");
@@ -144,7 +147,8 @@ void GaussianConvolution::BuildList(const PetscInt p) {
   DMPlexComputeCellGeometryFVM(geomDM, p, NULL, x0, NULL) >> utilities::PetscUtilities::checkError;
 
   PetscInt nLocalCellList, *localCellList;
-  DMPlexGetNeighbors(geomDM, p, -1, 4*sigma, -1, PETSC_FALSE, PETSC_FALSE, &nLocalCellList, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
+
+  DMPlexGetNeighbors(geomDM, p, -1, 8*PetscSqrtReal(sigmaSqr), -1, PETSC_FALSE, PETSC_FALSE, &nLocalCellList, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
 
 
   PetscMalloc3(nLocalCellList, &cellList[p], nLocalCellList, &cellWeights[p], dim*nLocalCellList, &cellDist[p]) >> ablate::utilities::PetscUtilities::checkError;
@@ -170,7 +174,7 @@ void GaussianConvolution::BuildList(const PetscInt p) {
       r += PetscSqr(dist[d]);
     }
 
-    PetscReal wt = PetscExpReal(-0.5*r/PetscSqr(sigma));
+    PetscReal wt = (cg->volume)*fac*PetscExpReal(-0.5*r/sigmaSqr);
 
     if (wt > PETSC_SMALL) {
       cellList[p][nnz] = neighborCell;
@@ -181,10 +185,10 @@ void GaussianConvolution::BuildList(const PetscInt p) {
     }
   }
   nCellList[p] = nnz;
-
+//  printf("%+e\n", totalWt);
   for (PetscInt n = 0; n < nnz; ++n) cellWeights[p][n] /= totalWt;
 
-  DMPlexRestoreNeighbors(geomDM, p, -1, 4*sigma, -1, PETSC_FALSE, PETSC_FALSE, &nLocalCellList, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
+  DMPlexRestoreNeighbors(geomDM, p, -1, -1, -1, PETSC_FALSE, PETSC_FALSE, &nLocalCellList, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
   VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
 
 }
@@ -222,6 +226,7 @@ PetscInt GaussianConvolution::GetCellList(const PetscInt p, const PetscInt **cel
 // vals - Smoothed values
 void GaussianConvolution::Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal *vals) {
 
+
   if (p < rangeStart || p >= rangeEnd) {
     throw std::runtime_error("Attempting to calculate a gaussian convolution at a point outside of the specified range.");
   }
@@ -240,7 +245,7 @@ void GaussianConvolution::Evaluate(const PetscInt p, const PetscInt dx[], DM dat
     const PetscScalar *data;
     xDMPlexPointLocalRead(dataDM, cell, fid, array, &data);
 
-    const PetscReal derFac = derivativeFactor(&cellDist[p][i*dim], sigma, derHash);
+    const PetscReal derFac = derivativeFactor(&cellDist[p][i*dim], sigmaSqr, derHash);
 
     for (PetscInt c = 0; c < nDof; ++c) {
       vals[c] += derFac*data[offset + c]*cellWeights[p][i];

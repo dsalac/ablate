@@ -15,17 +15,17 @@
 
 namespace ablate::finiteVolume::processes {
 
-class IntSharp : public Process {
+class IntSharp : public Process, public ablate::utilities::Loggable<IntSharp> {
+
 
    private:
     //coeffs
     PetscReal Gamma;
     PetscReal epsilon;
     DM cellDM = nullptr;
-    DM fluxDM = nullptr;
-    DM vertDM = nullptr;
+    DM cellGradDM = nullptr;
+    std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> faceGaussianConv = nullptr;
     std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> cellGaussianConv = nullptr;
-    std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> vertexGaussianConv = nullptr;
     enum VecLoc { LOCAL , GLOBAL };
     const PetscReal phiRange[2] = {1.e-4, 1.0 - 1.e-4};
 
@@ -45,7 +45,12 @@ class IntSharp : public Process {
     void MemoryHelper(DM dm, VecLoc loc, Vec *vec, PetscScalar **array);
     void MemoryHelper();
 
-    void SetMasks(ablate::domain::Range &cellRange, DM phiDM, Vec phiVec, PetscInt phiID, Vec cellMaskVec[2], PetscScalar *cellMaskArray[2], PetscScalar *vertMaskArray);
+    PetscErrorCode IntSharpPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
+    PetscErrorCode IntSharpPreStep(TS flowTs, ablate::solver::Solver &flow);\
+
+    void SetMask(ablate::domain::Range &cellRange, DM phiDM, Vec phiVec, PetscInt *faceMask);
+    void CopyVOFData(TS ts, const ablate::domain::SubDomain& subDomain, ablate::domain::Range cellRange, DM cellDM, Vec phiVec[2], PetscScalar *phiArray[2]);
+    void UpdateSolVec(TS ts, ablate::domain::SubDomain& subDomain, ablate::domain::Range cellRange, DM cellDM, PetscScalar *newPhiArray);
 
 
 
@@ -55,7 +60,7 @@ class IntSharp : public Process {
      * @param Gamma
      * @param epsilon
      */
-    explicit IntSharp(PetscReal Gamma, PetscReal epsilon);
+    explicit IntSharp(PetscReal epsilon);
 
     /**
      * Clean up the dm created
@@ -69,17 +74,6 @@ class IntSharp : public Process {
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
     void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
 
-    /**
-     * static function private function to compute interface regularization term and add source to eulerset
-     * @param solver
-     * @param dm
-     * @param time
-     * @param locX
-     * @param fVec
-     * @param ctx
-     * @return
-     */
-    static PetscErrorCode ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
 };
 }  // namespace ablate::finiteVolume::processes
 #endif

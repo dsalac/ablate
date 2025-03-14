@@ -19,8 +19,11 @@ namespace ablate::finiteVolume::stencil {
       // The weights for each point
       PetscReal *weights = nullptr;
 
-      // The standard deviation distance
-      PetscReal sigma = 1.0;
+      // The standard deviation distance squared
+      PetscReal sigmaSqr = 1.0;
+
+      // Factor used to multipy the exponential
+      PetscReal fac = 0.0;
 
       // Used for cell-centers
       Vec cellGeomVec = nullptr;
@@ -50,7 +53,7 @@ namespace ablate::finiteVolume::stencil {
 
       typedef enum { DEPTH, HEIGHT } DepthOrHeight;
 
-      GaussianConvolution(DM geomDM, const PetscInt sigmaFactor, const PetscInt loc, DepthOrHeight doh);
+      GaussianConvolution(DM geomDM, const PetscReal sigmaFactor, const PetscInt loc, DepthOrHeight doh);
 
 
 
