@@ -11,7 +11,7 @@
 #include "solver/solver.hpp"
 #include "twoPhaseEulerAdvection.hpp"
 #include "finiteVolume/stencils/gaussianConvolution.hpp"
-
+#include "finiteVolume/stencils/stencil.hpp"
 
 namespace ablate::finiteVolume::processes {
 
@@ -20,37 +20,22 @@ class IntSharp : public Process, public ablate::utilities::Loggable<IntSharp> {
 
    private:
     //coeffs
-    PetscReal Gamma;
-    PetscReal epsilon;
-    DM cellDM = nullptr;
-    DM cellGradDM = nullptr;
-    std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> faceGaussianConv = nullptr;
-    std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> cellGaussianConv = nullptr;
-    enum VecLoc { LOCAL , GLOBAL };
-    const PetscReal phiRange[2] = {1.e-4, 1.0 - 1.e-4};
-
+    const PetscReal Gamma = 0.0;
+    const PetscReal epsilonIn = 0.0;
+    PetscReal epsilon = 0.0;
+    const PetscReal phiRange[2] = {1.e-6, 1.0 - 1.e-6};
+//    ablate::finiteVolume::FiniteVolumeSolver &flowSolver;
     void ClearData();
+    std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> faceGaussianConv = nullptr;
 
-    void SetMasks();
 
-    struct vecData {
-      DM dm;
-      Vec vec;
-      PetscScalar *array;
-    };
 
-    std::vector<struct vecData> localVecList = {};
-    std::vector<struct vecData> globalVecList = {};
 
-    void MemoryHelper(DM dm, VecLoc loc, Vec *vec, PetscScalar **array);
-    void MemoryHelper();
+    /**
+     * Store the interpolant for every face
+     */
+    std::vector<stencil::Stencil> stencils;
 
-    PetscErrorCode IntSharpPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
-    PetscErrorCode IntSharpPreStep(TS flowTs, ablate::solver::Solver &flow);\
-
-    void SetMask(ablate::domain::Range &cellRange, DM phiDM, Vec phiVec, PetscInt *faceMask);
-    void CopyVOFData(TS ts, const ablate::domain::SubDomain& subDomain, ablate::domain::Range cellRange, DM cellDM, Vec phiVec[2], PetscScalar *phiArray[2]);
-    void UpdateSolVec(TS ts, ablate::domain::SubDomain& subDomain, ablate::domain::Range cellRange, DM cellDM, PetscScalar *newPhiArray);
 
 
 
@@ -60,7 +45,7 @@ class IntSharp : public Process, public ablate::utilities::Loggable<IntSharp> {
      * @param Gamma
      * @param epsilon
      */
-    explicit IntSharp(PetscReal epsilon);
+    explicit IntSharp(PetscReal Gamma, PetscReal epsilon);
 
     /**
      * Clean up the dm created
@@ -73,6 +58,14 @@ class IntSharp : public Process, public ablate::utilities::Loggable<IntSharp> {
      */
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
     void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
+
+    static PetscErrorCode ComputeTerm(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
+
+
+    static PetscErrorCode IntSharpFlux(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[],
+        const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[],
+        const PetscScalar gradAux[], PetscScalar flux[], void* ctx);
+
 
 };
 }  // namespace ablate::finiteVolume::processes

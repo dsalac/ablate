@@ -258,37 +258,22 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
     flow.RegisterComputeTimeStepFunction(ComputeCflTimeStep, &timeStepData, "cfl");
     timeStepData.computeSpeedOfSound = eosTwoPhase->GetThermodynamicFunction(eos::ThermodynamicProperty::SpeedOfSound, subDomain.GetFields());
 
-    if (subDomain.ContainsField(CompressibleFlowFields::VELOCITY_FIELD) && (subDomain.GetField(CompressibleFlowFields::VELOCITY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
-      auxUpdateFields.push_back(CompressibleFlowFields::VELOCITY_FIELD);
-    }
+    // List of all aux fields that may need to be updated
+    std::string auxFieldCheckList[] = {
+            CompressibleFlowFields::VELOCITY_FIELD,
+            CompressibleFlowFields::TEMPERATURE_FIELD,
+            CompressibleFlowFields::PRESSURE_FIELD,
+            CompressibleFlowFields::GASDENSITY_FIELD,
+            CompressibleFlowFields::LIQUIDDENSITY_FIELD,
+            CompressibleFlowFields::GASENERGY_FIELD,
+            CompressibleFlowFields::LIQUIDENERGY_FIELD,
+            VOLUME_FRACTION_FIELD
+          };
 
-    if (subDomain.ContainsField(CompressibleFlowFields::TEMPERATURE_FIELD) && (subDomain.GetField(CompressibleFlowFields::TEMPERATURE_FIELD).location == ablate::domain::FieldLocation::AUX)) {
-      auxUpdateFields.push_back(CompressibleFlowFields::TEMPERATURE_FIELD);
-    }
-
-    if (subDomain.ContainsField(CompressibleFlowFields::PRESSURE_FIELD) && (subDomain.GetField(CompressibleFlowFields::PRESSURE_FIELD).location == ablate::domain::FieldLocation::AUX)) {
-      auxUpdateFields.push_back(CompressibleFlowFields::PRESSURE_FIELD);
-    }
-
-    if (subDomain.ContainsField(CompressibleFlowFields::GASDENSITY_FIELD) && (subDomain.GetField(CompressibleFlowFields::GASDENSITY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
-      auxUpdateFields.push_back(CompressibleFlowFields::GASDENSITY_FIELD);
-    }
-
-    if (subDomain.ContainsField(CompressibleFlowFields::LIQUIDDENSITY_FIELD) && (subDomain.GetField(CompressibleFlowFields::LIQUIDDENSITY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
-      auxUpdateFields.push_back(CompressibleFlowFields::LIQUIDDENSITY_FIELD);
-    }
-
-    if (subDomain.ContainsField(CompressibleFlowFields::GASENERGY_FIELD) && (subDomain.GetField(CompressibleFlowFields::GASENERGY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
-      auxUpdateFields.push_back(CompressibleFlowFields::GASENERGY_FIELD);
-    }
-
-    if (subDomain.ContainsField(CompressibleFlowFields::LIQUIDENERGY_FIELD) && (subDomain.GetField(CompressibleFlowFields::LIQUIDENERGY_FIELD).location == ablate::domain::FieldLocation::AUX)) {
-      auxUpdateFields.push_back(CompressibleFlowFields::LIQUIDENERGY_FIELD);
-    }
-
-    // There's more work that needs to be done before VOLUME_FRACTION_FIELD can be in the AUX field.
-    if (subDomain.ContainsField(VOLUME_FRACTION_FIELD) && (subDomain.GetField(VOLUME_FRACTION_FIELD).location == ablate::domain::FieldLocation::AUX)) {
-      auxUpdateFields.push_back(VOLUME_FRACTION_FIELD);
+    for (auto fieldName : auxFieldCheckList) {
+      if (subDomain.ContainsField(fieldName) && (subDomain.GetField(fieldName).location == ablate::domain::FieldLocation::AUX)) {
+        auxUpdateFields.push_back(fieldName);
+      }
     }
 
     if (auxUpdateFields.size() > 0) {

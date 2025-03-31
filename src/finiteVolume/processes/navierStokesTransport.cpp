@@ -41,7 +41,7 @@ ablate::finiteVolume::processes::NavierStokesTransport::NavierStokesTransport(co
 void ablate::finiteVolume::processes::NavierStokesTransport::Setup(ablate::finiteVolume::FiniteVolumeSolver& flow) {
     // Register the euler source terms
     if (fluxCalculator) {
-        flow.RegisterRHSFunction(AdvectionFlux, &advectionData, CompressibleFlowFields::EULER_FIELD, {CompressibleFlowFields::EULER_FIELD}, {});
+//        flow.RegisterRHSFunction(AdvectionFlux, &advectionData, CompressibleFlowFields::EULER_FIELD, {CompressibleFlowFields::EULER_FIELD}, {});
 
         // PetscErrorCode PetscOptionsGetBool(PetscOptions options,const char pre[],const char name[],PetscBool *ivalue,PetscBool *set)
         flow.RegisterComputeTimeStepFunction(ComputeCflTimeStep, &timeStepData, "cfl");
@@ -60,11 +60,11 @@ void ablate::finiteVolume::processes::NavierStokesTransport::Setup(ablate::finit
 
         if (diffusionData.muFunction.function || diffusionData.kFunction.function) {
             // Register the euler diffusion source terms
-            flow.RegisterRHSFunction(DiffusionFlux,
-                                     &diffusionData,
-                                     CompressibleFlowFields::EULER_FIELD,
-                                     {CompressibleFlowFields::EULER_FIELD},
-                                     {CompressibleFlowFields::TEMPERATURE_FIELD, CompressibleFlowFields::VELOCITY_FIELD});
+//            flow.RegisterRHSFunction(DiffusionFlux,
+//                                     &diffusionData,
+//                                     CompressibleFlowFields::EULER_FIELD,
+//                                     {CompressibleFlowFields::EULER_FIELD},
+//                                     {CompressibleFlowFields::TEMPERATURE_FIELD, CompressibleFlowFields::VELOCITY_FIELD});
         }
 
         // Check to see if time step calculations should be added for viscosity or conduction
@@ -104,7 +104,8 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Advection
                                                                                      const PetscScalar* fieldR, const PetscInt* aOff, const PetscScalar* auxL, const PetscScalar* auxR,
                                                                                      PetscScalar* flux, void* ctx) {
     PetscFunctionBeginUser;
-
+printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
+exit(0);
     auto eulerAdvectionData = (AdvectionData*)ctx;
 
     const int EULER_FIELD = 0;
@@ -458,7 +459,9 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Diffusion
     // this order is based upon the order that they are passed into RegisterRHSFunction
     const int T = 0;
     const int VEL = 1;
-
+raise(SIGSEGV);
+printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
+exit(0);
     auto flowParameters = (DiffusionData*)ctx;
 
     // Compute mu and k
