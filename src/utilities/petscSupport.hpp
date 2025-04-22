@@ -238,3 +238,19 @@ PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionVal
  * @param n - Outward facing surface area normal
  */
 PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscInt face, PetscReal *centroid, PetscReal *n);
+
+/**
+ * Return the geometric data for a point.
+ * Inputs:
+ +    dm - The `DMPLEX`
+ *    p - Point of interest
+ *
+ * Outputs:
+ *    vol - Volume of the point
+ *    centroid - Center of the point
+ *    normal - Unit normal of the point
+ *
+ * Note: This is essentially a wrapper that uses the cell/face geometry vectors or DMPlexComputeCellGeometryFVM for vertex/edges
+ */
+PetscErrorCode DMPlexGetPointGeometricData(DM dm, const PetscInt p, PetscReal *vol, PetscReal centroid[], PetscReal normal[]);
+

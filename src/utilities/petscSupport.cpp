@@ -227,6 +227,87 @@ PetscErrorCode DMPlexFindCell(DM dm, const PetscScalar *xyz, PetscReal eps, Pets
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+
+/**
+ * Return the geometric data for a point.
+ * Inputs:
+ +    dm - The `DMPLEX`
+ *    p - Point of interest
+ *
+ * Outputs:
+ *    vol - Volume of the point
+ *    centroid - Center of the point
+ *    normal - Unit normal of the point
+ *
+ * Note: This is essentially a wrapper that uses the cell/face geometry vectors or DMPlexComputeCellGeometryFVM for vertex/edges
+ */
+PetscErrorCode DMPlexGetPointGeometricData(DM dm, const PetscInt p, PetscReal *vol, PetscReal centroid[], PetscReal normal[]) {
+
+      PetscFunctionBegin;
+
+      PetscInt height, dim;
+      PetscCall(DMPlexGetPointHeight(dm, p, &height));
+      PetscCall(DMGetDimension(dm, &dim));
+
+      if ( height == 0 ) { // Cell
+        DM dmCell;
+        Vec cellGeomVec;
+        const PetscScalar* cellGeomArray;
+        PetscFVCellGeom* cg;
+
+        PetscCall(DMPlexGetDataFVM(dm, NULL, &cellGeomVec, NULL, NULL));
+        PetscCall(VecGetDM(cellGeomVec, &dmCell));
+        PetscCall(VecGetArrayRead(cellGeomVec, &cellGeomArray));
+        PetscCall(DMPlexPointLocalRead(dmCell, p, cellGeomArray, &cg));
+        PetscCall(VecRestoreArrayRead(cellGeomVec, &cellGeomArray));
+
+        if (vol) *vol = cg->volume;
+        if (centroid) PetscCall(PetscArraycpy(centroid, cg->centroid, dim));
+        if (normal) PetscCall(PetscArrayzero(normal, dim));
+      }
+      else if ( height == 1 ) { // Face
+        DM dmFace;
+        Vec faceGeomVec;
+        const PetscScalar* faceGeomArray;
+        PetscFVFaceGeom* fg;
+
+        PetscCall(DMPlexGetDataFVM(dm, NULL, NULL, &faceGeomVec, NULL));
+        PetscCall(VecGetDM(faceGeomVec, &dmFace));
+        PetscCall(VecGetArrayRead(faceGeomVec, &faceGeomArray));
+        PetscCall(DMPlexPointLocalRead(dmFace, p, faceGeomArray, &fg));
+        PetscCall(VecRestoreArrayRead(faceGeomVec, &faceGeomArray));
+
+        if (vol) {
+          *vol = 0.0;
+          for (PetscInt d = 0; d < dim; ++d) *vol += PetscSqr(fg->normal[d]);
+          *vol = PetscSqrtReal(*vol);
+        }
+        if (centroid) PetscCall(PetscArraycpy(centroid, fg->centroid, dim));
+        if (normal) {
+          PetscCall(PetscArraycpy(normal, fg->normal, dim)); // This is a the area normal, so normalize to return unit normal.
+
+          PetscReal nrm = 0.0;
+          if (*vol){
+            nrm = *vol;
+          }
+          else {
+            for (PetscInt d = 0; d < dim; ++d) nrm += PetscSqr(fg->normal[d]);
+            nrm = PetscSqrtReal(nrm);
+          }
+          for (PetscInt d = 0; d < dim; ++d) normal[d] /= nrm;
+        }
+
+      }
+      else { // Vertex or Edge
+
+        // The 0D and 1D calls are relatively cheap.
+        PetscCall(DMPlexComputeCellGeometryFVM(dm, p, vol, centroid, normal));
+      }
+
+      PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+
 /**
  * Return all cells which share an vertex or edge/face with a center cell
  * Inputs:
