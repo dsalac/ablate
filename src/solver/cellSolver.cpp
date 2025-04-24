@@ -208,47 +208,6 @@ void ablate::solver::CellSolver::UpdateSolutionFields(PetscReal time, Vec globXV
     RestoreRange(cellRange);
 }
 
-void ablate::solver::CellSolver::GetPointGeometricData(const PetscInt p, PetscReal *vol, PetscReal centroid[], PetscReal normal[]) const {
-      PetscInt depth, dim;
-      DM dm = subDomain->GetDM();
-
-      DMPlexGetDepth(dm, &depth) >> utilities::PetscUtilities::checkError;
-      DMGetDimension(dm, &dim) >> utilities::PetscUtilities::checkError;
-
-      if ( depth == (dim - 1) ) { // Face
-        DM dmFace;
-        const PetscScalar* faceGeomArray;
-        PetscFVFaceGeom* fg;
-
-        VecGetDM(faceGeomVec, &dmFace) >> utilities::PetscUtilities::checkError;
-        VecGetArrayRead(faceGeomVec, &faceGeomArray) >> utilities::PetscUtilities::checkError;
-        DMPlexPointLocalRead(dmFace, p, faceGeomArray, &fg) >> utilities::PetscUtilities::checkError;
-        VecRestoreArrayRead(faceGeomVec, &faceGeomArray) >> utilities::PetscUtilities::checkError;
-
-        if (vol) *vol = ablate::utilities::MathUtilities::MagVector(dim, fg->normal);
-        if (centroid) PetscArraycpy(centroid, fg->centroid, dim) >> utilities::PetscUtilities::checkError;
-        if (normal) PetscArraycpy(normal, fg->normal, dim) >> utilities::PetscUtilities::checkError;
-
-      } else if ( depth == dim ) { // Cell
-        DM dmCell;
-        const PetscScalar* cellGeomArray;
-        PetscFVCellGeom* cg;
-
-        VecGetDM(cellGeomVec, &dmCell) >> utilities::PetscUtilities::checkError;
-        VecGetArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
-        DMPlexPointLocalRead(dmCell, p, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
-        VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
-
-        if (vol) *vol = cg->volume;
-        if (centroid) PetscArraycpy(centroid, cg->centroid, dim) >> utilities::PetscUtilities::checkError;
-        if (normal) PetscArrayzero(normal, dim) >> utilities::PetscUtilities::checkError;
-      }
-      else { // Edge in 3D or a vertex
-
-        DMPlexComputeCellGeometryFVM(dm, p, vol, centroid, normal) >> utilities::PetscUtilities::checkError;
-      }
-}
-
 void ablate::solver::CellSolver::Setup() {
     // Compute the dm geometry
     DMPlexComputeGeometryFVM(subDomain->GetDM(), &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
