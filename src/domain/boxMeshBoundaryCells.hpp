@@ -22,7 +22,7 @@ class BoxMeshBoundaryCells : public Domain {
      */
     static std::vector<std::shared_ptr<modifiers::Modifier>> AddBoundaryModifiers(std::vector<double> lower, std::vector<double> upper, std::vector<std::string> boundary, double scaleFactor,
                                                                                   std::vector<std::shared_ptr<modifiers::Modifier>> preModifiers,
-                                                                                  std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers);
+                                                                                  std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers, bool includeCorners);
 
     inline const static std::string interiorCellsLabel = "interiorCells";
     inline const static std::string entireDomainLabel = "domain";
@@ -38,7 +38,7 @@ class BoxMeshBoundaryCells : public Domain {
    public:
     BoxMeshBoundaryCells(const std::string& name, const std::vector<std::shared_ptr<FieldDescriptor>>& fieldDescriptors, std::vector<std::shared_ptr<modifiers::Modifier>> preModifiers,
                          std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers, std::vector<int> faces, const std::vector<double>& lower, const std::vector<double>& upper, std::vector<std::string> boundary,
-                         const std::shared_ptr<parameters::Parameters>& options = {});
+                         const std::shared_ptr<parameters::Parameters>& options = {}, bool includeCorners = false);
 
     ~BoxMeshBoundaryCells() override;
 };

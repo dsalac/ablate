@@ -7,15 +7,17 @@
 #include "domain/modifiers/tagLabelBoundary.hpp"
 #include "mathFunctions/geom/box.hpp"
 #include "utilities/petscUtilities.hpp"
+#include "utilities/petscSupport.hpp"
 
 ablate::domain::BoxMeshBoundaryCells::BoxMeshBoundaryCells(const std::string& name, const std::vector<std::shared_ptr<FieldDescriptor>>& fieldDescriptors,
                                                            std::vector<std::shared_ptr<modifiers::Modifier>> preModifiers, std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers,
                                                            std::vector<int> faces, const std::vector<double>& lower, const std::vector<double>& upper,
                                                            std::vector<std::string> boundary,
-                                                           const std::shared_ptr<parameters::Parameters>& options)
+                                                           const std::shared_ptr<parameters::Parameters>& options,
+                                                           const bool includeCorners)
     : Domain(CreateBoxDM(name, std::move(faces), lower, upper, boundary, false), name, fieldDescriptors,
              // We need to get the optional dm_plex_scale to determine bounds
-             AddBoundaryModifiers(lower, upper, boundary, options ? options->Get("dm_plex_scale", 1.0) : 1.0, std::move(preModifiers), std::move(postModifiers)), options) {
+             AddBoundaryModifiers(lower, upper, boundary, options ? options->Get("dm_plex_scale", 1.0) : 1.0, std::move(preModifiers), std::move(postModifiers), includeCorners), options) {
     // make sure that dm_refine was not set
     if (options) {
         if (options->Get("dm_refine", 0) != 0) {
@@ -41,64 +43,65 @@ ablate::domain::BoxMeshBoundaryCells::~BoxMeshBoundaryCells() {
     }
 }
 
+
+void ProcessBoundaryInformation(std::size_t dim, std::vector<std::string> boundary, std::vector<DMBoundaryType> &boundaryTypes) {
+    if (boundary.size() > 0) {
+      for (std::size_t d = 0; d < PetscMin(dim, boundary.size()); d++) {
+          PetscBool found;
+          DMBoundaryType index;
+          PetscEnumFind(DMBoundaryTypes, boundary[d].c_str(), (PetscEnum *)&index, &found) >> ablate::utilities::PetscUtilities::checkError;
+
+          if (found) {
+              boundaryTypes[d] = index;
+          } else {
+              throw std::invalid_argument("unable to find boundary type " + boundary[d]);
+          }
+      }
+    }
+    else { // Default to old behavior: all NONE
+      for (std::size_t d = 0; d < PetscMin(dim, boundary.size()); d++) {
+        boundaryTypes[d] = DM_BOUNDARY_NONE;
+      }
+    }
+
+}
+
+void ExpandDomain(std::size_t dim, std::vector<DMBoundaryType> boundaryTypes, std::vector<int> &faces, std::vector<double> &lower, std::vector<double> &upper) {
+    for (std::size_t d = 0; d < dim; d++) {
+      if (boundaryTypes[d] == DM_BOUNDARY_NONE) {
+        double dx = (upper[d] - lower[d]) / faces[d];
+        faces[d] += 2;
+        lower[d] -= dx;
+        upper[d] += dx;
+      }
+    }
+
+}
+
 DM ablate::domain::BoxMeshBoundaryCells::CreateBoxDM(const std::string& name, std::vector<int> faces, std::vector<double> lower, std::vector<double> upper, std::vector<std::string> boundary, bool simplex) {
     std::size_t dimensions = faces.size();
     if ((dimensions != lower.size()) || (dimensions != upper.size())) {
         throw std::runtime_error("BoxMesh Error: The faces, lower, and upper vectors must all be the same dimension.");
     }
 
-    // compute dx in each direction
-    std::vector<double> dx(dimensions);
-    for (std::size_t i = 0; i < dimensions; i++) {
-        dx[i] = (upper[i] - lower[i]) / faces[i];
-    }
 
     std::vector<DMBoundaryType> boundaryTypes(dimensions, DM_BOUNDARY_NONE);
-    if (boundary.size() > 0) {
-      for (std::size_t d = 0; d < PetscMin(dimensions, boundary.size()); d++) {
-          PetscBool found;
-          DMBoundaryType index;
-          PetscEnumFind(DMBoundaryTypes, boundary[d].c_str(), (PetscEnum *)&index, &found) >> utilities::PetscUtilities::checkError;
-
-          if (found) {
-              boundaryTypes[d] = index;
-
-              if (boundaryTypes[d] == DM_BOUNDARY_NONE) {
-                faces[d] += 2;
-                lower[d] -= dx[d];
-                upper[d] += dx[d];
-              }
-
-          } else {
-              throw std::invalid_argument("unable to find boundary type " + boundary[d]);
-          }
-      }
-    }
-    else { // Default to old behavior
-      // Add two faces for each ghost cell
-      for (auto& face : faces) {
-          face += 2;
-      }
-
-      // Move in/out the lower upper dimension
-      for (std::size_t i = 0; i < dimensions; i++) {
-          lower[i] -= dx[i];
-          upper[i] += dx[i];
-      }
-    }
+    ProcessBoundaryInformation(dimensions, boundary, boundaryTypes);
+    ExpandDomain(dimensions, boundaryTypes, faces, lower, upper);
 
     // Make copy with PetscInt
     std::vector<PetscInt> facesPetsc(faces.begin(), faces.end());
     DM dm;
     DMPlexCreateBoxMesh(PETSC_COMM_WORLD, (PetscInt)dimensions, simplex ? PETSC_TRUE : PETSC_FALSE, &facesPetsc[0], &lower[0], &upper[0], &boundaryTypes[0], PETSC_TRUE, (PetscInt)dimensions, PETSC_TRUE, &dm) >>
         utilities::PetscUtilities::checkError;
+
     PetscObjectSetName((PetscObject)dm, name.c_str()) >> utilities::PetscUtilities::checkError;
     return dm;
 }
 
 std::vector<std::shared_ptr<ablate::domain::modifiers::Modifier>> ablate::domain::BoxMeshBoundaryCells::AddBoundaryModifiers(std::vector<double> lower, std::vector<double> upper, std::vector<std::string> boundary, double scaleFactor,
                                                                                                                              std::vector<std::shared_ptr<modifiers::Modifier>> preModifiers,
-                                                                                                                             std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers) {
+                                                                                                                             std::vector<std::shared_ptr<modifiers::Modifier>> postModifiers, bool includeCorners) {
     // scale the bounds by the scale factor incase petsc scaled them
     for (auto& pt : lower) {
         pt *= scaleFactor;
@@ -129,84 +132,86 @@ std::vector<std::shared_ptr<ablate::domain::modifiers::Modifier>> ablate::domain
     auto boundaryCellsRightRegion = std::make_shared<domain::Region>(boundaryCellsRight);
     auto boundaryCellsLeftRegion = std::make_shared<domain::Region>(boundaryCellsLeft);
 
-    std::vector<PetscBool> boundaryNone(boundary.size(), PETSC_TRUE);
 
-    for (std::size_t d = 0; d < boundary.size(); d++) {
-        PetscBool found;
-        DMBoundaryType index;
-        PetscEnumFind(DMBoundaryTypes, boundary[d].c_str(), (PetscEnum *)&index, &found) >> utilities::PetscUtilities::checkError;
+    PetscInt dim = lower.size();
+    std::vector<DMBoundaryType> boundaryTypes(dim, DM_BOUNDARY_NONE);
+    ProcessBoundaryInformation(dim, boundary, boundaryTypes);
 
-        if (found && index != DM_BOUNDARY_NONE) {
-            boundaryNone[d] = PETSC_FALSE;
-        }
-    }
+    double cornerShift = (includeCorners ? max : 0);
 
     // Define a subset for the other boundary regions
     std::vector<std::shared_ptr<domain::Region>> boundaryRegions;
-    switch (lower.size()) {
+    switch (dim) {
         case 3:
-            if (boundaryNone[Z]) {
+            if (boundaryTypes[Z]==DM_BOUNDARY_NONE) {
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsFrontRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X], lower[Y], upper[Z]}, std::vector<double>{upper[X], upper[Y], max})));
+                    boundaryCellsFrontRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X] - cornerShift, lower[Y] - cornerShift, upper[Z]}, std::vector<double>{upper[X] + cornerShift, upper[Y] + cornerShift, max})));
                 boundaryRegions.push_back(boundaryCellsFrontRegion);
+
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsBackRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X], lower[Y], min}, std::vector<double>{upper[X], upper[Y], lower[Z]})));
+                    boundaryCellsBackRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X] - cornerShift, lower[Y] - cornerShift, min}, std::vector<double>{upper[X] + cornerShift, upper[Y] + cornerShift, lower[Z]})));
                 boundaryRegions.push_back(boundaryCellsBackRegion);
             }
 
-            if (boundaryNone[Y]) {
+            if (boundaryTypes[Y]==DM_BOUNDARY_NONE) {
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsTopRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X], upper[Y], lower[Z]}, std::vector<double>{upper[X], max, upper[Z]})));
+                    boundaryCellsTopRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X] - cornerShift, upper[Y], lower[Z] - cornerShift}, std::vector<double>{upper[X] + cornerShift, max, upper[Z] + cornerShift})));
                 boundaryRegions.push_back(boundaryCellsTopRegion);
+
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsBottomRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X], min, lower[Z]}, std::vector<double>{upper[X], lower[Y], upper[Z]})));
+                    boundaryCellsBottomRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X] - cornerShift, min, lower[Z] - cornerShift}, std::vector<double>{upper[X] + cornerShift, lower[Y], upper[Z] + cornerShift})));
                 boundaryRegions.push_back(boundaryCellsBottomRegion);
             }
 
-            if (boundaryNone[X]) {
+            if (boundaryTypes[X]==DM_BOUNDARY_NONE) {
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsRightRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{upper[X], lower[Y], lower[Z]}, std::vector<double>{max, upper[Y], upper[Z]})));
+                    boundaryCellsRightRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{upper[X], lower[Y] - cornerShift, lower[Z] - cornerShift}, std::vector<double>{max, upper[Y] + cornerShift, upper[Z] + cornerShift})));
                 boundaryRegions.push_back(boundaryCellsRightRegion);
+
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsLeftRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{min, lower[Y], lower[Z]}, std::vector<double>{lower[X], upper[Y], upper[Z]})));
+                    boundaryCellsLeftRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{min, lower[Y] - cornerShift, lower[Z] - cornerShift}, std::vector<double>{lower[X], upper[Y] + cornerShift, upper[Z] + cornerShift})));
                 boundaryRegions.push_back(boundaryCellsLeftRegion);
             }
             break;
         case 2:
-            if (boundaryNone[Y]) {
+            if (boundaryTypes[Y]==DM_BOUNDARY_NONE) {
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsTopRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X], upper[Y]}, std::vector<double>{upper[X], max})));
+                    boundaryCellsTopRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X] - cornerShift, upper[Y]}, std::vector<double>{upper[X] + cornerShift, max})));
                 boundaryRegions.push_back(boundaryCellsTopRegion);
+
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsBottomRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X], min}, std::vector<double>{upper[X], lower[Y]})));
+                    boundaryCellsBottomRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{lower[X] - cornerShift, min}, std::vector<double>{upper[X] + cornerShift, lower[Y]})));
                 boundaryRegions.push_back(boundaryCellsBottomRegion);
             }
 
-            if (boundaryNone[X]) {
+            if (boundaryTypes[X]==DM_BOUNDARY_NONE) {
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsRightRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{upper[X], lower[Y]}, std::vector<double>{max, upper[Y]})));
+                    boundaryCellsRightRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{upper[X], lower[Y] - cornerShift}, std::vector<double>{max, upper[Y] + cornerShift})));
                 boundaryRegions.push_back(boundaryCellsRightRegion);
+
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(
-                    boundaryCellsLeftRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{min, lower[Y]}, std::vector<double>{lower[X], upper[Y]})));
+                    boundaryCellsLeftRegion, std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{min, lower[Y] - cornerShift}, std::vector<double>{lower[X], upper[Y] + cornerShift})));
                 boundaryRegions.push_back(boundaryCellsLeftRegion);
             }
+
             break;
         case 1:
-            if (boundaryNone[X]) {
+            if (boundaryTypes[X]==DM_BOUNDARY_NONE) {
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(boundaryCellsRightRegion,
                                                                                              std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{upper[X]}, std::vector<double>{max})));
                 boundaryRegions.push_back(boundaryCellsRightRegion);
+
                 modifiers.push_back(std::make_shared<ablate::domain::modifiers::CreateLabel>(boundaryCellsLeftRegion,
                                                                                              std::make_shared<ablate::mathFunctions::geom::Box>(std::vector<double>{min}, std::vector<double>{lower[X]})));
                 boundaryRegions.push_back(boundaryCellsLeftRegion);
             }
     }
 
-    // define a boundaryCellRegion
+    // define the boundaryCellRegion
     auto boundaryCellRegion = std::make_shared<domain::Region>(boundaryCellsLabel);
     modifiers.push_back(std::make_shared<ablate::domain::modifiers::MergeLabels>(boundaryCellRegion, boundaryRegions));
 
-    // define the ghost cells plus interior (leaves out corners)
+    // define the ghost cells plus interior
     auto entireDomainRegion = std::make_shared<domain::Region>(entireDomainLabel);
     modifiers.push_back(std::make_shared<ablate::domain::modifiers::MergeLabels>(entireDomainRegion, std::vector<std::shared_ptr<domain::Region>>{interiorLabel, boundaryCellRegion}));
 
@@ -226,4 +231,5 @@ REGISTER(ablate::domain::Domain, ablate::domain::BoxMeshBoundaryCells,
          ARG(std::vector<int>, "faces", "the number of faces in each direction"), ARG(std::vector<double>, "lower", "the lower bound of the mesh"),
          ARG(std::vector<double>, "upper", "the upper bound of the mesh"),
          OPT(std::vector<std::string>, "boundary", "custom boundary types (NONE, GHOSTED, MIRROR, PERIODIC)"),
-         OPT(ablate::parameters::Parameters, "options", "PETSc options specific to this dm.  Default value allows the dm to access global options."));
+         OPT(ablate::parameters::Parameters, "options", "PETSc options specific to this dm.  Default value allows the dm to access global options."),
+         OPT(bool, "includeCorners", "Include corner cells when labelling the boundary cells. Default is false."));
