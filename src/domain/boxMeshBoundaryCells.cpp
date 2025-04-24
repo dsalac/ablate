@@ -14,8 +14,8 @@ ablate::domain::BoxMeshBoundaryCells::BoxMeshBoundaryCells(const std::string& na
                                                            std::vector<int> faces, const std::vector<double>& lower, const std::vector<double>& upper,
                                                            std::vector<std::string> boundary,
                                                            const std::shared_ptr<parameters::Parameters>& options,
-                                                           const bool includeCorners)
-    : Domain(CreateBoxDM(name, std::move(faces), lower, upper, boundary, false), name, fieldDescriptors,
+                                                           const bool includeCorners, const int nLayers)
+    : Domain(CreateBoxDM(name, std::move(faces), lower, upper, boundary, false, nLayers), name, fieldDescriptors,
              // We need to get the optional dm_plex_scale to determine bounds
              AddBoundaryModifiers(lower, upper, boundary, options ? options->Get("dm_plex_scale", 1.0) : 1.0, std::move(preModifiers), std::move(postModifiers), includeCorners), options) {
     // make sure that dm_refine was not set
@@ -66,28 +66,27 @@ void ProcessBoundaryInformation(std::size_t dim, std::vector<std::string> bounda
 
 }
 
-void ExpandDomain(std::size_t dim, std::vector<DMBoundaryType> boundaryTypes, std::vector<int> &faces, std::vector<double> &lower, std::vector<double> &upper) {
+void ExpandDomain(std::size_t dim, std::vector<DMBoundaryType> boundaryTypes, const int nLayers, std::vector<int> &faces, std::vector<double> &lower, std::vector<double> &upper) {
     for (std::size_t d = 0; d < dim; d++) {
       if (boundaryTypes[d] == DM_BOUNDARY_NONE) {
         double dx = (upper[d] - lower[d]) / faces[d];
-        faces[d] += 2;
-        lower[d] -= dx;
-        upper[d] += dx;
+        faces[d] += 2*nLayers;
+        lower[d] -= nLayers*dx;
+        upper[d] += nLayers*dx;
       }
     }
 
 }
 
-DM ablate::domain::BoxMeshBoundaryCells::CreateBoxDM(const std::string& name, std::vector<int> faces, std::vector<double> lower, std::vector<double> upper, std::vector<std::string> boundary, bool simplex) {
+DM ablate::domain::BoxMeshBoundaryCells::CreateBoxDM(const std::string& name, std::vector<int> faces, std::vector<double> lower, std::vector<double> upper, std::vector<std::string> boundary, bool simplex, const int nLayers) {
     std::size_t dimensions = faces.size();
     if ((dimensions != lower.size()) || (dimensions != upper.size())) {
         throw std::runtime_error("BoxMesh Error: The faces, lower, and upper vectors must all be the same dimension.");
     }
 
-
     std::vector<DMBoundaryType> boundaryTypes(dimensions, DM_BOUNDARY_NONE);
     ProcessBoundaryInformation(dimensions, boundary, boundaryTypes);
-    ExpandDomain(dimensions, boundaryTypes, faces, lower, upper);
+    ExpandDomain(dimensions, boundaryTypes, nLayers, faces, lower, upper);
 
     // Make copy with PetscInt
     std::vector<PetscInt> facesPetsc(faces.begin(), faces.end());
@@ -232,4 +231,5 @@ REGISTER(ablate::domain::Domain, ablate::domain::BoxMeshBoundaryCells,
          ARG(std::vector<double>, "upper", "the upper bound of the mesh"),
          OPT(std::vector<std::string>, "boundary", "custom boundary types (NONE, GHOSTED, MIRROR, PERIODIC)"),
          OPT(ablate::parameters::Parameters, "options", "PETSc options specific to this dm.  Default value allows the dm to access global options."),
-         OPT(bool, "includeCorners", "Include corner cells when labelling the boundary cells. Default is false."));
+         OPT(bool, "includeCorners", "Include corner cells when labelling the boundary cells. Default is false."),
+         OPT(int, "numLayers", "Number of boundary cell layers to add. Default is 1."));
