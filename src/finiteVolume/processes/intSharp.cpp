@@ -84,6 +84,8 @@ void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume:
 
   ablate::domain::SubDomain& subDomain = flow.GetSubDomain();
 
+  ClearData();
+
   // Get the DM that contains JUST the vof field. This will be duplicated so that we can use DMGetLocalVector, which is
   // orders-or-magnitude faster than anything else for repeated calls.
   const ablate::domain::Field vofField = subDomain.GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
@@ -203,7 +205,7 @@ void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id
 
 
 
-static PetscInt cnt = 0;
+//static PetscInt cnt = 0;
 
 
 void UpdateSolVec(ablate::domain::SubDomain& subDomain, ablate::domain::Range cellRange, DM vofDM, Vec vofVec) {
@@ -234,11 +236,11 @@ void UpdateSolVec(ablate::domain::SubDomain& subDomain, ablate::domain::Range ce
   const PetscScalar *vofArray;
   VecGetArrayRead(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError;
 
-char fname[255];
-sprintf(fname, "old_%ld.txt", cnt);
-FILE *f1 = fopen(fname, "w");
-sprintf(fname, "new_%ld.txt", cnt++);
-FILE *f2 = fopen(fname, "w");
+//char fname[255];
+//sprintf(fname, "old_%ld.txt", cnt);
+//FILE *f1 = fopen(fname, "w");
+//sprintf(fname, "new_%ld.txt", cnt++);
+//FILE *f2 = fopen(fname, "w");
 
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     PetscInt cell = cellRange.GetPoint(c);
@@ -248,16 +250,16 @@ FILE *f2 = fopen(fname, "w");
     DMPlexPointLocalRead(vofDM, cell, vofArray, &newPhi) >> ablate::utilities::PetscUtilities::checkError;
     xDMPlexPointLocalRef(solDM, cell, vofField.id, solArray, &oldPhi) >> ablate::utilities::PetscUtilities::checkError;
 
-PetscReal x[3];
-DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL);
-{
-  fprintf(f1, "%+e\t%+e\t%+e\t", x[0], x[1], *oldPhi);
-  PetscReal *densityVF;
-  xDMPlexPointLocalRead(solDM, cell, densityVFField.id, solArray, &densityVF) >> ablate::utilities::PetscUtilities::checkError;
-  PetscReal *euler;
-  xDMPlexPointLocalRead(solDM, cell, eulerField.id, solArray, &euler) >> ablate::utilities::PetscUtilities::checkError;
-  fprintf(f1,"%+e\t%+e\t%+e\t%+e\t%+e\n", *densityVF, euler[0], euler[1], euler[2], euler[3]);
-}
+//PetscReal x[3];
+//DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL);
+//{
+//  fprintf(f1, "%+e\t%+e\t%+e\t", x[0], x[1], *oldPhi);
+//  PetscReal *densityVF;
+//  xDMPlexPointLocalRead(solDM, cell, densityVFField.id, solArray, &densityVF) >> ablate::utilities::PetscUtilities::checkError;
+//  PetscReal *euler;
+//  xDMPlexPointLocalRead(solDM, cell, eulerField.id, solArray, &euler) >> ablate::utilities::PetscUtilities::checkError;
+//  fprintf(f1,"%+e\t%+e\t%+e\t%+e\t%+e\n", *densityVF, euler[0], euler[1], euler[2], euler[3]);
+//}
 
     if (PetscAbsReal(*newPhi - *oldPhi) > PETSC_SMALL) { // Only update those cells where the VOF has changed
 
@@ -296,19 +298,19 @@ DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL);
       }
     }
 
-{
-  fprintf(f2, "%+e\t%+e\t%+e\t", x[0], x[1], *oldPhi);
-  PetscReal *densityVF;
-  xDMPlexPointLocalRead(solDM, cell, densityVFField.id, solArray, &densityVF) >> ablate::utilities::PetscUtilities::checkError;
-  PetscReal *euler;
-  xDMPlexPointLocalRead(solDM, cell, eulerField.id, solArray, &euler) >> ablate::utilities::PetscUtilities::checkError;
-  fprintf(f2,"%+e\t%+e\t%+e\t%+e\t%+e\n", *densityVF, euler[0], euler[1], euler[2], euler[3]);
-}
+//{
+//  fprintf(f2, "%+e\t%+e\t%+e\t", x[0], x[1], *oldPhi);
+//  PetscReal *densityVF;
+//  xDMPlexPointLocalRead(solDM, cell, densityVFField.id, solArray, &densityVF) >> ablate::utilities::PetscUtilities::checkError;
+//  PetscReal *euler;
+//  xDMPlexPointLocalRead(solDM, cell, eulerField.id, solArray, &euler) >> ablate::utilities::PetscUtilities::checkError;
+//  fprintf(f2,"%+e\t%+e\t%+e\t%+e\t%+e\n", *densityVF, euler[0], euler[1], euler[2], euler[3]);
+//}
 
   }
 
-fclose(f1);
-fclose(f2);
+//fclose(f1);
+//fclose(f2);
 
   VecRestoreArray(solVec, &solArray) >> ablate::utilities::PetscUtilities::checkError;
   VecRestoreArrayRead(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
@@ -359,6 +361,8 @@ void ablate::finiteVolume::processes::IntSharp::MemoryHelper() {
 
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS flowTS, ablate::solver::Solver &solver, PetscReal stagetime) {
   PetscFunctionBegin;
+printf("Starting loo;\n");
+while(1) {
 
   auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
 
@@ -376,16 +380,6 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
   PetscCall(VecGetArray(vofVecs[LOCAL], &vofArrays[LOCAL]));
   PetscCall(VecGetArray(vofVecs[GLOBAL], &vofArrays[GLOBAL]));
 
-  // check for ghost cells
-  DMLabel ghostLabel;
-  DMGetLabel(subDomain.GetDM(), "ghost", &ghostLabel) >> utilities::PetscUtilities::checkError;
-
-  // Get the solver region
-  const std::shared_ptr<ablate::domain::Region>& solverRegion = fvSolver.GetRegion();
-  DMLabel regionLabel;
-  PetscInt regionValue;
-  ablate::domain::Region::GetLabel(solverRegion, subDomain.GetDM(), regionLabel, regionValue);
-
   const PetscInt dim = subDomain.GetDimensions();
 
   PetscReal h;
@@ -395,16 +389,16 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
 
   PetscReal dt = 0.25;
 
-  {
-    char fname[255];
-    sprintf(fname, "vof_%05d.txt", 0);
-    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
-  }
+//  {
+//    char fname[255];
+//    sprintf(fname, "vof_%05d.txt", 0);
+//    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
+//  }
 
   MPI_Comm comm = subDomain.GetComm();
 
 
-  for (PetscInt iter = 1; iter < 1000; ++iter) {
+//  for (PetscInt iter = 1; iter < 200; ++iter) {
 
 
     PetscReal maxDiff = -1;
@@ -450,18 +444,15 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
     PetscCall(DMGlobalToLocal(vofDM, vofVecs[GLOBAL], INSERT_VALUES, vofVecs[LOCAL]));
 
 
-if ((iter)%10==0) {
-    char fname[255];
-    sprintf(fname, "vof_%05ld.txt", iter);
-    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
-    PetscPrintf(PETSC_COMM_WORLD, "%ld\t%e\n", iter, maxDiff);
-}
+//if ((iter)%10==0) {
+//    char fname[255];
+//    sprintf(fname, "vof_%05ld.txt", iter);
+//    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
+//    PetscPrintf(PETSC_COMM_WORLD, "%ld\t%e\n", iter, maxDiff);
+//}
 
-  }
+//  }
 
-
-  printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
-  exit(0);
 
   UpdateSolVec(subDomain, cellRange, vofDM, vofVecs[GLOBAL]);
 
@@ -472,6 +463,9 @@ if ((iter)%10==0) {
   PetscCall(DMRestoreGlobalVector(subDM, &vofVecs[GLOBAL]));
   PetscCall(DMRestoreLocalVector(subDM, &vofVecs[LOCAL]));
 
+}
+  printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
+  exit(0);
 
   PetscFunctionReturn(0);
 }
