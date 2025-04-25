@@ -1,5 +1,7 @@
 // These are functions that should probably make their way into PETSc at some point. Put them in here for now.
 
+#pragma once
+
 #include <petsc.h>
 #include <petscdmplex.h>
 #include <petscksp.h>
