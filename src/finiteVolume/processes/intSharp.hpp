@@ -23,19 +23,25 @@ class IntSharp : public Process, public ablate::utilities::Loggable<IntSharp> {
     const PetscReal epsilonFac = 1.0;
     const PetscReal phiRange[2] = {1.e-6, 1.0 - 1.e-6};
 
+    void GetFieldVectors(const ablate::domain::SubDomain& subDomain, Vec *subLocalVec, Vec *subGlobalVec);
+//    void RestoreFieldVectors(const ablate::domain::SubDomain& subDomain, Vec *subLocalVec, Vec *subGlobalVec);
+    DM subDM = nullptr;
+    IS subIS = nullptr;
+    enum VecLoc { LOCAL, GLOBAL};
 
 
-//    ablate::finiteVolume::FiniteVolumeSolver &flowSolver;
+
+
     void ClearData();
     std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> cellGaussianConv = nullptr;
 
     struct vecData {
       Vec vec;
       PetscScalar *array;
+      PetscBool isLocal;
     };
     std::vector<struct vecData> vecList = {};
-    void MemoryHelper(const Vec baseVec, Vec *newVew, PetscScalar **newArray);
-    void MemoryHelper(const DM dm, PetscBool isLocalVec, Vec *newVec, PetscScalar **newArray);
+    void MemoryHelper(PetscBool isLocalVec, Vec *newVec, PetscScalar **newArray);
     void MemoryHelper();
 
 

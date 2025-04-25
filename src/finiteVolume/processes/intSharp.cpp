@@ -15,6 +15,8 @@
 
 void ablate::finiteVolume::processes::IntSharp::ClearData() {
   if (cellGaussianConv) cellGaussianConv->~GaussianConvolution();
+  if (subDM) DMDestroy(&subDM);
+  if (subIS) ISDestroy(&subIS);
 }
 
 ablate::finiteVolume::processes::IntSharp::~IntSharp() {
@@ -22,17 +24,75 @@ ablate::finiteVolume::processes::IntSharp::~IntSharp() {
 }
 
 
+
+void ablate::finiteVolume::processes::IntSharp::GetFieldVectors(const ablate::domain::SubDomain& subDomain, Vec *subLocalVec, Vec *subGlobalVec) {
+
+    // A copy is made so that the VOF values can be compared when updating the other fields
+
+    const ablate::domain::Field &vofField = subDomain.GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+    Vec entireVec = subDomain.GetVec(vofField);
+
+    DMGetLocalVector(subDM, subLocalVec) >> ablate::utilities::PetscUtilities::checkError;
+    DMGetGlobalVector(subDM, subGlobalVec) >> ablate::utilities::PetscUtilities::checkError;
+
+    if (vofField.location == ablate::domain::FieldLocation::SOL) {
+
+      // Copy the data to the global vec
+      VecISCopy(entireVec, subIS, SCATTER_REVERSE, *subGlobalVec) >> ablate::utilities::PetscUtilities::checkError;
+
+      // Populate the local vector
+      DMGlobalToLocal(subDM, *subGlobalVec, INSERT_VALUES, *subLocalVec) >> ablate::utilities::PetscUtilities::checkError;
+
+    } else if (vofField.location == ablate::domain::FieldLocation::AUX) {
+
+      // Copy the data to the local vec
+      VecISCopy(entireVec, subIS, SCATTER_REVERSE, *subLocalVec) >> ablate::utilities::PetscUtilities::checkError;
+
+      // Populate the global vector
+      DMLocalToGlobal(subDM, *subLocalVec, INSERT_VALUES, *subGlobalVec) >> ablate::utilities::PetscUtilities::checkError;
+    } else {
+      throw std::invalid_argument("Volume fraction field is not contained in either the SOL or AUX vecs!");
+    }
+
+}
+
+//void ablate::finiteVolume::processes::IntSharp::RestoreFieldVectors(const ablate::domain::SubDomain& subDomain, Vec *subLocalVec, Vec *subGlobalVec) {
+
+//    const ablate::domain::Field &vofField = subDomain.GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+//    Vec entireVec = subDomain.GetVec(vofField);
+
+//    if (vofField.location == ablate::domain::FieldLocation::SOL) {
+//      VecISCopy(
+
+//    } else if (vofField.location == ablate::domain::FieldLocation::AUX) {
+//        VecRestoreSubVector(entireVec, subIS, subLocalVec) >> ablate::utilities::PetscUtilities::checkError;
+
+//    } else {
+//        throw std::invalid_argument("Volume fraction field is not contained in either the SOL or AUX vecs!");
+//    }
+
+//    DMRestoreGlobalVector(subDM, subGlobalVec) >> ablate::utilities::PetscUtilities::checkError;
+//    DMRestoreLocalVector(subDM, subLocalVec) >> ablate::utilities::PetscUtilities::checkError;
+
+
+//}
+
+
 // Every time the mesh changes
 void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) {
 
 
   ablate::domain::SubDomain& subDomain = flow.GetSubDomain();
-  DM dm = subDomain.GetDM();
 
-  PetscInt dim = subDomain.GetDimensions();
+  // Get the DM that contains JUST the vof field. This will be duplicated so that we can use DMGetLocalVector, which is
+  // orders-or-magnitude faster than anything else for repeated calls.
+  const ablate::domain::Field vofField = subDomain.GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
+  DM entireDM = subDomain.GetFieldDM(vofField);
+  DMCreateSubDM(entireDM, 1, &vofField.id, &subIS, &subDM) >> ablate::utilities::PetscUtilities::checkError;
 
   // Using cell-center data compute the gaussian convolution at a cell
-  cellGaussianConv = std::make_shared<ablate::finiteVolume::stencil::GaussianConvolution>(dm, 1, dim, dim);
+  PetscInt dim = subDomain.GetDimensions();
+  cellGaussianConv = std::make_shared<ablate::finiteVolume::stencil::GaussianConvolution>(subDM, 1, dim, dim);
 
 }
 
@@ -60,16 +120,20 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
                               ablate::domain::FieldLocation::SOL
                               };
 
+
+  ablate::domain::SubDomain& subDomain = flow.GetSubDomain();
   PetscInt i = 0;
   for (auto fieldName : fieldList) {
-    if (!(flow.GetSubDomain().ContainsField(fieldName))) {
+    if (!(subDomain.ContainsField(fieldName))) {
       throw std::runtime_error("ablate::finiteVolume::processes::IntSharp expects a "+ fieldName +" field to be defined.");
     }
-    const ablate::domain::Field field = flow.GetSubDomain().GetField(fieldName);
+    const ablate::domain::Field field = subDomain.GetField(fieldName);
     if (field.location != locationList[i++]) {
       throw std::runtime_error("ablate::finiteVolume::processes::IntSharp: "+ fieldName +" is in the incorrect location.");
     }
   }
+
+
 
   flow.RegisterPreStep([&](TS ts, ablate::solver::Solver &) { ablate::finiteVolume::processes::IntSharp::IntSharpPreStep(ts, flow); });
 
@@ -141,9 +205,11 @@ void SaveCellData(DM dm, const Vec vec, const char fname[255], const PetscInt id
 
 static PetscInt cnt = 0;
 
-void UpdateSolVec(ablate::domain::SubDomain& subDomain, ablate::domain::Range cellRange, DM vofDM, Vec vofVec, Vec vof0Vec) {
+
+void UpdateSolVec(ablate::domain::SubDomain& subDomain, ablate::domain::Range cellRange, DM vofDM, Vec vofVec) {
 
   // Values in SOL
+  const ablate::domain::Field &vofField = subDomain.GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
   const ablate::domain::Field &eulerField = subDomain.GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
   const ablate::domain::Field &densityVFField = subDomain.GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::DENSITY_VF_FIELD);
 
@@ -165,9 +231,8 @@ void UpdateSolVec(ablate::domain::SubDomain& subDomain, ablate::domain::Range ce
   const PetscScalar *auxArray;
   VecGetArrayRead(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
 
-  const PetscScalar *vofArray, *vof0Array;
+  const PetscScalar *vofArray;
   VecGetArrayRead(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetArrayRead(vof0Vec, &vof0Array) >> ablate::utilities::PetscUtilities::checkError;
 
 char fname[255];
 sprintf(fname, "old_%ld.txt", cnt);
@@ -178,9 +243,10 @@ FILE *f2 = fopen(fname, "w");
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     PetscInt cell = cellRange.GetPoint(c);
 
-    const PetscReal *newPhi, *oldPhi;
+    const PetscReal *newPhi;
+    PetscReal *oldPhi;
     DMPlexPointLocalRead(vofDM, cell, vofArray, &newPhi) >> ablate::utilities::PetscUtilities::checkError;
-    DMPlexPointLocalRead(vofDM, cell, vof0Array, &oldPhi) >> ablate::utilities::PetscUtilities::checkError;
+    xDMPlexPointLocalRef(solDM, cell, vofField.id, solArray, &oldPhi) >> ablate::utilities::PetscUtilities::checkError;
 
 PetscReal x[3];
 DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL);
@@ -203,11 +269,13 @@ DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL);
       xDMPlexPointLocalRead(auxDM, cell, gasEnergyField.id, auxArray, &internalEnergyG) >> ablate::utilities::PetscUtilities::checkError;
       xDMPlexPointLocalRead(auxDM, cell, liquidEnergyField.id, auxArray, &internalEnergyL) >> ablate::utilities::PetscUtilities::checkError;
 
+      // Updated VOF
+      *oldPhi = *newPhi;
+
       // Updated density*VOF
       PetscReal *densityVF;
       xDMPlexPointLocalRead(solDM, cell, densityVFField.id, solArray, &densityVF) >> ablate::utilities::PetscUtilities::checkError;
       *densityVF = (*newPhi)*(*densityG);
-
 
       PetscReal *euler;
       xDMPlexPointLocalRead(solDM, cell, eulerField.id, solArray, &euler) >> ablate::utilities::PetscUtilities::checkError;
@@ -229,7 +297,7 @@ DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL);
     }
 
 {
-  fprintf(f2, "%+e\t%+e\t%+e\t", x[0], x[1], *newPhi);
+  fprintf(f2, "%+e\t%+e\t%+e\t", x[0], x[1], *oldPhi);
   PetscReal *densityVF;
   xDMPlexPointLocalRead(solDM, cell, densityVFField.id, solArray, &densityVF) >> ablate::utilities::PetscUtilities::checkError;
   PetscReal *euler;
@@ -245,7 +313,6 @@ fclose(f2);
   VecRestoreArray(solVec, &solArray) >> ablate::utilities::PetscUtilities::checkError;
   VecRestoreArrayRead(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
   VecRestoreArrayRead(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArrayRead(vof0Vec, &vof0Array) >> ablate::utilities::PetscUtilities::checkError;
 }
 
 
@@ -255,30 +322,39 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStep(TS flo
   PetscFunctionReturn(ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(flowTS, solver, 0.0));
 }
 
-void ablate::finiteVolume::processes::IntSharp::MemoryHelper(const Vec baseVec, Vec *newVec, PetscScalar **newArray) {
-  VecDuplicate(baseVec, newVec) >> utilities::PetscUtilities::checkError;
+void ablate::finiteVolume::processes::IntSharp::MemoryHelper(PetscBool isLocalVec, Vec *newVec, PetscScalar **newArray) {
+
+  if (isLocalVec) DMGetLocalVector(subDM, newVec);
+  else DMGetGlobalVector(subDM, newVec);
   VecZeroEntries(*newVec) >> utilities::PetscUtilities::checkError;
   VecGetArray(*newVec, newArray) >> utilities::PetscUtilities::checkError;
-  vecList.push_back({*newVec, *newArray});
-}
-
-void ablate::finiteVolume::processes::IntSharp::MemoryHelper(const DM dm, PetscBool isLocalVec, Vec *newVec, PetscScalar **newArray) {
-
-  if (isLocalVec) DMCreateLocalVector(dm, newVec);
-  else DMCreateGlobalVector(dm, newVec);
-  VecZeroEntries(*newVec) >> utilities::PetscUtilities::checkError;
-  VecGetArray(*newVec, newArray) >> utilities::PetscUtilities::checkError;
-  vecList.push_back({*newVec, *newArray});
+  vecList.push_back({*newVec, *newArray, isLocalVec});
 }
 
 void ablate::finiteVolume::processes::IntSharp::MemoryHelper() {
   for (struct vecData data : vecList) {
     VecRestoreArray(data.vec, &data.array) >> ablate::utilities::PetscUtilities::checkError;
-    VecDestroy(&data.vec) >> ablate::utilities::PetscUtilities::checkError;
+    if (data.isLocal) {
+      DMRestoreLocalVector(subDM, &data.vec) >> ablate::utilities::PetscUtilities::checkError;
+    }
+    else {
+      DMRestoreGlobalVector(subDM, &data.vec) >> ablate::utilities::PetscUtilities::checkError;
+    }
   }
   vecList.clear();
 
 }
+
+
+/**************************************************/
+//   A note about vector creation
+//  For a 100x100 domain VecDuplicate is 91X faster than DMCreateLocalVector.
+//  DMGetLocalVector (after the initial vector creation) is 1600X faster than
+//  DMCreateLocalVector and 20X faster than VecDuplicate
+//
+//  For a 200x200 domain VecDuplicate is 133X faster than DMCreateLocalVector.
+//  DMGetLocalVector (after the initial vector creation) is 4300X faster than
+//  DMCreateLocalVector and 33X faster than VecDuplicate
 
 
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS flowTS, ablate::solver::Solver &solver, PetscReal stagetime) {
@@ -288,20 +364,17 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
 
   ablate::domain::SubDomain& subDomain = fvSolver.GetSubDomain();
 
+  ablate::domain::Range cellRange;
+  fvSolver.GetCellRangeWithoutGhost(cellRange);
+
   // Get the VOF data.
   const ablate::domain::Field vofField = subDomain.GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);
-  Vec vofVec;
-  DM vofDM;
-  IS vofIS;
-  PetscScalar *vofArray;
-  subDomain.GetFieldLocalVector(vofField, stagetime, &vofIS, &vofVec, &vofDM) >> utilities::PetscUtilities::checkError;
-  VecGetArray(vofVec, &vofArray) >> utilities::PetscUtilities::checkError;
-
-  Vec globVofVec;
-  PetscScalar *globVofArray;
-  MemoryHelper(vofDM, PETSC_FALSE, &globVofVec, &globVofArray);
-
-  DMLocalToGlobal(vofDM, vofVec, INSERT_VALUES, globVofVec) >> ablate::utilities::PetscUtilities::checkError;
+  DM vofDM = subDM;
+  Vec vofVecs[2] = {nullptr, nullptr};
+  PetscScalar *vofArrays[2] = {nullptr, nullptr};
+  GetFieldVectors(subDomain, &vofVecs[LOCAL], &vofVecs[GLOBAL]);
+  PetscCall(VecGetArray(vofVecs[LOCAL], &vofArrays[LOCAL]));
+  PetscCall(VecGetArray(vofVecs[GLOBAL], &vofArrays[GLOBAL]));
 
   // check for ghost cells
   DMLabel ghostLabel;
@@ -312,16 +385,6 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
   DMLabel regionLabel;
   PetscInt regionValue;
   ablate::domain::Region::GetLabel(solverRegion, subDomain.GetDM(), regionLabel, regionValue);
-
-  // Store the original values. Needed to update conserved variables
-  Vec vof0Vec;
-  PetscScalar *vof0Array;
-  MemoryHelper(vofVec, &vof0Vec, &vof0Array);
-
-
-  ablate::domain::Range faceRange, cellRange;
-  fvSolver.GetFaceRange(faceRange);
-  fvSolver.GetCellRangeWithoutGhost(cellRange);
 
   const PetscInt dim = subDomain.GetDimensions();
 
@@ -335,7 +398,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
   {
     char fname[255];
     sprintf(fname, "vof_%05d.txt", 0);
-    SaveCellData(vofDM, vofVec, fname, -1, 1, cellRange);
+    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
   }
 
   MPI_Comm comm = subDomain.GetComm();
@@ -348,7 +411,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
       const PetscInt cell = cellRange.GetPoint(c);
       PetscReal *vof;
-      DMPlexPointLocalRef(vofDM, cell, globVofArray, &vof) >> utilities::PetscUtilities::checkError;
+      PetscCall(DMPlexPointLocalRef(vofDM, cell, vofArrays[GLOBAL], &vof));
 
 //      if (*vof < vofRange[0] || *vof > vofRange[1]) continue;
 
@@ -362,7 +425,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
         PetscInt dx[3] = {0, 0, 0};
         dx[d] = 1;
         PetscReal g;
-        cellGaussianConv->Evaluate(cell, dx, vofDM, -1, vofArray, 0, 1, &g);
+        cellGaussianConv->Evaluate(cell, dx, vofDM, -1, vofArrays[LOCAL], 0, 1, &g);
 
         nrm += g*g;
       }
@@ -381,31 +444,35 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
 
     }
 
-    MPIU_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, comm) >> ablate::utilities::MpiUtilities::checkError;
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, comm));
 
 
-    DMGlobalToLocal(vofDM, globVofVec, INSERT_VALUES, vofVec) >> ablate::utilities::PetscUtilities::checkError;
+    PetscCall(DMGlobalToLocal(vofDM, vofVecs[GLOBAL], INSERT_VALUES, vofVecs[LOCAL]));
 
 
 if ((iter)%10==0) {
     char fname[255];
     sprintf(fname, "vof_%05ld.txt", iter);
-    SaveCellData(vofDM, vofVec, fname, -1, 1, cellRange);
+    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
     PetscPrintf(PETSC_COMM_WORLD, "%ld\t%e\n", iter, maxDiff);
 }
 
   }
 
 
-  UpdateSolVec(subDomain, cellRange, vofDM, vofVec, vof0Vec);
-
-
-  MemoryHelper();
-
-  VecRestoreArray(vofVec, &vofArray) >> utilities::PetscUtilities::checkError;
-  subDomain.RestoreFieldLocalVector(vofField, &vofIS, &vofVec, &vofDM) >> utilities::PetscUtilities::checkError;
   printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
   exit(0);
+
+  UpdateSolVec(subDomain, cellRange, vofDM, vofVecs[GLOBAL]);
+
+  fvSolver.RestoreRange(cellRange);
+
+  PetscCall(VecRestoreArray(vofVecs[LOCAL], &vofArrays[LOCAL]));
+  PetscCall(VecRestoreArray(vofVecs[GLOBAL], &vofArrays[GLOBAL]));
+  PetscCall(DMRestoreGlobalVector(subDM, &vofVecs[GLOBAL]));
+  PetscCall(DMRestoreLocalVector(subDM, &vofVecs[LOCAL]));
+
+
   PetscFunctionReturn(0);
 }
 
