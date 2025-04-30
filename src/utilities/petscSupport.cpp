@@ -1086,6 +1086,66 @@ PetscErrorCode DMPlexRestoreCommonPoints(DM dm, const PetscInt p1, const PetscIn
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+PetscErrorCode DMPlexGetPointsAtDepth(DM dm, const PetscInt p, const PetscInt depth, PetscInt *nCells, PetscInt *cellsOut[]) {
+
+    PetscInt pDepth;
+    PetscInt dStart, dEnd;
+    PetscInt n;
+    PetscInt st, nStar, *star = NULL;
+    PetscInt nc, *cells;
+    PetscBool useCone;
+
+    PetscFunctionBegin;
+
+    PetscCall(DMPlexGetPointDepth(dm, p, &pDepth));  // Depth of the points to get
+
+    if (pDepth==depth) {
+      *nCells = 1;
+      PetscCall(DMGetWorkArray(dm, 1, MPIU_INT, cellsOut));
+      *cellsOut[0] = p;
+      PetscFunctionReturn(PETSC_SUCCESS);
+    }
+
+
+    PetscCall(DMPlexGetDepthStratum(dm, depth, &dStart, &dEnd));  // Depth of the points to get
+
+    // Everything using this point-of-interest
+    useCone = (PetscBool)(depth < pDepth);
+    PetscCall(DMPlexGetTransitiveClosure(dm, p, useCone, &nStar, &star));
+
+    // Now get the number of points
+    nc = 0;
+    for (st = 0; st < nStar * 2; st += 2) {
+        if (star[st] >= dStart && star[st] < dEnd) {  // Only use the points corresponding to a vertex
+            ++nc;
+        }
+    }
+    *nCells = nc;
+
+    // Get the work array to store the cell IDs
+    PetscCall(DMGetWorkArray(dm, nc, MPIU_INT, cellsOut));
+    cells = *cellsOut;
+
+    // Now assign the cells
+    n = 0;
+    for (st = 0; st < nStar * 2; st += 2) {
+        if (star[st] >= dStart && star[st] < dEnd) {  // Only use the points corresponding to a vertex
+            cells[n++] = star[st];
+        }
+    }
+
+    PetscCall(DMPlexRestoreTransitiveClosure(dm, p, useCone, &nStar, &star));  // Restore the points
+
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode DMPlexRestorePointsAtDepth(DM dm, const PetscInt p, const PetscInt depth, PetscInt *nCells, PetscInt *cellsOut[]) {
+    PetscFunctionBegin;
+    if (nCells) *nCells = 0;
+    PetscCall(DMRestoreWorkArray(dm, 0, MPIU_INT, cellsOut));
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
 // Compute the corner surface area normal as defined in Morgan and Waltz with respect to a given vertex and an edge center
 // NOTE: This does NOT check if the vertex and cell are actually associated with each other.
 PetscErrorCode DMPlexCornerSurfaceAreaNormal(DM dm, const PetscInt v, const PetscInt c, PetscReal N[]) {

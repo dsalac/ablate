@@ -256,3 +256,20 @@ PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscIn
  */
 PetscErrorCode DMPlexPointGeometricData(DM dm, const PetscInt p, PetscReal *vol, PetscReal centroid[], PetscReal normal[]);
 
+/**
+ * Return all points at a given depth connected to the point-of-interest
+ * Inputs:
+ +    dm - The `DMPLEX`
+ *    p - Point of interest
+ *
+ * Outputs:
+ *    vol - Volume of the point
+ *    centroid - Center of the point
+ *    normal - Unit normal of the point
+ *
+ * Note: This is essentially a wrapper that uses the cell/face geometry vectors or DMPlexComputeCellGeometryFVM for vertex/edges
+ */
+PetscErrorCode DMPlexGetPointsAtDepth(DM dm, const PetscInt p, const PetscInt depth, PetscInt *nCells, PetscInt *cellsOut[]);
+PetscErrorCode DMPlexRestorePointsAtDepth(DM dm, const PetscInt p, const PetscInt depth, PetscInt *nCells, PetscInt *cellsOut[]);
+
+
