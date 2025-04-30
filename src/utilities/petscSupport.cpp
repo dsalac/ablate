@@ -254,10 +254,7 @@ PetscErrorCode DMPlexPointGeometricData(DM dm, const PetscInt p, PetscReal *vol,
         Vec cellGeomVec = NULL;
         const PetscScalar* cellGeomArray;
         PetscFVCellGeom* cg;
-        PetscObject cellgeomobj;
-        PetscCall(PetscObjectQuery((PetscObject)dm, "DMPlex_cellgeom_fvm", &cellgeomobj));
-        PetscCheck(cellgeomobj, PETSC_COMM_SELF, PETSC_ERR_PLIB, "FVM data must be composed to the DM before DMPlexGetPointGeometricData can be used.");
-        cellGeomVec = (Vec)cellgeomobj;
+        PetscCall(DMPlexGetDataFVM(dm, NULL, &cellGeomVec, NULL, NULL));
         PetscCall(VecGetDM(cellGeomVec, &dmCell));
         PetscCall(VecGetArrayRead(cellGeomVec, &cellGeomArray));
         PetscCall(DMPlexPointLocalRead(dmCell, p, cellGeomArray, &cg));
@@ -272,10 +269,7 @@ PetscErrorCode DMPlexPointGeometricData(DM dm, const PetscInt p, PetscReal *vol,
         Vec faceGeomVec;
         const PetscScalar* faceGeomArray;
         PetscFVFaceGeom* fg;
-        PetscObject facegeomobj;
-        PetscCall(PetscObjectQuery((PetscObject)dm, "DMPlex_facegeom_fvm", &facegeomobj));
-        PetscCheck(facegeomobj, PETSC_COMM_SELF, PETSC_ERR_PLIB, "FVM data must be composed to the DM before DMPlexGetPointGeometricData can be used.");
-        faceGeomVec = (Vec)facegeomobj;
+        PetscCall(DMPlexGetDataFVM(dm, NULL, NULL, &faceGeomVec, NULL));
         PetscCall(VecGetDM(faceGeomVec, &dmFace));
         PetscCall(VecGetArrayRead(faceGeomVec, &faceGeomArray));
         PetscCall(DMPlexPointLocalRead(dmFace, p, faceGeomArray, &fg));
