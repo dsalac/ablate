@@ -254,5 +254,5 @@ PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscIn
  *
  * Note: This is essentially a wrapper that uses the cell/face geometry vectors or DMPlexComputeCellGeometryFVM for vertex/edges
  */
-PetscErrorCode DMPlexGetPointGeometricData(DM dm, const PetscInt p, PetscReal *vol, PetscReal centroid[], PetscReal normal[]);
+PetscErrorCode DMPlexPointGeometricData(DM dm, const PetscInt p, PetscReal *vol, PetscReal centroid[], PetscReal normal[]);
 
