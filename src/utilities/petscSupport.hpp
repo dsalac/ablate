@@ -272,4 +272,28 @@ PetscErrorCode DMPlexPointGeometricData(DM dm, const PetscInt p, PetscReal *vol,
 PetscErrorCode DMPlexGetPointsAtDepth(DM dm, const PetscInt p, const PetscInt depth, PetscInt *nCells, PetscInt *cellsOut[]);
 PetscErrorCode DMPlexRestorePointsAtDepth(DM dm, const PetscInt p, const PetscInt depth, PetscInt *nCells, PetscInt *cellsOut[]);
 
+typedef enum {
+  DMPLEX_NEIGHBOR_MAXLEVELS,
+  DMPLEX_NEIGHBOR_MAXDIST,
+  DMPLEX_NEIGHBOR_MINCELLS
+} PlexNeighborType;
+
+/**
+ * Return the list of neighboring points to p
+ * dm - The mesh
+ * p - Center point
+ * fac - Value associated with the stopping criteria
+ * type - The PlexNeighborType giving the stopping criteria
+ * searchDepth - Depth of the connecting points
+ * returnDepth - Depth of the points to return
+ * nCells - Number of neighboring cells/vertices
+ * cells - The list of neighboring cell/vertices IDs
+ *
+ * Note: This is ~5-6 times faster than the old GetNeighbors call
+ *        Additionally, the behavior of DMPLEX_NEIGHBOR_MINCELLS has changed. Previously the closest minCells was returned.
+ *        Now the iteration is run until minCells is exceeded and all of those are returned.
+ */
+PetscErrorCode DMPlexRestoreNeighborsNew(DM dm, const PetscInt p, const PetscReal fac, const PlexNeighborType type, const PetscInt searchDepth, const PetscInt returnDepth, PetscInt *nCells, PetscInt **cells);
+PetscErrorCode DMPlexGetNeighborsNew(DM dm, const PetscInt p, const PetscReal fac, const PlexNeighborType type, const PetscInt searchDepth, const PetscInt returnDepth, PetscInt *nCells, PetscInt **cells);
+
 

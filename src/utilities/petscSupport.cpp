@@ -472,8 +472,7 @@ PetscErrorCode DMPlexRestoreNeighbors(DM dm, PetscInt p, PetscInt maxLevels, Pet
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscReal maxDist, PetscInt numberCells, PetscBool useSharedFaces, PetscBool returnNeighborVertices, PetscInt *nCells,
-                                  PetscInt **cells) {
+PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscReal maxDist, PetscInt numberCells, PetscBool useSharedFaces, PetscBool returnNeighborVertices, PetscInt *nCells, PetscInt **cells) {
     const PetscInt maxLevelListSize = 100000;
     const PetscInt maxListSize = 100000;
     PetscInt numNew, nLevelList[2];
@@ -633,6 +632,183 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
 
     PetscFunctionReturn(PETSC_SUCCESS);
 }
+
+
+
+PetscBool __DMPlexGetNeighbors_ReturnsTrue(DM dm, const PetscReal x0[], const PetscInt p, const PetscReal maxDist2) {
+  return PETSC_TRUE;
+}
+
+
+PetscBool __DMPlexGetNeighbors_CheckDistance(DM dm, const PetscReal x0[], const PetscInt p, const PetscReal maxDist2) {
+
+  PetscInt dim;
+  const PetscReal *L;
+
+  DMGetDimension(dm, &dim);
+  DMGetPeriodicity(dm, NULL, NULL, &L);
+
+  PetscReal x[dim];
+
+  DMPlexPointGeometricData(dm, p, NULL, x, NULL);
+
+  PetscReal r = 0;
+  for (PetscInt d = 0; d < dim; ++d) {
+    PetscReal dx = PetscAbsReal(x0[d] - x[d]);  // Distance
+    if(L && L[d] > 0) dx = PetscMin(dx, PetscAbsReal(dx - L[d])); // Account for periodicity
+    r += PetscSqr(dx);
+  }
+
+  return (PetscBool)(r <= maxDist2);
+
+}
+
+PetscErrorCode __DMPlexGetNeighbors_Search(DM dm, PetscInt p, const PetscInt searchDepth, const PetscInt returnDepth, PetscInt *numAdd, PetscInt addList[]) {
+  PetscFunctionBegin;
+
+  PetscInt nSearch, *sList;
+  PetscCall(DMPlexGetPointsAtDepth(dm, p, searchDepth, &nSearch, &sList));
+
+  PetscInt n = 0;
+  for (PetscInt s = 0; s < nSearch; ++s) {
+    PetscInt nNew, *nList;
+    PetscCall(DMPlexGetPointsAtDepth(dm, sList[s], returnDepth, &nNew, &nList));
+    PetscCall(PetscArraycpy(&addList[n], nList, nNew));
+    n += nNew;
+    PetscCall(DMPlexRestorePointsAtDepth(dm, sList[s], returnDepth, &nNew, &nList));
+  }
+  PetscCall(DMPlexRestorePointsAtDepth(dm, p, searchDepth, &nSearch, &sList));
+
+  *numAdd = n;
+  PetscCall(PetscSortRemoveDupsInt(numAdd, addList));
+
+  PetscFunctionReturn(PETSC_SUCCESS);
+
+}
+
+PetscErrorCode DMPlexGetNeighborsNew(DM dm, const PetscInt p, const PetscReal fac, const PlexNeighborType type, const PetscInt searchDepth, const PetscInt returnDepth, PetscInt *nCells, PetscInt **cells) {
+    const PetscInt maxListSize = 100000;
+    PetscInt numNew = -1, nLevelList[2] = {-1, -1}, n = -1;
+    PetscInt *addList = NULL, *levelList[2] = {NULL, NULL}, *list = NULL;
+    PetscInt currLevel = -1, prevLevel = -1;
+    PetscScalar x0[3] = {0, 0, 0};
+
+    PetscInt dim = -1;
+    PetscReal maxDist2 = PETSC_MAX_REAL; // Square of the maximum distance
+    PetscInt maxLevels = PETSC_MAX_INT, minCells = PETSC_MAX_INT;
+    PetscBool (*distFunc)(DM, const PetscReal[], const PetscInt, const PetscReal) = NULL;
+
+    PetscFunctionBegin;
+
+    PetscCheck(returnDepth!=searchDepth, PETSC_COMM_SELF, PETSC_ERR_ARG_INCOMP, "Return and search depth can not be the same.");
+
+    switch (type) {
+      case DMPLEX_NEIGHBOR_MAXDIST:
+      {
+        maxDist2 = PetscSqr(fac) + PETSC_SMALL;
+        distFunc = &__DMPlexGetNeighbors_CheckDistance;
+        break;
+      }
+      case DMPLEX_NEIGHBOR_MAXLEVELS:
+      {
+        // If p is in the return depth then increase the maximum levels by one as the initial
+        //    list will just be the point p
+        PetscInt pDepth = -1;
+        PetscCall(DMPlexGetPointDepth(dm, p, &pDepth));
+        maxLevels = (PetscInt)fac + (pDepth==returnDepth);
+        distFunc = &__DMPlexGetNeighbors_ReturnsTrue;
+        break;
+      }
+      case DMPLEX_NEIGHBOR_MINCELLS:
+      {
+        minCells = (PetscInt)fac;
+        distFunc = &__DMPlexGetNeighbors_ReturnsTrue;
+        break;
+      }
+    }
+
+    PetscCall(DMGetDimension(dm, &dim));
+    PetscCall(DMPlexPointGeometricData(dm, p, NULL, x0, NULL));  // Center of the cell-of-interest
+
+
+    // If there are no cells of type DM_POLYTOPE_FV_GHOST then set this to the maximum possible integer number to make comparisions easy
+    // If the return depth is not a cell then this will just be the maximum possible integer
+    PetscInt boundaryCellStart;
+    PetscCall(DMPlexGetCellTypeStratum(dm, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr));
+    boundaryCellStart = (returnDepth==dim && boundaryCellStart > -1) ? boundaryCellStart : PETSC_MAX_INT;
+
+    // Get the work arrays
+    PetscCall(DMGetWorkArray(dm, maxListSize, MPIU_INT, &addList));
+    PetscCall(DMGetWorkArray(dm, maxListSize, MPIU_INT, &levelList[0]));
+    PetscCall(DMGetWorkArray(dm, maxListSize, MPIU_INT, &levelList[1]));
+    PetscCall(DMGetWorkArray(dm, maxListSize, MPIU_INT, &list));
+
+
+    // Get the initial set of neighboring points as those in the return depth connected to p
+    currLevel = 0; // Current level
+    PetscInt nc, *cList;
+    PetscCall(DMPlexGetPointsAtDepth(dm, p, returnDepth, &nc, &cList));
+    PetscCall(PetscArraycpy(list, cList, nc));
+    n = nc;
+    PetscCall(DMPlexRestorePointsAtDepth(dm, p, returnDepth, &nc, &cList));
+    PetscCall(PetscSortInt(n, list));
+
+    PetscCall(PetscArraycpy(levelList[currLevel], list, n));
+    nLevelList[currLevel] = n;
+
+
+    // When the number of cells added at a particular level is zero then terminate the loop. This is for the case where
+    // maxLevels is set very large but all cells within the maximum distance have already been found.
+    PetscInt level = 0;
+    while (level+1 < maxLevels && n < minCells && nLevelList[currLevel] > 0) {
+        ++level;
+
+        // This will alternate between the levelLists
+        currLevel = level % 2;
+        prevLevel = (level + 1) % 2;
+
+        nLevelList[currLevel] = 0;
+        for (PetscInt i = 0; i < nLevelList[prevLevel]; ++i) {  // Iterate over each of the locations on the prior level
+          PetscCall(__DMPlexGetNeighbors_Search(dm, levelList[prevLevel][i], searchDepth, returnDepth, &numNew, addList));
+
+          for (PetscInt j = 0; j < numNew; ++j) {
+            if (addList[j] < boundaryCellStart && distFunc(dm, x0, addList[j], maxDist2)) {
+              levelList[currLevel][nLevelList[currLevel]++] = addList[j];
+            }
+          }
+        }
+        PetscCall(PetscSortRemoveDupsInt(&nLevelList[currLevel], levelList[currLevel]));
+
+        // This removes any cells which are already in the list. No point in re-doing the search for those.
+        PetscCall(PetscSortedArrayComplement(n, list, &nLevelList[currLevel], levelList[currLevel]));
+
+        PetscCall(PetscArraycpy(&list[n], levelList[currLevel], nLevelList[currLevel]));
+        n += nLevelList[currLevel];
+
+        PetscCall(PetscIntSortSemiOrdered(n, list));
+    }
+
+    PetscCall(DMRestoreWorkArray(dm, maxListSize, MPIU_INT, &addList));
+    PetscCall(DMRestoreWorkArray(dm, maxListSize, MPIU_INT, &levelList[0]));
+    PetscCall(DMRestoreWorkArray(dm, maxListSize, MPIU_INT, &levelList[1]));
+
+
+    PetscCall(DMGetWorkArray(dm, n, MPIU_INT, cells));
+    PetscCall(PetscArraycpy(*cells, list, n));
+    *nCells = n;
+
+    PetscCall(DMRestoreWorkArray(dm, maxListSize, MPIU_INT, &list));
+
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+PetscErrorCode DMPlexRestoreNeighborsNew(DM dm, const PetscInt p, const PetscReal fac, const PlexNeighborType type, const PetscInt searchDepth, const PetscInt returnDepth, PetscInt *nCells, PetscInt **cells) {
+    PetscFunctionBegin;
+    if (nCells) *nCells = 0;
+    PetscCall(DMRestoreWorkArray(dm, 0, MPIU_INT, cells));
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
 
 // Return the number of vertices associated with a given cell using the polytope.
 PetscErrorCode DMPlexCellGetNumVertices(DM dm, const PetscInt p, PetscInt *nv) {
