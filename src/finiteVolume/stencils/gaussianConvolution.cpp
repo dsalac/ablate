@@ -3,10 +3,7 @@
 #include "utilities/petscSupport.hpp"
 #include "utilities/mathUtilities.hpp"
 #include "domain/fieldAccessor.hpp"
-//#include "levelSetUtilities.hpp"
 #include "utilities/constants.hpp"
-
-
 
 using namespace ablate::finiteVolume::stencil;
 
@@ -21,18 +18,17 @@ using namespace ablate::finiteVolume::stencil;
 // sigmaFactor - The standard deviation will be sigmaFactor*h. Recommendation is sigmaFactor = 1.0;
 // pointLoc - The depth or height of the points where the convolution will be calculated
 // d_or_h - Indicates if pointLoc is the depth or height
-GaussianConvolution::GaussianConvolution(DM geomDM, const PetscReal sigmaFactor, const PetscInt pointLoc, DepthOrHeight d_or_h) : geomDM(geomDM) {
+GaussianConvolution::GaussianConvolution(DM geomDM, const PetscReal sigmaFactor, const PetscInt evalDepth, const PetscInt dataDepth) : geomDM(geomDM), dataDepth(dataDepth) {
 
-  Vec faceGeomVec;
-  DMPlexComputeGeometryFVM(geomDM, &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
-  VecDestroy(&faceGeomVec);
+  PetscInt dim;
+  DMGetDimension(geomDM, &dim);
 
-  if (d_or_h == GaussianConvolution::DepthOrHeight::HEIGHT) {
-    DMPlexGetHeightStratum(geomDM, pointLoc, &rangeStart, &rangeEnd) >> utilities::PetscUtilities::checkError;
+  if (dataDepth!=dim) {
+    std::runtime_error("GaussianConvolution really need to be re-evaluated for non-cell based data. There is no `volume` in the traditional sense.");
   }
-  else {
-    DMPlexGetDepthStratum(geomDM, pointLoc, &rangeStart, &rangeEnd) >> utilities::PetscUtilities::checkError;
-  }
+
+  DMPlexGetDepthStratum(geomDM, evalDepth, &rangeStart, &rangeEnd) >> utilities::PetscUtilities::checkError;
+
   PetscInt nRange = rangeEnd - rangeStart;
 
   PetscMalloc4(nRange, &nCellList, nRange, &cellList, nRange, &cellWeights, nRange, &cellDist) >> utilities::PetscUtilities::checkError;
@@ -54,9 +50,6 @@ GaussianConvolution::GaussianConvolution(DM geomDM, const PetscReal sigmaFactor,
   h *= 2.0;
   PetscReal sigma = sigmaFactor*h;
 
-  PetscInt dim;
-  DMGetDimension(geomDM, &dim);
-
   fac = PetscSqrtReal(2.0*PETSC_PI)*sigma;
   fac = PetscPowRealInt(fac, -dim);
   sigmaSqr = PetscSqr(sigma);
@@ -66,19 +59,34 @@ GaussianConvolution::GaussianConvolution(DM geomDM, const PetscReal sigmaFactor,
   const PetscReal *maxCell, *L;
   DMGetPeriodicity(geomDM, &maxCell, NULL, &L) >> ablate::utilities::PetscUtilities::checkError;
 
-  for (PetscInt d = 0; d < dim; ++d) {
-    if (maxCell[d] > 0.0) {
-      // Assume that we will be using all cells within 3 standard deviations of a center point.
-      // Make the maximum distance check twice that
-      maxDist[d] = 6*sigmaFactor*maxCell[d];
-      sideLen[d] = L[d];
+  if (maxCell) { // If maxCell==NULL then there are no periodic sides
+    for (PetscInt d = 0; d < dim; ++d) {
+      if (maxCell[d] > 0.0) {
+        // Assume that we will be using all cells within 3 standard deviations of a center point.
+        // Make the maximum distance check twice that
+        maxDist[d] = 6*sigmaFactor*maxCell[d];
+        sideLen[d] = L[d];
+      }
     }
   }
+
+  switch (dataDepth) {
+    case 0: // vertices
+    case 1: // edges
+      searchDepth = dim;
+      break;
+    case 2: // faces
+    case 3: // cells
+      searchDepth = 0;
+      break;
+    default:
+      throw std::runtime_error("Unknown data depth");
+  }
+
 }
 
 GaussianConvolution::~GaussianConvolution() {
 
-  if (cellGeomVec) VecDestroy(&cellGeomVec) >> utilities::PetscUtilities::checkError;
 
   for (PetscInt c = rangeStart; c < rangeEnd; ++c) {
     PetscFree3(cellList[c], cellWeights[c], cellDist[c]) >> utilities::PetscUtilities::checkError;
@@ -132,39 +140,33 @@ PetscReal derivativeFactor(const PetscReal *x, const PetscReal sigmaSqr, const P
 
 
 // Build the list of cells needed for point p.
+// Note that this will return boundary cells
 void GaussianConvolution::BuildList(const PetscInt p) {
 
-  PetscInt           dim;
-  DM                 dmCell;
-  const PetscScalar* cellGeomArray;
-  PetscReal          x0[3];
+  PetscInt  dim;
+  PetscReal x0[3];
+  PetscInt  nLocalCellList, *localCellList;
 
+  DMGetDimension(geomDM, &dim);
 
-  DMGetDimension(geomDM, &dim) >> ablate::utilities::PetscUtilities::checkError;
-  VecGetDM(cellGeomVec, &dmCell) >> utilities::PetscUtilities::checkError;
-  VecGetArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
+  DMPlexGetNeighborsNew(geomDM, p, 4*PetscSqrtReal(sigmaSqr), DMPLEX_NEIGHBOR_MAXDIST, searchDepth, dataDepth, &nLocalCellList, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
 
-  DMPlexComputeCellGeometryFVM(geomDM, p, NULL, x0, NULL) >> utilities::PetscUtilities::checkError;
-
-  PetscInt nLocalCellList, *localCellList;
-
-  DMPlexGetNeighbors(geomDM, p, -1, 8*PetscSqrtReal(sigmaSqr), -1, PETSC_FALSE, PETSC_FALSE, &nLocalCellList, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
 
 
   PetscMalloc3(nLocalCellList, &cellList[p], nLocalCellList, &cellWeights[p], dim*nLocalCellList, &cellDist[p]) >> ablate::utilities::PetscUtilities::checkError;
 
-
+  DMPlexPointGeometricData(geomDM, p, NULL, x0, NULL) >> utilities::PetscUtilities::checkError;
   PetscInt nnz = 0; // The number of non-zero entries
   PetscReal totalWt = 0.0;
   for (PetscInt n = 0; n < nLocalCellList; ++n) {
     PetscInt neighborCell = localCellList[n];
-    PetscFVCellGeom* cg;
-    DMPlexPointLocalRead(dmCell, neighborCell, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
+    PetscReal vol, x[3];
+    DMPlexPointGeometricData(geomDM, neighborCell, &vol, x, NULL) >> utilities::PetscUtilities::checkError;
 
     // Compute the distance, taking into account periodicity
     PetscReal r = 0.0, dist[3] = {0.0, 0.0, 0.0};
     for (PetscInt d = 0; d < dim; ++d) {
-      dist[d] = cg->centroid[d] - x0[d];
+      dist[d] = x[d] - x0[d];
       if (dist[d] > maxDist[d]){
         dist[d] += sideLen[d];
       }
@@ -174,7 +176,7 @@ void GaussianConvolution::BuildList(const PetscInt p) {
       r += PetscSqr(dist[d]);
     }
 
-    PetscReal wt = (cg->volume)*fac*PetscExpReal(-0.5*r/sigmaSqr);
+    PetscReal wt = (vol)*fac*PetscExpReal(-0.5*r/sigmaSqr);
 
     if (wt > PETSC_SMALL) {
       cellList[p][nnz] = neighborCell;
@@ -185,11 +187,11 @@ void GaussianConvolution::BuildList(const PetscInt p) {
     }
   }
   nCellList[p] = nnz;
-//  printf("%+e\n", totalWt);
+
   for (PetscInt n = 0; n < nnz; ++n) cellWeights[p][n] /= totalWt;
 
-  DMPlexRestoreNeighbors(geomDM, p, -1, -1, -1, PETSC_FALSE, PETSC_FALSE, &nLocalCellList, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
-  VecRestoreArrayRead(cellGeomVec, &cellGeomArray) >> utilities::PetscUtilities::checkError;
+  DMPlexRestoreNeighborsNew(geomDM, p, 4*PetscSqrtReal(sigmaSqr), DMPLEX_NEIGHBOR_MAXDIST, searchDepth, dataDepth, &nLocalCellList, &localCellList) >> ablate::utilities::PetscUtilities::checkError;
+
 
 }
 
@@ -226,7 +228,6 @@ PetscInt GaussianConvolution::GetCellList(const PetscInt p, const PetscInt **cel
 // vals - Smoothed values
 void GaussianConvolution::Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal *vals) {
 
-
   if (p < rangeStart || p >= rangeEnd) {
     throw std::runtime_error("Attempting to calculate a gaussian convolution at a point outside of the specified range.");
   }
@@ -242,6 +243,10 @@ void GaussianConvolution::Evaluate(const PetscInt p, const PetscInt dx[], DM dat
 
   for (PetscInt i = 0; i < nCellList[p]; ++i) {
     PetscInt cell = cellList[p][i];
+
+    PetscReal vol, x[3];
+    DMPlexPointGeometricData(geomDM, cell, &vol, x, NULL) >> utilities::PetscUtilities::checkError;
+
     const PetscScalar *data;
     xDMPlexPointLocalRead(dataDM, cell, fid, array, &data);
 

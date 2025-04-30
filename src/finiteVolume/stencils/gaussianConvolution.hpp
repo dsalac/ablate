@@ -25,9 +25,6 @@ namespace ablate::finiteVolume::stencil {
       // Factor used to multipy the exponential
       PetscReal fac = 0.0;
 
-      // Used for cell-centers
-      Vec cellGeomVec = nullptr;
-
       // List of cells necessary to do the integration.
       PetscInt **cellList = nullptr;
       PetscInt *nCellList = nullptr;
@@ -42,6 +39,9 @@ namespace ablate::finiteVolume::stencil {
       PetscReal maxDist[3] = {PETSC_MAX_REAL, PETSC_MAX_REAL, PETSC_MAX_REAL};
       PetscReal sideLen[3] = {0, 0, 0};
 
+      const PetscInt dataDepth = -1;
+      PetscInt searchDepth = -1;
+
 
     public:
       void Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal *vals);
@@ -51,9 +51,7 @@ namespace ablate::finiteVolume::stencil {
 
       void FormAllLists();
 
-      typedef enum { DEPTH, HEIGHT } DepthOrHeight;
-
-      GaussianConvolution(DM geomDM, const PetscReal sigmaFactor, const PetscInt loc, DepthOrHeight doh);
+      GaussianConvolution(DM geomDM, const PetscReal sigmaFactor, const PetscInt evalDepth, const PetscInt dataDepth);
 
 
 
