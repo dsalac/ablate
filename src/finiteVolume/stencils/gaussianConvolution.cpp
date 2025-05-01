@@ -156,6 +156,7 @@ void GaussianConvolution::BuildList(const PetscInt p) {
   PetscMalloc3(nLocalCellList, &cellList[p], nLocalCellList, &cellWeights[p], dim*nLocalCellList, &cellDist[p]) >> ablate::utilities::PetscUtilities::checkError;
 
   DMPlexPointGeometricData(geomDM, p, NULL, x0, NULL) >> utilities::PetscUtilities::checkError;
+
   PetscInt nnz = 0; // The number of non-zero entries
   PetscReal totalWt = 0.0;
   for (PetscInt n = 0; n < nLocalCellList; ++n) {
@@ -168,10 +169,10 @@ void GaussianConvolution::BuildList(const PetscInt p) {
     for (PetscInt d = 0; d < dim; ++d) {
       dist[d] = x[d] - x0[d];
       if (dist[d] > maxDist[d]){
-        dist[d] += sideLen[d];
+        dist[d] -= sideLen[d];
       }
       else if(dist[d] < -maxDist[d]){
-        dist[d] -= sideLen[d];
+        dist[d] += sideLen[d];
       }
       r += PetscSqr(dist[d]);
     }
