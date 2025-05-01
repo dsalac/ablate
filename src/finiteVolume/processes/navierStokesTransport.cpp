@@ -60,11 +60,11 @@ void ablate::finiteVolume::processes::NavierStokesTransport::Setup(ablate::finit
 
         if (diffusionData.muFunction.function || diffusionData.kFunction.function) {
             // Register the euler diffusion source terms
-//            flow.RegisterRHSFunction(DiffusionFlux,
-//                                     &diffusionData,
-//                                     CompressibleFlowFields::EULER_FIELD,
-//                                     {CompressibleFlowFields::EULER_FIELD},
-//                                     {CompressibleFlowFields::TEMPERATURE_FIELD, CompressibleFlowFields::VELOCITY_FIELD});
+            flow.RegisterRHSFunction(DiffusionFlux,
+                                     &diffusionData,
+                                     CompressibleFlowFields::EULER_FIELD,
+                                     {CompressibleFlowFields::EULER_FIELD},
+                                     {CompressibleFlowFields::TEMPERATURE_FIELD, CompressibleFlowFields::VELOCITY_FIELD});
         }
 
         // Check to see if time step calculations should be added for viscosity or conduction
