@@ -26,7 +26,7 @@ class CellInterpolant {
         DiscontinuousFluxFunction function;
         void* context;
 
-        PetscInt field;
+        std::vector<PetscInt> updateFields;
         std::vector<PetscInt> inputFields;
         std::vector<PetscInt> auxFields;
     };
@@ -49,6 +49,9 @@ class CellInterpolant {
 
     //! store the dmGrad, these are specific to this finite volume solver
     std::vector<DM> gradientCellDms;
+
+    // Maximum value for gradients for the multi-direction flux limiter
+    const double maxLimGrad;
 
     /**
      * Function to compute the flux source terms
@@ -78,6 +81,19 @@ class CellInterpolant {
     void ComputeFieldGradients(const domain::Field& field, Vec xLocalVec, Vec& gradLocVec, DM& dmGrad, Vec cellGeomVec, Vec faceGeomVec, const ablate::domain::Range& faceRange,
                                const ablate::domain::Range& cellRange);
 
+    /**
+     * Helper function to compute the gradient at each cell
+     * @param dm
+     * @param regionLabel
+     * @param regionValue
+     * @param fvm
+     * @param faceGeometry
+     * @param cellGeometry
+     * @param dmGrad
+     * @return
+     */
+    static PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionValue, PetscFV fvm, Vec faceGeometry, Vec cellGeometry, DM* dmGrad);
+
    public:
     /**
      * Create an instance of the cell interpolant for the current solver region
@@ -86,7 +102,7 @@ class CellInterpolant {
      * @param faceGeomVec
      * @param cellGeomVec
      */
-    CellInterpolant(std::shared_ptr<ablate::domain::SubDomain> subDomain, const std::shared_ptr<domain::Region>& solverRegion, Vec faceGeomVec, Vec cellGeomVec);
+    CellInterpolant(std::shared_ptr<ablate::domain::SubDomain> subDomain, const std::shared_ptr<domain::Region>& solverRegion, Vec faceGeomVec, Vec cellGeomVec, double maxGradIn);
     ~CellInterpolant();
 
     /**
