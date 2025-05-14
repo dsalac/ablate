@@ -4,14 +4,12 @@
 #include <petsc.h>
 #include <memory>
 #include <vector>
-#include "domain/range.hpp"
-#include "finiteVolume/fluxCalculator/fluxCalculator.hpp"
-#include "flowProcess.hpp"
 #include "process.hpp"
-#include "solver/solver.hpp"
-#include "twoPhaseEulerAdvection.hpp"
+#include "domain/range.hpp"
+#include "domain/reverseRange.hpp"
 #include "finiteVolume/stencils/gaussianConvolution.hpp"
-#include "finiteVolume/stencils/stencil.hpp"
+#include "solver/solver.hpp"
+
 
 namespace ablate::finiteVolume::processes {
 
@@ -24,10 +22,13 @@ class IntSharp : public Process, public ablate::utilities::Loggable<IntSharp> {
     const PetscReal phiRange[2] = {1.e-6, 1.0 - 1.e-6};
 
     void GetFieldVectors(const ablate::domain::SubDomain& subDomain, Vec *subLocalVec, Vec *subGlobalVec);
-//    void RestoreFieldVectors(const ablate::domain::SubDomain& subDomain, Vec *subLocalVec, Vec *subGlobalVec);
+
     DM subDM = nullptr;
     IS subIS = nullptr;
     enum VecLoc { LOCAL, GLOBAL};
+
+    ablate::domain::Range cellRange = {};
+    ablate::domain::ReverseRange reverseCellRange = {};
 
 
 
