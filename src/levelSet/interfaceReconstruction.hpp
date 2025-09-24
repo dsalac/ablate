@@ -25,7 +25,7 @@ namespace ablate::levelSet {
 
     private:
 
-      const PetscInt nLevels = 12;
+      const PetscInt nLevels = 20;
 
       enum VecLoc { LOCAL , GLOBAL };
 
@@ -110,12 +110,14 @@ namespace ablate::levelSet {
       void Smooth(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2], Vec fVec[2]);
 
       void FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
-      void FMM_CellBased(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
+      void FMM_Hybrid(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile) ;
+      void FMM_CellBased(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile);
       void FMM_CellBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
       void FMM_CellBased_V3(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
-      void FMM_VertexBased_V1(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
-      void FMM_VertexBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
+      void FMM_VertexBased_V1(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile);
+      void FMM_VertexBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2]);
       PetscInt FFM_VertexBased_Solve(const PetscInt dim, const PetscInt minVerts, const PetscReal x0[], const PetscInt nVert, PetscInt verts[], PetscScalar *updatedVertex, PetscScalar *lsArray, PetscReal *updatedLS);
+      PetscInt FFM_VertexBased_SolveModified(const PetscInt dim, const PetscInt minVerts, const PetscReal x0[], const PetscInt nVert, PetscInt verts[], PetscScalar *updatedVertex, PetscScalar *lsArray, PetscReal *updatedLS, const PetscInt *vertMask, const PetscInt currentLevel);
 
 
 
@@ -130,7 +132,18 @@ namespace ablate::levelSet {
 
       // Given a cell-centered VOF field compute the level-set field
       void ToLevelSet(DM vofDM, Vec vofVec, const ablate::domain::Field vofField);
+      
+      PetscScalar LScircle(const PetscReal* x, const PetscInt dim);
+      PetscBool CutCellfromLS(DM aux_dm, const PetscInt point, const ablate::domain::Field *levelSetField, Vec auxVector);
+      void arbit_interface(DM dm, const ablate::domain::Field levelSetField, Vec auxVec);
+      PetscScalar EllipseEq(const PetscReal* x, PetscScalar theta, PetscScalar a, PetscScalar b, PetscScalar* df, PetscScalar* d2f);
+      PetscScalar LSellipse(const PetscReal* x, const PetscInt dim);
+      PetscScalar Newton(const PetscReal* x, void* ctx);
 
+  };
+  
+  struct EllipseCtx {
+    PetscScalar a, b;
   };
 
 

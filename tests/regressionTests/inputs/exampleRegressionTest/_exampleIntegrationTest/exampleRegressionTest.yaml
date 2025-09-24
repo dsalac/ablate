@@ -1,0 +1,18 @@
+---
+test:
+  name: exampleRegressionTest
+  assert: inputs/exampleRegressionTest/expectedOutput.txt
+environment:
+  title: _exampleIntegrationTest
+  tagDirectory: false
+arguments: {}
+timestepper:
+  arguments: {}
+  domain: !<!ablate::domain::BoxMesh>
+    name: simpleBoxField
+    faces: [12, 12]
+    lower: [0, 0]
+    upper: [1, 1]
+    modifiers: []
+    fields: []
+solvers: []
