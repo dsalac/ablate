@@ -25,7 +25,7 @@ namespace ablate::levelSet {
 
     private:
 
-      const PetscInt nLevels = 20;
+      const PetscInt nLevels = 40;
 
       enum VecLoc { LOCAL , GLOBAL };
 
@@ -111,15 +111,17 @@ namespace ablate::levelSet {
 
       void FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]);
       void FMM_Hybrid(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile) ;
+      void FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], Vec xVec[2], Vec yVec[2], FILE *animFile) ;
       void FMM_CellBased(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile);
       void FMM_CellBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
       void FMM_CellBased_V3(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2]);
       void FMM_VertexBased_V1(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile);
       void FMM_VertexBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2]);
-      PetscInt FFM_VertexBased_Solve(const PetscInt dim, const PetscInt minVerts, const PetscReal x0[], const PetscInt nVert, PetscInt verts[], PetscScalar *updatedVertex, PetscScalar *lsArray, PetscReal *updatedLS);
+      PetscInt FFM_VertexBased_Solve(const PetscInt dim, const PetscInt minVerts, const PetscReal x0[], const PetscInt nVert, PetscInt verts[], PetscScalar *updatedVertex, PetscScalar *lsArray, PetscReal *updatedLS, const PetscInt *vertMask, const PetscInt currentLevel);
       PetscInt FFM_VertexBased_SolveModified(const PetscInt dim, const PetscInt minVerts, const PetscReal x0[], const PetscInt nVert, PetscInt verts[], PetscScalar *updatedVertex, PetscScalar *lsArray, PetscReal *updatedLS, const PetscInt *vertMask, const PetscInt currentLevel);
-
-
+	  PetscInt FFM_VertexBased_ModifiedGreenGauss(const PetscInt dim, PetscInt id_potential, PetscInt id_base, PetscScalar *updatedVertex, PetscScalar *xCoord, PetscScalar *yCoord, const PetscInt *vertMask, const PetscInt currentLevel, PetscScalar *lsArray, PetscReal *updatedLS);
+	  PetscInt FFM_VertexBased_RBF(const PetscInt dim, PetscInt id_potential, PetscInt id_base, PetscScalar *updatedVertex, PetscScalar *xCoord, PetscScalar *yCoord, const PetscInt *vertMask, const PetscInt currentLevel, PetscScalar *lsArray, PetscReal *updatedLS);
+	  PetscInt FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_potential, PetscInt id_base, PetscScalar *updatedVertex, PetscScalar *xCoord, PetscScalar *yCoord, const PetscInt *vertMask, const PetscInt currentLevel, PetscScalar *lsArray, PetscReal *updatedLS);
 
       std::shared_ptr<ablate::levelSet::GaussianConvolution> convolution = nullptr;
 
@@ -139,11 +141,25 @@ namespace ablate::levelSet {
       PetscScalar EllipseEq(const PetscReal* x, PetscScalar theta, PetscScalar a, PetscScalar b, PetscScalar* df, PetscScalar* d2f);
       PetscScalar LSellipse(const PetscReal* x, const PetscInt dim);
       PetscScalar Newton(const PetscReal* x, void* ctx);
-
+      PetscScalar CassiniOvalEq(const PetscReal* x, PetscScalar theta, PetscScalar a, PetscScalar c, PetscInt branch, PetscScalar* df, PetscScalar* d2f);
+	  PetscScalar LScassinioval(const PetscReal* x, const PetscInt dim);
+	  PetscScalar NewtonCassiniOval(const PetscReal* x, void* ctx);
+	  PetscScalar StarEq(const PetscReal* x, PetscScalar theta, PetscScalar a, PetscScalar b, PetscScalar* df, PetscScalar* d2f);
+	  PetscScalar LSstar(const PetscReal* x, const PetscInt dim);
+	  PetscScalar NewtonStar(const PetscReal* x, void* ctx, PetscScalar* theta_star);
+	  PetscScalar LStwoCircles(const PetscReal* x, const PetscInt dim);
   };
   
   struct EllipseCtx {
     PetscScalar a, b;
+  };
+  
+  struct CassiniOvalCtx {
+	  PetscScalar a, e, c;
+  };
+  
+  struct StarCtx {
+	  PetscScalar a, b;
   };
 
 
