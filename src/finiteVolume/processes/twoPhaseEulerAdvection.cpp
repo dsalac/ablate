@@ -283,6 +283,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Setup(ablate::fini
 }
 
 #include <signal.h>
+
 // Update the volume fraction, velocity, temperature, pressure fields, and gas density fields (if they exist).
 PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::UpdateAuxFieldsTwoPhase(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[],
                                                                                                    const PetscScalar *conservedValues, const PetscInt aOff[], PetscScalar *auxField, void *ctx) {
@@ -359,6 +360,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::UpdateAu
 
 PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime) {
     PetscFunctionBegin;
+
     // Get flow field data
     const auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
     ablate::domain::Range cellRange;
@@ -965,7 +967,6 @@ PetscReal Heaviside(const PetscReal x, const PetscReal x0, const PetscReal e) {
   }
 }
 
-static PetscInt cnt = 0;
 
 void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffenedGasDecoder::DecodeTwoPhaseEulerState(PetscInt dim, const PetscInt *uOff, const PetscReal *conservedValues,
                                                                                                                       const PetscReal *normal, PetscReal *densityOut, PetscReal *densityG,
@@ -1196,7 +1197,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
     }
 
     if (pL < PETSC_SMALL || pG < PETSC_SMALL) {
-      printf("%ld\n", cnt);
+//      printf("%ld\n", cnt);
       printf("   T: %+e\n", (PetscReal)TG);
       printf("  pR: %+e\n", (PetscReal)pG);
       printf("  pL: %+e\n", (PetscReal)pL);
@@ -1214,7 +1215,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
     }
 
     if (eL < PETSC_SMALL || eG < PETSC_SMALL) {
-      printf("%ld\n", cnt);
+//      printf("%ld\n", cnt);
       printf("   T: %+e\n", (PetscReal)TG);
       printf("  pR: %+e\n", (PetscReal)pG);
       printf("  pL: %+e\n", (PetscReal)pL);

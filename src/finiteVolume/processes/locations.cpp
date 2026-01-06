@@ -18,7 +18,7 @@ void ablate::finiteVolume::processes::locations::Initialize(ablate::finiteVolume
 
 PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
     PetscFunctionBegin;
-
+printf("%s::%d\n", __FILE__, __LINE__);
     auto process = (ablate::finiteVolume::processes::locations *)ctx;
     std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
 

@@ -190,6 +190,13 @@ void ablate::solver::TimeStepper::Solve() {
     PetscLogEventSetDof(logEvent, 0, dof) >> utilities::PetscUtilities::checkError;
     PetscLogEventBegin(logEvent, 0, 0, 0, 0);
 
+//    for (PetscInt iter=0;iter<10;++iter) {
+//      printf("%ld\n", iter);
+//      TSStep(ts);
+//    }
+//    printf("%s::%d\n", __FILE__, __LINE__);
+//    exit(0);
+
 //for (PetscInt iter=0;iter<10;++iter) {
 
 //  printf("%ld\t", iter);

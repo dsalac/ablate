@@ -79,7 +79,7 @@ void ablate::finiteVolume::processes::IntSharp::Initialize(ablate::finiteVolume:
 
   // Using cell-center data compute the gaussian convolution at a cell
   PetscInt dim = subDomain.GetDimensions();
-  cellGaussianConv = std::make_shared<ablate::finiteVolume::stencil::GaussianConvolution>(subDM, 1, dim, dim);
+  cellGaussianConv = std::make_shared<ablate::finiteVolume::stencil::GaussianConvolution>(subDM, 1.0, dim, dim);
 
 }
 
@@ -121,10 +121,16 @@ void ablate::finiteVolume::processes::IntSharp::Setup(ablate::finiteVolume::Fini
   }
 
 
+  if (flow.NumberPreStage() > 0) {
+    throw std::runtime_error("ablate::finiteVolume::processes::IntSharp must be the first process defined in the input YAML.");
+  }
+  auto preStage = std::bind(&ablate::finiteVolume::processes::IntSharp::IntSharpPreStage, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+  flow.RegisterPreStage(preStage);
 
-  flow.RegisterPreStep([&](TS ts, ablate::solver::Solver &) { ablate::finiteVolume::processes::IntSharp::IntSharpPreStep(ts, flow); });
+//  flow.RegisterPreStep([&](TS ts, ablate::solver::Solver &) { ablate::finiteVolume::processes::IntSharp::IntSharpPreStep(ts, flow); });
 
-
+////    auto multiphasePreStage = std::bind(&ablate::finiteVolume::processes::TwoPhaseEulerAdvection::MultiphaseFlowPreStage, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+//    flow.RegisterPreStage(multiphasePreStage);
 }
 
 #include <signal.h>
@@ -289,7 +295,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStep(TS flo
 
 PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS flowTS, ablate::solver::Solver &solver, PetscReal stagetime) {
   PetscFunctionBegin;
-
+printf("%s::%d\n", __FILE__, __LINE__);
   auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
 
   ablate::domain::SubDomain& subDomain = fvSolver.GetSubDomain();
@@ -327,23 +333,29 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
     PetscCall(DMPlexPointLocalRef(vofDM, cell, vofArrays[GLOBAL], &vof));
 
     if (*vof > vofRange[0] && *vof < vofRange[1]) {
-      const PetscInt *cells;
-      PetscInt nCells = cellGaussianConv->GetCellList(cell, &cells);
+//      const PetscInt *cells;
+//      PetscInt nCells = cellGaussianConv->GetCellList(cell, &cells);
+
+      PetscInt nCells, *cells;
+      DMPlexGetNeighborsNew(vofDM, cell, 3, DMPLEX_NEIGHBOR_MAXLEVELS, 0, dim, &nCells, &cells);
 
       for (PetscInt i = 0; i < nCells; ++i) {
         const PetscInt id = reverseCellRange.GetIndex(cells[i]);
         if (id < cellRange.end) mask[id] = 1;
       }
+
+      DMPlexRestoreNeighborsNew(vofDM, cell, 1, DMPLEX_NEIGHBOR_MAXLEVELS, 0, dim, &nCells, &cells);
+
     }
   }
 
 
 
-//  {
-//    char fname[255];
-//    sprintf(fname, "vof_%05d.txt", 0);
-//    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
-//  }
+  {
+    char fname[255];
+    sprintf(fname, "vof_%05d.txt", 0);
+    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
+  }
 
   MPI_Comm comm = subDomain.GetComm();
 
@@ -351,7 +363,7 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
 
   PetscInt iter = 0;
   PetscReal maxDiff = PETSC_MAX_REAL;
-  while (iter < 200 && maxDiff > 1e-3) {
+  while (iter < 200 && maxDiff > 1e-12) {
     ++iter;
 
     maxDiff = -1;
@@ -384,6 +396,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
 
       // This creates an almost-tanh like profile using an epsilon of 0.5 < eps < 1
       PetscReal eps = epsilonFac*1.5*tanh(a*(1-a)*10) + 0.01;
+//      PetscReal eps = epsilonFac*2.5*tanh(a*(1-a)*5) + 0.01;
+//      PetscReal eps = 0.5;
       PetscReal dv = dt*(eps*h*nrm - a*(1-a))*(1-2*a);
 
       *vof += dv;
@@ -399,17 +413,101 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
     PetscCall(DMGlobalToLocal(vofDM, vofVecs[GLOBAL], INSERT_VALUES, vofVecs[LOCAL]));
 
 
-//if ((iter)%10==0) {
-//    char fname[255];
-//    sprintf(fname, "vof_%05ld.txt", iter);
-//    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
-//    PetscPrintf(PETSC_COMM_WORLD, "%ld\t%e\n", iter, maxDiff);
-//}
+if ((iter)%10==0) {
+    char fname[255];
+    sprintf(fname, "vof_%05ld.txt", iter);
+    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
+    PetscPrintf(PETSC_COMM_WORLD, "%ld\t%e\n", iter, maxDiff);
+}
 
   }
 
+//  iter = 0;
+//  maxDiff = PETSC_MAX_REAL;
+//  while (iter < 200 && maxDiff > 1e-12) {
+//    ++iter;
+
+//    maxDiff = -1;
+//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+
+//      const PetscInt cell = cellRange.GetPoint(c);
+//      PetscReal *vof;
+//      PetscCall(DMPlexPointLocalRef(vofDM, cell, vofArrays[GLOBAL], &vof));
+
+//      if (*vof < 0.1 || *vof > 0.9) continue;
+
+//      const PetscReal vof0 = *vof;
+//      cellGaussianConv->Evaluate(cell, NULL, vofDM, -1, vofArrays[LOCAL], 0, 1, vof);
+//      maxDiff = PetscMax(maxDiff, PetscAbsReal(vof0 - *vof));
+
+//    }
+
+//    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, comm));
+//    PetscCall(DMGlobalToLocal(vofDM, vofVecs[GLOBAL], INSERT_VALUES, vofVecs[LOCAL]));
+
+//  }
+
+//  iter = 0;
+//  maxDiff = PETSC_MAX_REAL;
+//  while (iter < 200 && maxDiff > 1e-12) {
+//    ++iter;
+
+//    maxDiff = -1;
+//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+
+//      if (mask[c]==0) continue;
+
+//      const PetscInt cell = cellRange.GetPoint(c);
+//      PetscReal *vof;
+//      PetscCall(DMPlexPointLocalRef(vofDM, cell, vofArrays[GLOBAL], &vof));
+
+//      if (*vof > 0.1 && *vof < 0.9) continue;
+
+//      const PetscReal vof0 = *vof;
+//      cellGaussianConv->Evaluate(cell, NULL, vofDM, -1, vofArrays[LOCAL], 0, 1, vof);
+//      maxDiff = PetscMax(maxDiff, PetscAbsReal(vof0 - *vof));
+
+//    }
+
+//    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, comm));
+//    PetscCall(DMGlobalToLocal(vofDM, vofVecs[GLOBAL], INSERT_VALUES, vofVecs[LOCAL]));
+
+//  }
+
+
+  {
+    char fname[255];
+    sprintf(fname, "vof_final.txt");
+    SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
+  }
+
+
   mask += cellRange.start;
   PetscCall(DMRestoreWorkArray(vofDM, cellRange.end - cellRange.start, MPIU_INT, &mask));
+
+
+
+// List of required fields and locations
+  std::string fieldList[] = { ablate::finiteVolume::CompressibleFlowFields::GASDENSITY_FIELD,
+                              ablate::finiteVolume::CompressibleFlowFields::LIQUIDDENSITY_FIELD,
+                              ablate::finiteVolume::CompressibleFlowFields::GASENERGY_FIELD,
+                              ablate::finiteVolume::CompressibleFlowFields::LIQUIDENERGY_FIELD,
+                              ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD,
+                              ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD,
+                              ablate::finiteVolume::processes::TwoPhaseEulerAdvection::DENSITY_VF_FIELD,
+                              ablate::finiteVolume::CompressibleFlowFields::TEMPERATURE_FIELD,
+                              ablate::finiteVolume::CompressibleFlowFields::PRESSURE_FIELD,
+                              ablate::finiteVolume::CompressibleFlowFields::VELOCITY_FIELD
+                              };
+for (auto fieldName : fieldList) {
+  const ablate::domain::Field &field = subDomain.GetField(fieldName);
+  DM dm = subDomain.GetFieldDM(field);
+  Vec vec = subDomain.GetVec(field);
+  char fname[255];
+  sprintf(fname, "%s0.txt", field.name.c_str());
+  SaveCellData(dm, vec, fname, field.id, field.numberComponents, cellRange);
+}
+
 
   UpdateSolVec(subDomain, cellRange, vofDM, vofVecs[GLOBAL]);
 
@@ -419,8 +517,27 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::IntSharpPreStage(TS fl
   PetscCall(DMRestoreLocalVector(subDM, &vofVecs[LOCAL]));
 
 
-//  printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
-//  exit(0);
+Vec locXVec;
+DM solDM = subDomain.GetDM();
+DMGetLocalVector(solDM, &locXVec) >> utilities::PetscUtilities::checkError;
+DMGlobalToLocalBegin(solDM, subDomain.GetSolutionVector(), INSERT_VALUES, locXVec) >> utilities::PetscUtilities::checkError;
+DMGlobalToLocalEnd(solDM, subDomain.GetSolutionVector(), INSERT_VALUES, locXVec) >> utilities::PetscUtilities::checkError;
+
+fvSolver.UpdateAuxFields(NAN, locXVec, subDomain.GetAuxVector());
+DMRestoreLocalVector(solDM, &locXVec) >> utilities::PetscUtilities::checkError;
+
+for (auto fieldName : fieldList) {
+  const ablate::domain::Field &field = subDomain.GetField(fieldName);
+  DM dm = subDomain.GetFieldDM(field);
+  Vec vec = subDomain.GetVec(field);
+  char fname[255];
+  sprintf(fname, "%s1.txt", field.name.c_str());
+  SaveCellData(dm, vec, fname, field.id, field.numberComponents, cellRange);
+}
+
+//asdfasdfasdf
+  printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
+  exit(0);
 
   PetscFunctionReturn(0);
 }

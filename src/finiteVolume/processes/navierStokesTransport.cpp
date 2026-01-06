@@ -465,9 +465,7 @@ PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::Diffusion
     // this order is based upon the order that they are passed into RegisterRHSFunction
     const int T = 0;
     const int VEL = 1;
-raise(SIGSEGV);
-printf("%s::%s::%d\n", __FILE__, __FUNCTION__, __LINE__);
-exit(0);
+
     auto flowParameters = (DiffusionData*)ctx;
 
     // Compute mu and k

@@ -94,6 +94,8 @@ class Solver {
     void PostStep(TS ts);
     void PostEvaluate(TS ts);
 
+    inline PetscInt NumberPreStage() { return this->preStageFunctions.size(); }
+
     /**
      * Adds function to be called before each flow step
      * @param preStep
