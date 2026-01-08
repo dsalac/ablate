@@ -186,57 +186,42 @@ Reconstruction::Reconstruction(const std::shared_ptr<ablate::domain::SubDomain> 
   // Form the list of cells that will have calculations. The list will have local values
   //    in 0 -> nLocal-1 and ghost values from nLocal->nTotal-1
 
-  // Get the ghost cell label
-  DMLabel ghostLabel;
-  DMGetLabel(cellDM, "ghost", &ghostLabel) >> utilities::PetscUtilities::checkError;
-
   // Get the start of any boundary ghost cells
   PetscInt boundaryCellStart;
   DMPlexGetCellTypeStratum(cellDM, DM_POLYTOPE_FV_GHOST, &boundaryCellStart, nullptr) >> utilities::PetscUtilities::checkError;
+  boundaryCellStart = (boundaryCellStart > 0) ? boundaryCellStart : cEnd; // If there are no boundary cells then just use the last cell
 
   PetscMalloc2(cEnd - cStart, &cellList, cEnd - cStart, &reverseCellList) >> ablate::utilities::PetscUtilities::checkError;
   reverseCellList -= cStart;
   for (PetscInt c = 0; c < cEnd - cStart; ++c) cellList[c] = -1;
 
+  for (PetscInt c = cStart; c < cEnd; ++c) {
+    reverseCellList[c] = c - cStart;
+  }
+
   // First the local cells
   nLocalCell = 0;
-  for (PetscInt c = cStart; c < cEnd; ++c) {
-
-    reverseCellList[c] = c - cStart;
-
-    // Check if it's a ghost
-    PetscInt isGhost = -1;
-    if (ghostLabel) {
-        DMLabelGetValue(ghostLabel, c, &isGhost) >> utilities::PetscUtilities::checkError;
-    }
+  for (PetscInt c = cStart; c < boundaryCellStart; ++c) {
 
     // See if it's owned by this rank
     PetscInt owned;
     DMPlexGetPointGlobal(cellDM, c, &owned, nullptr) >> utilities::PetscUtilities::checkError;
 
-    if (owned >= 0 && isGhost < 0 && (boundaryCellStart < 0 || c < boundaryCellStart)) {
+    if (owned >= 0) {
       cellList[nLocalCell++] = c;
     }
   }
 
-  // Now the ghost cells
+  // Now the ghost cells. This should be unnecessary as the overlap cells should be nLocalCell -> boundaryCellStart-1
   nTotalCell = nLocalCell;
-  if (boundaryCellStart >= 0) {
-    for (PetscInt c = cStart; c < cEnd; ++c) {
+  for (PetscInt c = nLocalCell; c < boundaryCellStart; ++c) {
 
-      // Check if it's a ghost
-      PetscInt isGhost = -1;
-      if (ghostLabel) {
-          DMLabelGetValue(ghostLabel, c, &isGhost) >> utilities::PetscUtilities::checkError;
-      }
+    // See if it's owned by this rank
+    PetscInt owned;
+    DMPlexGetPointGlobal(cellDM, c, &owned, nullptr) >> utilities::PetscUtilities::checkError;
 
-      // See if it's owned by this rank
-      PetscInt owned;
-      DMPlexGetPointGlobal(cellDM, c, &owned, nullptr) >> utilities::PetscUtilities::checkError;
-
-      if (owned < 0 || isGhost > 0 || c >= boundaryCellStart) {
-        cellList[nTotalCell++] = c;
-      }
+    if (owned < 0) {
+      cellList[nTotalCell++] = c;
     }
   }
 
@@ -515,49 +500,49 @@ void Reconstruction::SaveData(DM dm, const Vec vec, const PetscInt nList, const 
 //   -1: The cells/vertices directly next to those labelled as nLevels.
 //    0: Cells/vertices far from the interface
 void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field vofField, const PetscInt nLevels, PetscInt *cellMask, PetscInt *vertMask) {
-	
-	//char filename[64];
-	int rank, size;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	MPI_Comm_size(PETSC_COMM_WORLD, &size);
 
-	//PetscScalar *vofArray = nullptr; // This line is commented to have arbitrary interface     
-	PetscScalar *cellMaskVecArray = nullptr;
-	PetscScalar *cellMaskVecArrayGlobal = nullptr;
-	Vec cellMaskVec[2] = {nullptr, nullptr};
+  //char filename[64];
+  int rank, size;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+  MPI_Comm_size(PETSC_COMM_WORLD, &size);
 
-	DMGetLocalVector(cellDM, &cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	DMGetGlobalVector(cellDM, &cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscScalar *vofArray = nullptr; // This line is commented to have arbitrary interface
+  PetscScalar *cellMaskVecArray = nullptr;
+  PetscScalar *cellMaskVecArrayGlobal = nullptr;
+  Vec cellMaskVec[2] = {nullptr, nullptr};
 
-	//VecGetArray(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError; // This line is commented to have arbitrary interface
-	VecGetArray(cellMaskVec[LOCAL], &cellMaskVecArray);
-	VecGetArray(cellMaskVec[GLOBAL], &cellMaskVecArrayGlobal);
-  
-	MPI_Barrier(PETSC_COMM_WORLD);
-	  
-	//const PetscInt dim = subDomain->GetDimensions();
-	//PetscReal x[dim]; // coordinates of cells  
-	
-	PetscBool CutCell = PETSC_FALSE;
-	for (PetscInt c = 0; c < nLocalCell; ++c) { 
-		CutCell = Reconstruction::CutCellfromLS(vofDM, cellList[c], &vofField, vofVec); // Although we are using vofDM name here, but for arbitrary interface, the input is aux_dm
-		cellMaskVecArray[c] = CutCell == PETSC_TRUE;
-		//const PetscScalar *vof = nullptr; // This line is commented to have arbitrary interface
-		//xDMPlexPointLocalRead(vofDM, cellList[c], vofField.id, vofArray, &vof) >> ablate::utilities::PetscUtilities::checkError; // This line is commented to have arbitrary interface
-		//cellMaskVecArray[c] = cellMask[c] = ((*vof > 0.001) && (*vof < 0.999)); // This line is commented to have arbitrary interface
-	}
+  DMGetLocalVector(cellDM, &cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  DMGetGlobalVector(cellDM, &cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-	DMLocalToGlobal(cellDM, cellMaskVec[LOCAL], INSERT_VALUES, cellMaskVec[GLOBAL]);
-	DMGlobalToLocal(cellDM, cellMaskVec[GLOBAL], INSERT_VALUES, cellMaskVec[LOCAL]);
-	
-	for (PetscInt c = 0; c < nTotalCell; ++c) cellMask[c] = cellMaskVecArray[c];
-			
-	//VecRestoreArray(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError; // This line is commented to have arbitrary interface
-	VecRestoreArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
-	VecRestoreArray(cellMaskVec[GLOBAL], &cellMaskVecArrayGlobal) >> ablate::utilities::PetscUtilities::checkError;
+  //VecGetArray(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError; // This line is commented to have arbitrary interface
+  VecGetArray(cellMaskVec[LOCAL], &cellMaskVecArray);
+  VecGetArray(cellMaskVec[GLOBAL], &cellMaskVecArrayGlobal);
 
-	//PetscPrintf(PETSC_COMM_SELF, "rank %d, nLocalCell is %d, nTotalCell is %d\n", rank, nLocalCell, nTotalCell);
-	
+  MPI_Barrier(PETSC_COMM_WORLD);
+
+  //const PetscInt dim = subDomain->GetDimensions();
+  //PetscReal x[dim]; // coordinates of cells
+
+  PetscBool CutCell = PETSC_FALSE;
+  for (PetscInt c = 0; c < nLocalCell; ++c) {
+    CutCell = Reconstruction::CutCellfromLS(vofDM, cellList[c], &vofField, vofVec); // Although we are using vofDM name here, but for arbitrary interface, the input is aux_dm
+    cellMaskVecArray[c] = CutCell == PETSC_TRUE;
+    //const PetscScalar *vof = nullptr; // This line is commented to have arbitrary interface
+    //xDMPlexPointLocalRead(vofDM, cellList[c], vofField.id, vofArray, &vof) >> ablate::utilities::PetscUtilities::checkError; // This line is commented to have arbitrary interface
+    //cellMaskVecArray[c] = cellMask[c] = ((*vof > 0.001) && (*vof < 0.999)); // This line is commented to have arbitrary interface
+  }
+
+  DMLocalToGlobal(cellDM, cellMaskVec[LOCAL], INSERT_VALUES, cellMaskVec[GLOBAL]);
+  DMGlobalToLocal(cellDM, cellMaskVec[GLOBAL], INSERT_VALUES, cellMaskVec[LOCAL]);
+
+  for (PetscInt c = 0; c < nTotalCell; ++c) cellMask[c] = cellMaskVecArray[c];
+
+  //VecRestoreArray(vofVec, &vofArray) >> ablate::utilities::PetscUtilities::checkError; // This line is commented to have arbitrary interface
+  VecRestoreArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
+  VecRestoreArray(cellMaskVec[GLOBAL], &cellMaskVecArrayGlobal) >> ablate::utilities::PetscUtilities::checkError;
+
+  //PetscPrintf(PETSC_COMM_SELF, "rank %d, nLocalCell is %d, nTotalCell is %d\n", rank, nLocalCell, nTotalCell);
+
 ////   Turn off any "cut cells" where the cell is not surrounded by any other cut cells.
 ////   To avoid cut-cells two cells-thick turn off any cut-cells which have a neighoring gradient passing through them.
 //  const PetscInt    dim = subDomain->GetDimensions();
@@ -599,135 +584,135 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
 //      }
 //    }
 //  }
-	
-	// Now label the surrounding cells
-	for (PetscInt l = 1; l <= nLevels; ++l) {
-	
-		VecZeroEntries(cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecGetArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
-				
-		for (PetscInt c = 0; c < nTotalCell; ++c) {
-		  if ( cellMask[c] == l ) {
-			PetscInt cell = cellList[c];
-			PetscInt nCells, *cells;
-			DMPlexGetNeighbors(cellDM, cell, 1, -1.0, -1, PETSC_TRUE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
-			for (PetscInt i = 0; i < nCells; ++i) {
-			  const PetscInt id = reverseCellList[cells[i]];
-			  ++cellMaskVecArray[id];
-			}
-			DMPlexRestoreNeighbors(cellDM, cell, 1, -1.0, -1, PETSC_TRUE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
-		  }
-		}
-		
-		VecRestoreArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
-		
-		VecZeroEntries(cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		DMLocalToGlobal(cellDM, cellMaskVec[LOCAL], ADD_VALUES, cellMaskVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
-		DMGlobalToLocal(cellDM, cellMaskVec[GLOBAL], INSERT_VALUES, cellMaskVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		const PetscInt setValue = (l == nLevels) ? -1 : l + 1;
-		
-		VecGetArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
-		for (PetscInt c = 0; c < nTotalCell; ++c) {
-		  if (cellMask[c] == 0 && cellMaskVecArray[c]>0.5) cellMask[c] = setValue;
-		}
-		VecRestoreArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
-	}
-				
-	//snprintf(filename, sizeof(filename), "cellmask_rank%d.txt", rank);
-	//FILE *file1 = fopen(filename, "w");
-	//for (PetscInt c = 0; c < nLocalCell; ++c) { 
-		//DMPlexComputeCellGeometryFVM(vofDM, cellList[c], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
-		//PetscFPrintf(PETSC_COMM_SELF, file1, "%d, %f, %f, %d\n", cellList[c], x[0], x[1], cellMask[c]);
-	//}
-	//fclose(file1);
-		
-	// Set the vertex mask-----------------------------------------------------------------------------------------------------------
-	PetscScalar *vertMaskVecArray = nullptr;
-	PetscScalar *vertMaskVecArrayGlobal = nullptr;
-	Vec vertMaskVec[2] = {nullptr, nullptr};
 
-	DMGetLocalVector(vertDM, &vertMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	DMGetGlobalVector(vertDM, &vertMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  // Now label the surrounding cells
+  for (PetscInt l = 1; l <= nLevels; ++l) {
 
-	VecGetArray(vertMaskVec[LOCAL], &vertMaskVecArray);
-	VecGetArray(vertMaskVec[GLOBAL], &vertMaskVecArrayGlobal);
-	
-	for (PetscInt v = 0; v < nTotalVert; ++v) vertMaskVecArray[v] = nLevels + 2;  
+    VecZeroEntries(cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecGetArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
 
-	// First find the min level for each vertex considering neighboring cell levels
-	for (PetscInt v = 0; v < nLocalVert; ++v) {
-		  PetscInt vertex = vertList[v];
-		
-		  PetscInt nCell, *cells;
-		  DMPlexVertexGetCells(cellDM, vertex, &nCell, &cells) >> ablate::utilities::PetscUtilities::checkError;
-		 
-		  for (PetscInt c = 0; c < nCell; ++c) {
-			const PetscInt id = reverseCellList[cells[c]];
-			if (cellMask[id] == 0) continue;
-			vertMaskVecArray[v] = PetscMin(vertMaskVecArray[v], PetscAbsReal(cellMask[id]));	
-		  }
-		  DMPlexCellRestoreVertices(cellDM, vertex, &nCell, &cells) >> ablate::utilities::PetscUtilities::checkError; 
-	}
-	
-	//// First set the vertices associated with marked cells
-	//for (PetscInt c = 0; c < nLocalCell; ++c) {
-		//if (cellMask[c] > 0) {
-		  //const PetscInt cell = cellList[c];
-		
-		  //PetscInt nVert, *verts;
-		  //DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-		
-		  //for (PetscInt v = 0; v < nVert; ++v) {
-			//const PetscInt id = reverseVertList[verts[v]];
-			//vertMaskVecArray[id] = PetscMin(vertMaskVecArray[id], cellMask[c]);		
-		  //}
-		  //DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-		//}
-	//}
+    for (PetscInt c = 0; c < nTotalCell; ++c) {
+      if ( cellMask[c] == l ) {
+      PetscInt cell = cellList[c];
+      PetscInt nCells, *cells;
+      DMPlexGetNeighbors(cellDM, cell, 1, -1.0, -1, PETSC_TRUE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
+      for (PetscInt i = 0; i < nCells; ++i) {
+        const PetscInt id = reverseCellList[cells[i]];
+        ++cellMaskVecArray[id];
+      }
+      DMPlexRestoreNeighbors(cellDM, cell, 1, -1.0, -1, PETSC_TRUE, PETSC_FALSE, &nCells, &cells) >> ablate::utilities::PetscUtilities::checkError;
+      }
+    }
 
-	// Next set the additional vertices associated with boundary cells
-	for (PetscInt c = 0; c < nTotalCell; ++c) {
-		if (cellMask[c] == -1) {
-		  const PetscInt cell = cellList[c];
-		
-		  PetscInt nVert, *verts;
-		  DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-		
-		  for (PetscInt v = 0; v < nVert; ++v) {
-			const PetscInt id = reverseVertList[verts[v]];
-			vertMaskVecArray[id] = (vertMaskVecArray[id]==(nLevels+2)) ? -1 : vertMaskVecArray[id];
-		  }
-		  DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-		}
-	}
-	
-	// Switch all deactivated vertices to 0
-	for (PetscInt v = 0; v < nTotalVert; ++v) {
-		vertMaskVecArray[v] = (vertMaskVecArray[v]==(nLevels+2)) ? 0 : vertMaskVecArray[v];
-	}
-	
-	DMLocalToGlobal(vertDM, vertMaskVec[LOCAL], INSERT_VALUES, vertMaskVec[GLOBAL]);
-	DMGlobalToLocal(vertDM, vertMaskVec[GLOBAL], INSERT_VALUES, vertMaskVec[LOCAL]);
-	
-	for (PetscInt v = 0; v < nTotalVert; ++v) vertMask[v] = vertMaskVecArray[v];
-	
-	VecRestoreArray(vertMaskVec[LOCAL], &vertMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
-	VecRestoreArray(vertMaskVec[GLOBAL], &vertMaskVecArrayGlobal) >> ablate::utilities::PetscUtilities::checkError;
-	
-	DMRestoreLocalVector(cellDM, &cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	DMRestoreGlobalVector(cellDM, &cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	DMRestoreLocalVector(vertDM, &vertMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	DMRestoreGlobalVector(vertDM, &vertMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	
-	//snprintf(filename, sizeof(filename), "vertmask_rank%d.txt", rank);
-	//FILE *file2 = fopen(filename, "w");
-	//for (PetscInt v = 0; v < nLocalVert; ++v) { 
-		//DMPlexComputeCellGeometryFVM(vofDM, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
-		//PetscFPrintf(PETSC_COMM_SELF, file2, "%d, %f, %f, %d\n", vertList[v], x[0], x[1], vertMask[v]);
-	//}
-	//fclose(file2);
-	
+    VecRestoreArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
+
+    VecZeroEntries(cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    DMLocalToGlobal(cellDM, cellMaskVec[LOCAL], ADD_VALUES, cellMaskVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(cellDM, cellMaskVec[GLOBAL], INSERT_VALUES, cellMaskVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    const PetscInt setValue = (l == nLevels) ? -1 : l + 1;
+
+    VecGetArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
+    for (PetscInt c = 0; c < nTotalCell; ++c) {
+      if (cellMask[c] == 0 && cellMaskVecArray[c]>0.5) cellMask[c] = setValue;
+    }
+    VecRestoreArray(cellMaskVec[LOCAL], &cellMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
+  }
+
+  //snprintf(filename, sizeof(filename), "cellmask_rank%d.txt", rank);
+  //FILE *file1 = fopen(filename, "w");
+  //for (PetscInt c = 0; c < nLocalCell; ++c) {
+    //DMPlexComputeCellGeometryFVM(vofDM, cellList[c], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
+    //PetscFPrintf(PETSC_COMM_SELF, file1, "%d, %f, %f, %d\n", cellList[c], x[0], x[1], cellMask[c]);
+  //}
+  //fclose(file1);
+
+  // Set the vertex mask-----------------------------------------------------------------------------------------------------------
+  PetscScalar *vertMaskVecArray = nullptr;
+  PetscScalar *vertMaskVecArrayGlobal = nullptr;
+  Vec vertMaskVec[2] = {nullptr, nullptr};
+
+  DMGetLocalVector(vertDM, &vertMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  DMGetGlobalVector(vertDM, &vertMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+  VecGetArray(vertMaskVec[LOCAL], &vertMaskVecArray);
+  VecGetArray(vertMaskVec[GLOBAL], &vertMaskVecArrayGlobal);
+
+  for (PetscInt v = 0; v < nTotalVert; ++v) vertMaskVecArray[v] = nLevels + 2;
+
+  // First find the min level for each vertex considering neighboring cell levels
+  for (PetscInt v = 0; v < nLocalVert; ++v) {
+      PetscInt vertex = vertList[v];
+
+      PetscInt nCell, *cells;
+      DMPlexVertexGetCells(cellDM, vertex, &nCell, &cells) >> ablate::utilities::PetscUtilities::checkError;
+
+      for (PetscInt c = 0; c < nCell; ++c) {
+      const PetscInt id = reverseCellList[cells[c]];
+      if (cellMask[id] == 0) continue;
+      vertMaskVecArray[v] = PetscMin(vertMaskVecArray[v], PetscAbsReal(cellMask[id]));
+      }
+      DMPlexCellRestoreVertices(cellDM, vertex, &nCell, &cells) >> ablate::utilities::PetscUtilities::checkError;
+  }
+
+  //// First set the vertices associated with marked cells
+  //for (PetscInt c = 0; c < nLocalCell; ++c) {
+    //if (cellMask[c] > 0) {
+      //const PetscInt cell = cellList[c];
+
+      //PetscInt nVert, *verts;
+      //DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+
+      //for (PetscInt v = 0; v < nVert; ++v) {
+      //const PetscInt id = reverseVertList[verts[v]];
+      //vertMaskVecArray[id] = PetscMin(vertMaskVecArray[id], cellMask[c]);
+      //}
+      //DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+    //}
+  //}
+
+  // Next set the additional vertices associated with boundary cells
+  for (PetscInt c = 0; c < nTotalCell; ++c) {
+    if (cellMask[c] == -1) {
+      const PetscInt cell = cellList[c];
+
+      PetscInt nVert, *verts;
+      DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+
+      for (PetscInt v = 0; v < nVert; ++v) {
+      const PetscInt id = reverseVertList[verts[v]];
+      vertMaskVecArray[id] = (vertMaskVecArray[id]==(nLevels+2)) ? -1 : vertMaskVecArray[id];
+      }
+      DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+    }
+  }
+
+  // Switch all deactivated vertices to 0
+  for (PetscInt v = 0; v < nTotalVert; ++v) {
+    vertMaskVecArray[v] = (vertMaskVecArray[v]==(nLevels+2)) ? 0 : vertMaskVecArray[v];
+  }
+
+  DMLocalToGlobal(vertDM, vertMaskVec[LOCAL], INSERT_VALUES, vertMaskVec[GLOBAL]);
+  DMGlobalToLocal(vertDM, vertMaskVec[GLOBAL], INSERT_VALUES, vertMaskVec[LOCAL]);
+
+  for (PetscInt v = 0; v < nTotalVert; ++v) vertMask[v] = vertMaskVecArray[v];
+
+  VecRestoreArray(vertMaskVec[LOCAL], &vertMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
+  VecRestoreArray(vertMaskVec[GLOBAL], &vertMaskVecArrayGlobal) >> ablate::utilities::PetscUtilities::checkError;
+
+  DMRestoreLocalVector(cellDM, &cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  DMRestoreGlobalVector(cellDM, &cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  DMRestoreLocalVector(vertDM, &vertMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  DMRestoreGlobalVector(vertDM, &vertMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+  //snprintf(filename, sizeof(filename), "vertmask_rank%d.txt", rank);
+  //FILE *file2 = fopen(filename, "w");
+  //for (PetscInt v = 0; v < nLocalVert; ++v) {
+    //DMPlexComputeCellGeometryFVM(vofDM, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
+    //PetscFPrintf(PETSC_COMM_SELF, file2, "%d, %f, %f, %d\n", vertList[v], x[0], x[1], vertMask[v]);
+  //}
+  //fclose(file2);
+
 }
 
 // vofVec MUST have ghost cell information
@@ -1604,7 +1589,7 @@ PetscInt SolveQuadFormula(const PetscInt dim, PetscReal a[], PetscReal b[], Pets
       phi0 = (-p1 - disc)/(2.0*p2);
       phi1 = 2.0*p0/(-p1 - disc);
     }
-    
+
     if (phi0*phiIn >= 0.0 && phi1*phiIn >= 0.0) { // Both have the correct sign
       newPhi = PetscAbsReal(phi0) > PetscAbsReal(phi1) ? phi0 : phi1;
     }
@@ -1618,7 +1603,7 @@ PetscInt SolveQuadFormula(const PetscInt dim, PetscReal a[], PetscReal b[], Pets
       //throw std::runtime_error("Incorrect sign?\n");
       return 0;
     }
-        	
+
     if (PetscAbsReal(newPhi) < PetscAbsReal(phiIn)) {
       *phi = newPhi;
       return 1;
@@ -1633,172 +1618,172 @@ PetscInt SolveQuadFormula(const PetscInt dim, PetscReal a[], PetscReal b[], Pets
 
 void Reconstruction::FMM_CellBased(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile) {
 
-	int rank;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	
-	PetscInt vStart, vEnd;
-	DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd);   // Range of vertices
+  int rank;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-	PetscInt dim;
-	DMGetDimension(vertDM, &dim);
+  PetscInt vStart, vEnd;
+  DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd);   // Range of vertices
 
-	MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
+  PetscInt dim;
+  DMGetDimension(vertDM, &dim);
 
-	while (true) {
-		// All work must be done on the local vector as a vertex associated with a cell might not be owned by this rank
-		//  even if the cell is owned by this rank.
-		PetscScalar *lsArray[2] = {nullptr, nullptr};
-		VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
 
-		PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-		VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		
-		PetscScalar *lstrue[2] = {nullptr, nullptr};    
-		VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
-		VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		PetscInt numVertUpdated = 0;
-		for (PetscInt c = 0; c < nTotalCell; ++c) {
-			if (cellMask[c]==currentLevel) {
-				PetscInt cell = cellList[c];
-				PetscInt nVert, *verts;
-				DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+  while (true) {
+    // All work must be done on the local vector as a vertex associated with a cell might not be owned by this rank
+    //  even if the cell is owned by this rank.
+    PetscScalar *lsArray[2] = {nullptr, nullptr};
+    VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-				PetscInt nSetVertices = 0, vertID = -1;
-				for (PetscInt v = 0; v < nVert; ++v) {
-				PetscInt id = reverseVertList[verts[v]];
-					if (updatedVertex[LOCAL][id] > 0.5 && updatedVertex[LOCAL][id] < 1.5) {
-						++nSetVertices;
-					}
-					else {
-						vertID = verts[v]; // When nUpdated+1 == nVert this will contain the ID of the single vertex to be updated
-					}
-				}
+    PetscScalar *updatedVertex[2] = {nullptr, nullptr};
+    VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-				const PetscInt id = reverseVertList[vertID];
-				if (id < nLocalVert && nSetVertices + 1 == nVert) {
-					// This will create the gradient vector a*phi + b where phi is the level set value to find
-					PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
+    PetscScalar *lstrue[2] = {nullptr, nullptr};
+    VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-					PetscInt nFace;
-					const PetscInt *faces;
+    PetscInt numVertUpdated = 0;
+    for (PetscInt c = 0; c < nTotalCell; ++c) {
+      if (cellMask[c]==currentLevel) {
+        PetscInt cell = cellList[c];
+        PetscInt nVert, *verts;
+        DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
 
-					// Get all faces associated with the cell
-					DMPlexGetConeSize(vertDM, cell, &nFace) >> ablate::utilities::PetscUtilities::checkError;
-					DMPlexGetCone(vertDM, cell, &faces) >> ablate::utilities::PetscUtilities::checkError;
-					for (PetscInt f = 0; f < nFace; ++f) {
-						PetscReal N[3] = {0.0, 0.0, 0.0};
-						DMPlexFaceCentroidOutwardAreaNormal(vertDM, cell, faces[f], NULL, N);
+        PetscInt nSetVertices = 0, vertID = -1;
+        for (PetscInt v = 0; v < nVert; ++v) {
+        PetscInt id = reverseVertList[verts[v]];
+          if (updatedVertex[LOCAL][id] > 0.5 && updatedVertex[LOCAL][id] < 1.5) {
+            ++nSetVertices;
+          }
+          else {
+            vertID = verts[v]; // When nUpdated+1 == nVert this will contain the ID of the single vertex to be updated
+          }
+        }
 
-						// All points associated with this face
-						PetscInt nClosure, *closure = NULL;
-						DMPlexGetTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+        const PetscInt id = reverseVertList[vertID];
+        if (id < nLocalVert && nSetVertices + 1 == nVert) {
+          // This will create the gradient vector a*phi + b where phi is the level set value to find
+          PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
 
-						PetscReal cnt = 0.0, ave = 0.0, vertCoeff = 0.0;
-						for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
-							if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
+          PetscInt nFace;
+          const PetscInt *faces;
 
-								const PetscInt clID = reverseVertList[closure[cl]];
-								if (closure[cl]==vertID) {
-									if (updatedVertex[LOCAL][clID] > 0.5 && updatedVertex[LOCAL][clID] < 1.5) throw std::runtime_error("How can this be possible?\n");
-									++vertCoeff;
-								}
-								else {
-									if (updatedVertex[LOCAL][clID] < 0.5 || updatedVertex[LOCAL][clID] > 1.5) throw std::runtime_error("How can this be possible?\n");
-									ave += lsArray[LOCAL][clID];
-									
-								}
+          // Get all faces associated with the cell
+          DMPlexGetConeSize(vertDM, cell, &nFace) >> ablate::utilities::PetscUtilities::checkError;
+          DMPlexGetCone(vertDM, cell, &faces) >> ablate::utilities::PetscUtilities::checkError;
+          for (PetscInt f = 0; f < nFace; ++f) {
+            PetscReal N[3] = {0.0, 0.0, 0.0};
+            DMPlexFaceCentroidOutwardAreaNormal(vertDM, cell, faces[f], NULL, N);
 
-								cnt += 1.0;
-							}
-						}
-						
-						DMPlexRestoreTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+            // All points associated with this face
+            PetscInt nClosure, *closure = NULL;
+            DMPlexGetTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
 
-						// Function value at the face center
-						ave /= cnt;
-						vertCoeff /= cnt;
-						for (PetscInt d = 0; d < dim; ++d) {
-							a[d] += vertCoeff * N[d];
-							b[d] += ave * N[d];
-						}	
-					}
+            PetscReal cnt = 0.0, ave = 0.0, vertCoeff = 0.0;
+            for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
+              if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
 
-					PetscReal vol;
-					DMPlexComputeCellGeometryFVM(vertDM, cell, &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
-					for (PetscInt d = 0; d < dim; ++d) {
-						a[d] /= vol;
-						b[d] /= vol;
-					}
+                const PetscInt clID = reverseVertList[closure[cl]];
+                if (closure[cl]==vertID) {
+                  if (updatedVertex[LOCAL][clID] > 0.5 && updatedVertex[LOCAL][clID] < 1.5) throw std::runtime_error("How can this be possible?\n");
+                  ++vertCoeff;
+                }
+                else {
+                  if (updatedVertex[LOCAL][clID] < 0.5 || updatedVertex[LOCAL][clID] > 1.5) throw std::runtime_error("How can this be possible?\n");
+                  ave += lsArray[LOCAL][clID];
 
-					PetscInt result = SolveQuadFormula(dim, a, b, &lsArray[GLOBAL][id]);
-					updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
-					numVertUpdated += (updatedVertex[GLOBAL][id] > 0.5);
-					
-					//PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
-					//if (Error > 1e-3) {
-						//PetscPrintf(PETSC_COMM_SELF, "level %d, At cellbased, we have error %f\n", currentLevel, Error);
-					//}
-					
-					updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
-					
-					// Animation part
-					if (updatedVertex[GLOBAL][id] > 0.5) {
-					    PetscReal x[dim];
-					    DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-					    fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
-					}
-	
-				}
-				DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-			}
-		}
+                }
 
-		VecRestoreArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecRestoreArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+                cnt += 1.0;
+              }
+            }
 
-		VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		
-		MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated, 1, MPIU_INT, MPIU_SUM, vertComm);
-		if (numVertUpdated==0) break;
-	}
-	
-	
-	//PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-	//VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	//PetscInt nNOTSetVertices = 0; //&& updatedVertex[LOCAL][v] < 0.5
-	//for (PetscInt v = 0; v < nLocalVert; ++v) {
-		//if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-			//++nNOTSetVertices;
-		//}
-	//}
-	//printf("cellbased, number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
-	//VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	
-	//char filename[64];
-	//snprintf(filename, sizeof(filename), "cellbased_rank%d.txt", rank);
-  	//FILE *file8= fopen(filename, "w");
-  	
-  	//PetscScalar *updatedVertex[1] = {nullptr};
-  	//VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+            DMPlexRestoreTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
 
-	//PetscReal x[2];
-	//for (PetscInt v = 0; v < nLocalVert; v++) {
-		//DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
-		//PetscFPrintf(PETSC_COMM_SELF, file8, "%d, %f, %f, %f\n", v, x[0], x[1], updatedVertex[GLOBAL][v]);
-	//}
-	//fclose(file8);
-	
-	//VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	
+            // Function value at the face center
+            ave /= cnt;
+            vertCoeff /= cnt;
+            for (PetscInt d = 0; d < dim; ++d) {
+              a[d] += vertCoeff * N[d];
+              b[d] += ave * N[d];
+            }
+          }
+
+          PetscReal vol;
+          DMPlexComputeCellGeometryFVM(vertDM, cell, &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
+          for (PetscInt d = 0; d < dim; ++d) {
+            a[d] /= vol;
+            b[d] /= vol;
+          }
+
+          PetscInt result = SolveQuadFormula(dim, a, b, &lsArray[GLOBAL][id]);
+          updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
+          numVertUpdated += (updatedVertex[GLOBAL][id] > 0.5);
+
+          //PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
+          //if (Error > 1e-3) {
+            //PetscPrintf(PETSC_COMM_SELF, "level %d, At cellbased, we have error %f\n", currentLevel, Error);
+          //}
+
+          updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
+
+          // Animation part
+          if (updatedVertex[GLOBAL][id] > 0.5) {
+              PetscReal x[dim];
+              DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+              fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
+          }
+
+        }
+        DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+      }
+    }
+
+    VecRestoreArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecRestoreArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+    MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated, 1, MPIU_INT, MPIU_SUM, vertComm);
+    if (numVertUpdated==0) break;
+  }
+
+
+  //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
+  //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscInt nNOTSetVertices = 0; //&& updatedVertex[LOCAL][v] < 0.5
+  //for (PetscInt v = 0; v < nLocalVert; ++v) {
+    //if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
+      //++nNOTSetVertices;
+    //}
+  //}
+  //printf("cellbased, number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
+  //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+  //char filename[64];
+  //snprintf(filename, sizeof(filename), "cellbased_rank%d.txt", rank);
+    //FILE *file8= fopen(filename, "w");
+
+    //PetscScalar *updatedVertex[1] = {nullptr};
+    //VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+  //PetscReal x[2];
+  //for (PetscInt v = 0; v < nLocalVert; v++) {
+    //DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
+    //PetscFPrintf(PETSC_COMM_SELF, file8, "%d, %f, %f, %f\n", v, x[0], x[1], updatedVertex[GLOBAL][v]);
+  //}
+  //fclose(file8);
+
+  //VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
 
 }
 
@@ -2203,10 +2188,10 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
     //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
     //VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-    //PetscScalar *lstrue[2] = {nullptr, nullptr};    
-	//VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	//VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
-	
+    //PetscScalar *lstrue[2] = {nullptr, nullptr};
+  //VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  //VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
+
     //PetscInt numVertUpdated = 0;
     //for (PetscInt v = 0; v < nLocalVert; ++v) {
 
@@ -2247,41 +2232,41 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
     //VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
     //DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
     //DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-    
+
     //VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
     //VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-	//int rank;
-	//MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	//printf("Vrt2 %d %d: %d\n", rank, currentLevel, numVertUpdated);
+  //int rank;
+  //MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+  //printf("Vrt2 %d %d: %d\n", rank, currentLevel, numVertUpdated);
 
     //MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated, 1, MPIU_INT, MPIU_SUM, vertComm);
 ////xexit("%ld\n",  numVertUpdated);
     //if (numVertUpdated==0) break;
 
   //}
-  
+
   //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-	//VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	//PetscInt nNOTSetVertices = 0; 
-	//for (PetscInt v = 0; v < nLocalVert; ++v) {
-		//if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-			//++nNOTSetVertices;
-		//}
-	//}
-	//printf("vertexbased_v2, number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
-	//VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	
+  //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscInt nNOTSetVertices = 0;
+  //for (PetscInt v = 0; v < nLocalVert; ++v) {
+    //if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
+      //++nNOTSetVertices;
+    //}
+  //}
+  //printf("vertexbased_v2, number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
+  //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+
 //}
 
 //void Reconstruction::FMM_VertexBased_V1(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile) {
 
-	//int rank;
-	//MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	//PetscInt dim;
-	//DMGetDimension(vertDM, &dim);
+  //int rank;
+  //MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+  //PetscInt dim;
+  //DMGetDimension(vertDM, &dim);
 
-	//MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
+  //MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
 
   //while (true) {
 
@@ -2292,10 +2277,10 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
     //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
     //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
     //VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-    
-    //PetscScalar *lstrue[2] = {nullptr, nullptr};    
-	//VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	//VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    //PetscScalar *lstrue[2] = {nullptr, nullptr};
+  //VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  //VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
 
     //PetscInt numVertUpdated = 0;
     //for (PetscInt v = 0; v < nLocalVert; ++v) {
@@ -2313,18 +2298,18 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
         //PetscInt result = FFM_VertexBased_Solve(dim, minVerts, x0, nVert, neighborVerts, updatedVertex[LOCAL], lsArray[LOCAL], &lsArray[GLOBAL][v]);
         //updatedVertex[GLOBAL][v] = PetscMin(updatedVertex[GLOBAL][v] + result, 1.0);
         //numVertUpdated += (updatedVertex[GLOBAL][v] > 0.5);
-        
+
         //PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][v] - lstrue[GLOBAL][v]);
-		//if (Error > 1e-3) {
-			//PetscPrintf(PETSC_COMM_SELF, "level %d, At vertexbased_v1, we have error %f\n", currentLevel, Error);
-		//}
-		
-		//// Animation part
-		//if (updatedVertex[GLOBAL][v] > 0.5) {
-		    //PetscReal x[dim];
-		    //DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-		    //fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, v, x[0], x[1], "vertexbased_v1");
-		//}
+    //if (Error > 1e-3) {
+      //PetscPrintf(PETSC_COMM_SELF, "level %d, At vertexbased_v1, we have error %f\n", currentLevel, Error);
+    //}
+
+    //// Animation part
+    //if (updatedVertex[GLOBAL][v] > 0.5) {
+        //PetscReal x[dim];
+        //DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+        //fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, v, x[0], x[1], "vertexbased_v1");
+    //}
 
         //DMPlexRestoreNeighbors(vertDM, vert, 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts);
 ////if (currentLevel>11) {
@@ -2340,30 +2325,30 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
     //VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
     //DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
     //DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-    
+
     //VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
     //VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-	//int rank;
-	//MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	//printf("Vrt1 %d %d: %d\n", rank, currentLevel, numVertUpdated);
+  //int rank;
+  //MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+  //printf("Vrt1 %d %d: %d\n", rank, currentLevel, numVertUpdated);
 
     //MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated, 1, MPIU_INT, MPIU_SUM, vertComm);
 
     //if (numVertUpdated==0) break;
 
   //}
-  
+
   //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-	//VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	//PetscInt nNOTSetVertices = 0; 
-	//for (PetscInt v = 0; v < nLocalVert; ++v) {
-		//if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-			//++nNOTSetVertices;
-		//}
-	//}
-	//printf("vertexbased_v1, number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
-	//VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscInt nNOTSetVertices = 0;
+  //for (PetscInt v = 0; v < nLocalVert; ++v) {
+    //if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
+      //++nNOTSetVertices;
+    //}
+  //}
+  //printf("vertexbased_v1, number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
+  //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
 //}
 
@@ -2377,8 +2362,8 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
   //for (PetscInt nv = 0; nv < nVert; ++nv) {
     //const PetscInt neighbor = verts[nv];
     //const PetscInt id = reverseVertList[neighbor]; // id is the index of vertex in vertlist. For example, vertlist[52] = 195. Here neighbor is 195 and id which came from reverseVertlist[neighbor] is the index which is 52.
-			
-    //if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id]==currentLevel-1  && id < nLocalVert) { //vertMask[id]==currentLevel-1 
+
+    //if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id]==currentLevel-1  && id < nLocalVert) { //vertMask[id]==currentLevel-1
       //phiList[nValid] = PetscAbsReal(lsArray[id]);
       //vertOrder[nValid] = nValid;
       //vertIDs[nValid++] = id;
@@ -2445,1233 +2430,1233 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
 
 //// Hybrid FMM
 //void Reconstruction::FMM_Hybrid(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile) {
-	
-	//int rank;
-	//MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	
-	//PetscInt vStart, vEnd;
-	//DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd);   // Range of vertices
 
-	//PetscInt dim;
-	//DMGetDimension(vertDM, &dim);
+  //int rank;
+  //MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-	//MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
-	
-	//// This vector contains zero or one as flag for the minimum level set among all the vertices in a level. One is for used before and zero is not used before.
-	//Vec FlagVec[2]; 
-	//DMGetLocalVector(vertDM, &FlagVec[LOCAL]) >> utilities::PetscUtilities::checkError; 
-	//DMGetGlobalVector(vertDM, &FlagVec[GLOBAL]) >> utilities::PetscUtilities::checkError; 
-	//VecZeroEntries(FlagVec[LOCAL]); VecZeroEntries(FlagVec[GLOBAL]); 
-	
-	//while (true) {
-		//// All work must be done on the local vector as a vertex associated with a cell might not be owned by this rank
-		////  even if the cell is owned by this rank.
-		//PetscScalar *lsArray[2] = {nullptr, nullptr};
-		//VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		//VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscInt vStart, vEnd;
+  //DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd);   // Range of vertices
 
-		//PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-		//VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		//VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		
-		//PetscScalar *lstrue[2] = {nullptr, nullptr};    
-		//VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
-		//VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		//PetscScalar *FlagVertex[2] = {nullptr, nullptr}; 
-		//VecGetArray(FlagVec[GLOBAL], &FlagVertex[GLOBAL]) >> utilities::PetscUtilities::checkError; 
-		//VecGetArray(FlagVec[LOCAL], &FlagVertex[LOCAL]) >> utilities::PetscUtilities::checkError;
-				
-		//PetscInt numVertUpdated_cellbased = 0;
-		//PetscInt numVertUpdated_vertexbased;
-		//for (PetscInt c = 0; c < nTotalCell; ++c) {
-			//if (cellMask[c]==currentLevel) {
-				//PetscInt cell = cellList[c];
-				//PetscInt nVert, *verts;
-				//DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscInt dim;
+  //DMGetDimension(vertDM, &dim);
 
-				//PetscInt nSetVertices = 0, vertID = -1;
-				//for (PetscInt v = 0; v < nVert; ++v) {
-					//PetscInt id = reverseVertList[verts[v]];					
-					//if (updatedVertex[LOCAL][id] > 0.5 && updatedVertex[LOCAL][id] < 1.5) {
-						//++nSetVertices;
-					//}
-					//else {
-						//vertID = verts[v]; // When nUpdated+1 == nVert this will contain the ID of the single vertex to be updated
-					//}					
-				//}
-								
-				//const PetscInt id = reverseVertList[vertID];
-				//if (id < nLocalVert && nSetVertices + 1 == nVert) {
-					//// This will create the gradient vector a*phi + b where phi is the level set value to find
-					//PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
+  //MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
 
-					//PetscInt nFace;
-					//const PetscInt *faces;
+  //// This vector contains zero or one as flag for the minimum level set among all the vertices in a level. One is for used before and zero is not used before.
+  //Vec FlagVec[2];
+  //DMGetLocalVector(vertDM, &FlagVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+  //DMGetGlobalVector(vertDM, &FlagVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  //VecZeroEntries(FlagVec[LOCAL]); VecZeroEntries(FlagVec[GLOBAL]);
 
-					//// Get all faces associated with the cell
-					//DMPlexGetConeSize(vertDM, cell, &nFace) >> ablate::utilities::PetscUtilities::checkError;
-					//DMPlexGetCone(vertDM, cell, &faces) >> ablate::utilities::PetscUtilities::checkError;
-					//for (PetscInt f = 0; f < nFace; ++f) {
-						//PetscReal N[3] = {0.0, 0.0, 0.0};
-						//DMPlexFaceCentroidOutwardAreaNormal(vertDM, cell, faces[f], NULL, N);
+  //while (true) {
+    //// All work must be done on the local vector as a vertex associated with a cell might not be owned by this rank
+    ////  even if the cell is owned by this rank.
+    //PetscScalar *lsArray[2] = {nullptr, nullptr};
+    //VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-						//// All points associated with this face
-						//PetscInt nClosure, *closure = NULL;
-						//DMPlexGetTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+    //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
+    //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-						//PetscReal cnt = 0.0, ave = 0.0, vertCoeff = 0.0;
-						//for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
-							//if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
+    //PetscScalar *lstrue[2] = {nullptr, nullptr};
+    //VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    //VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-								//const PetscInt clID = reverseVertList[closure[cl]];
-								//if (closure[cl]==vertID) {
-									//if (updatedVertex[LOCAL][clID] > 0.5 && updatedVertex[LOCAL][clID] < 1.5) throw std::runtime_error("How can this be possible?\n");
-									//++vertCoeff;
-								//}
-								//else {
-									//if (updatedVertex[LOCAL][clID] < 0.5 || updatedVertex[LOCAL][clID] > 1.5) throw std::runtime_error("How can this be possible?\n");
-									//ave += lsArray[LOCAL][clID];
-								//}
+    //PetscScalar *FlagVertex[2] = {nullptr, nullptr};
+    //VecGetArray(FlagVec[GLOBAL], &FlagVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    //VecGetArray(FlagVec[LOCAL], &FlagVertex[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-								//cnt += 1.0;
-							//}
-						//}
+    //PetscInt numVertUpdated_cellbased = 0;
+    //PetscInt numVertUpdated_vertexbased;
+    //for (PetscInt c = 0; c < nTotalCell; ++c) {
+      //if (cellMask[c]==currentLevel) {
+        //PetscInt cell = cellList[c];
+        //PetscInt nVert, *verts;
+        //DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
 
-						//DMPlexRestoreTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+        //PetscInt nSetVertices = 0, vertID = -1;
+        //for (PetscInt v = 0; v < nVert; ++v) {
+          //PetscInt id = reverseVertList[verts[v]];
+          //if (updatedVertex[LOCAL][id] > 0.5 && updatedVertex[LOCAL][id] < 1.5) {
+            //++nSetVertices;
+          //}
+          //else {
+            //vertID = verts[v]; // When nUpdated+1 == nVert this will contain the ID of the single vertex to be updated
+          //}
+        //}
 
-						//// Function value at the face center
-						//ave /= cnt;
-						//vertCoeff /= cnt;
-						//for (PetscInt d = 0; d < dim; ++d) {
-							//a[d] += vertCoeff * N[d];
-							//b[d] += ave * N[d];
-						//}	
-					//}
+        //const PetscInt id = reverseVertList[vertID];
+        //if (id < nLocalVert && nSetVertices + 1 == nVert) {
+          //// This will create the gradient vector a*phi + b where phi is the level set value to find
+          //PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
 
-					//PetscReal vol;
-					//DMPlexComputeCellGeometryFVM(vertDM, cell, &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
-					//for (PetscInt d = 0; d < dim; ++d) {
-						//a[d] /= vol;
-						//b[d] /= vol;
-					//}
-					
-					//PetscInt result = SolveQuadFormula(dim, a, b, &lsArray[GLOBAL][id]);
-					//updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
-					//numVertUpdated_cellbased += (updatedVertex[GLOBAL][id] > 0.5);
-																				
-					////PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
-					////if (Error > 1e-3) {
-						////PetscPrintf(PETSC_COMM_SELF, "level %d, At cellbased, we have error %f and id is %d\n", currentLevel, Error, id);
-					////}
-					
-					//// Animation part
-					//if (updatedVertex[GLOBAL][id] > 0.5) {
-					    //PetscReal x[dim];
-					    //DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-					    //fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
-					    //fflush(animFile); 
-					//}
-	
-				//}
-				//DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-			//}
-		//}
-		
-		//// These update are necessary since we just updated the global vectors in cellbased part
-		//DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-		//DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		////vertexbased
-		//MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_cellbased, 1, MPIU_INT, MPIU_SUM, vertComm);
-			    
-		//numVertUpdated_vertexbased = 0;
-		//if (numVertUpdated_cellbased==0) {
-			//// Check if there is any vertex to update; maybe we have done all the updates before
-			//PetscBool anyVertexToUpdate = PETSC_FALSE;
-			//for (PetscInt v = 0; v < nLocalVert; ++v) {
-				//if (vertMask[v] == currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-					//anyVertexToUpdate = PETSC_TRUE;
-					//break;
-				//}
-			//}		
-			
-			//if (anyVertexToUpdate) {
-				//// finding the minimum level set among all the vertices that are known in previous level
-				//PetscReal phiMin = PETSC_MAX_REAL;
-				//PetscInt basevertex = -1;
-				
-				//for (PetscInt v = 0; v < nLocalVert; ++v) {
-					//if (vertMask[v] == currentLevel-1  && FlagVertex[LOCAL][v] < 0.5) {   // not chosen yet
-						//PetscReal phiVal = PetscAbsReal(lsArray[LOCAL][v]);
-						//if (phiVal >= phiMin) continue; // check this later. maybe the equal sign is not neeeded
-													
-						//// Check neighbors
-						//DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE); // Connected vertices
-						//PetscInt nVert = PETSC_DETERMINE;
-						//PetscInt *neighborVerts = NULL;
-						//DMPlexGetAdjacency(vertDM, vertList[v], &nVert, &neighborVerts);
+          //PetscInt nFace;
+          //const PetscInt *faces;
 
-						//PetscBool hasEligible = PETSC_FALSE;
-				        //for (PetscInt nv = 0; nv < nVert; ++nv) {
-				            //PetscInt index = reverseVertList[neighborVerts[nv]];
-				            //if (vertMask[index] == currentLevel && updatedVertex[LOCAL][index] < 0.5) {
-				                //hasEligible = PETSC_TRUE;
-				                //break;
-				            //}
-				        //}
-				        							
-				        //PetscFree(neighborVerts);
-				        				        
-				        //if (hasEligible) {							
-				            //phiMin = phiVal;
-				            //basevertex = vertList[v];
-				        //}
-				        
-					//}
-				//}
-								
-				//if (basevertex >= 0) {
-					//PetscInt id_base = reverseVertList[basevertex];
-					//FlagVertex[LOCAL][id_base] = 1.0;
-					//FlagVertex[GLOBAL][id_base] = 1.0;
-										
-					//PetscInt nVert, *neighborVerts;
-					//DMPlexGetNeighbors(vertDM, basevertex, 1, -1.0, -1, PETSC_FALSE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and excluding the corner ones
-									
-					//PetscInt potentialvertex;
-					//for (PetscInt nv = 0; nv < nVert; ++nv) {
-						//const PetscInt neighbor = neighborVerts[nv];
-						//const PetscInt index = reverseVertList[neighbor];
-						//if (updatedVertex[LOCAL][index] < 0.5 && vertMask[index]==currentLevel) { // check local and global
-							//potentialvertex = neighbor;
-						//}	
-					//}
-					
-					//DMPlexRestoreNeighbors(vertDM, basevertex, 1, -1.0, -1, PETSC_FALSE, PETSC_TRUE, &nVert, &neighborVerts);
-		
-					//PetscInt id = reverseVertList[potentialvertex]; // id is the index of vertex in vertlist. For example, vertlist[52] = 195. Here neighbor is 195 and id which came from reverseVertlist[neighbor] is the index which is 52.
-					
-			        //PetscReal x0[dim];
-			        //DMPlexComputeCellGeometryFVM(vertDM, potentialvertex, NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
-			
-			        //DMPlexGetNeighbors(vertDM, potentialvertex, 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
-			
-			        //PetscInt result = FFM_VertexBased_SolveModified(dim, minVerts, x0, nVert, neighborVerts, updatedVertex[LOCAL], lsArray[LOCAL], &lsArray[GLOBAL][id], vertMask, currentLevel);
-			        //updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
-			        //numVertUpdated_vertexbased  += (updatedVertex[GLOBAL][id] > 0.5);
-			        					        
-			        ////PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
-					////if (Error > 1e-3 && updatedVertex[GLOBAL][id] == 1) {
-						////PetscPrintf(PETSC_COMM_SELF, "level %d, At vertexbased_v1, we have error %f\n", currentLevel, Error);
-					////}
-								
-			        //DMPlexRestoreNeighbors(vertDM, potentialvertex, 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts);
-						
-					////Animation part
-					//if (updatedVertex[GLOBAL][id] > 0.5) {
-					    //PetscReal x[dim];
-					    //DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-					    //fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "vertexbased_v1");
-					//}
-				//}
-			//}
-		//}
-						
-		//VecRestoreArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		//VecRestoreArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		//DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+          //// Get all faces associated with the cell
+          //DMPlexGetConeSize(vertDM, cell, &nFace) >> ablate::utilities::PetscUtilities::checkError;
+          //DMPlexGetCone(vertDM, cell, &faces) >> ablate::utilities::PetscUtilities::checkError;
+          //for (PetscInt f = 0; f < nFace; ++f) {
+            //PetscReal N[3] = {0.0, 0.0, 0.0};
+            //DMPlexFaceCentroidOutwardAreaNormal(vertDM, cell, faces[f], NULL, N);
 
-		//VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		//VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		//DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		//VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		//VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		
-		//VecRestoreArray(FlagVec[GLOBAL], &FlagVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError; 
-		//VecRestoreArray(FlagVec[LOCAL], &FlagVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		//DMGlobalToLocal(vertDM, FlagVec[GLOBAL], INSERT_VALUES, FlagVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-				
-		//MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_vertexbased, 1, MPIU_INT, MPIU_SUM, vertComm);
-		
-		//if (numVertUpdated_cellbased==0 && numVertUpdated_vertexbased==0) break;
-	//}
-	
-    
-	////PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-	////VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	////PetscInt nNOTSetVertices = 0; 
-	////for (PetscInt v = 0; v < nLocalVert; ++v) {
-		////if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-			////++nNOTSetVertices;
-		////}
-	////}
-	////printf("number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
-	////VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+            //// All points associated with this face
+            //PetscInt nClosure, *closure = NULL;
+            //DMPlexGetTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+
+            //PetscReal cnt = 0.0, ave = 0.0, vertCoeff = 0.0;
+            //for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
+              //if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
+
+                //const PetscInt clID = reverseVertList[closure[cl]];
+                //if (closure[cl]==vertID) {
+                  //if (updatedVertex[LOCAL][clID] > 0.5 && updatedVertex[LOCAL][clID] < 1.5) throw std::runtime_error("How can this be possible?\n");
+                  //++vertCoeff;
+                //}
+                //else {
+                  //if (updatedVertex[LOCAL][clID] < 0.5 || updatedVertex[LOCAL][clID] > 1.5) throw std::runtime_error("How can this be possible?\n");
+                  //ave += lsArray[LOCAL][clID];
+                //}
+
+                //cnt += 1.0;
+              //}
+            //}
+
+            //DMPlexRestoreTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+
+            //// Function value at the face center
+            //ave /= cnt;
+            //vertCoeff /= cnt;
+            //for (PetscInt d = 0; d < dim; ++d) {
+              //a[d] += vertCoeff * N[d];
+              //b[d] += ave * N[d];
+            //}
+          //}
+
+          //PetscReal vol;
+          //DMPlexComputeCellGeometryFVM(vertDM, cell, &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
+          //for (PetscInt d = 0; d < dim; ++d) {
+            //a[d] /= vol;
+            //b[d] /= vol;
+          //}
+
+          //PetscInt result = SolveQuadFormula(dim, a, b, &lsArray[GLOBAL][id]);
+          //updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
+          //numVertUpdated_cellbased += (updatedVertex[GLOBAL][id] > 0.5);
+
+          ////PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
+          ////if (Error > 1e-3) {
+            ////PetscPrintf(PETSC_COMM_SELF, "level %d, At cellbased, we have error %f and id is %d\n", currentLevel, Error, id);
+          ////}
+
+          //// Animation part
+          //if (updatedVertex[GLOBAL][id] > 0.5) {
+              //PetscReal x[dim];
+              //DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+              //fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
+              //fflush(animFile);
+          //}
+
+        //}
+        //DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+      //}
+    //}
+
+    //// These update are necessary since we just updated the global vectors in cellbased part
+    //DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+    //DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    ////vertexbased
+    //MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_cellbased, 1, MPIU_INT, MPIU_SUM, vertComm);
+
+    //numVertUpdated_vertexbased = 0;
+    //if (numVertUpdated_cellbased==0) {
+      //// Check if there is any vertex to update; maybe we have done all the updates before
+      //PetscBool anyVertexToUpdate = PETSC_FALSE;
+      //for (PetscInt v = 0; v < nLocalVert; ++v) {
+        //if (vertMask[v] == currentLevel && updatedVertex[LOCAL][v] < 0.5) {
+          //anyVertexToUpdate = PETSC_TRUE;
+          //break;
+        //}
+      //}
+
+      //if (anyVertexToUpdate) {
+        //// finding the minimum level set among all the vertices that are known in previous level
+        //PetscReal phiMin = PETSC_MAX_REAL;
+        //PetscInt basevertex = -1;
+
+        //for (PetscInt v = 0; v < nLocalVert; ++v) {
+          //if (vertMask[v] == currentLevel-1  && FlagVertex[LOCAL][v] < 0.5) {   // not chosen yet
+            //PetscReal phiVal = PetscAbsReal(lsArray[LOCAL][v]);
+            //if (phiVal >= phiMin) continue; // check this later. maybe the equal sign is not neeeded
+
+            //// Check neighbors
+            //DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE); // Connected vertices
+            //PetscInt nVert = PETSC_DETERMINE;
+            //PetscInt *neighborVerts = NULL;
+            //DMPlexGetAdjacency(vertDM, vertList[v], &nVert, &neighborVerts);
+
+            //PetscBool hasEligible = PETSC_FALSE;
+                //for (PetscInt nv = 0; nv < nVert; ++nv) {
+                    //PetscInt index = reverseVertList[neighborVerts[nv]];
+                    //if (vertMask[index] == currentLevel && updatedVertex[LOCAL][index] < 0.5) {
+                        //hasEligible = PETSC_TRUE;
+                        //break;
+                    //}
+                //}
+
+                //PetscFree(neighborVerts);
+
+                //if (hasEligible) {
+                    //phiMin = phiVal;
+                    //basevertex = vertList[v];
+                //}
+
+          //}
+        //}
+
+        //if (basevertex >= 0) {
+          //PetscInt id_base = reverseVertList[basevertex];
+          //FlagVertex[LOCAL][id_base] = 1.0;
+          //FlagVertex[GLOBAL][id_base] = 1.0;
+
+          //PetscInt nVert, *neighborVerts;
+          //DMPlexGetNeighbors(vertDM, basevertex, 1, -1.0, -1, PETSC_FALSE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and excluding the corner ones
+
+          //PetscInt potentialvertex;
+          //for (PetscInt nv = 0; nv < nVert; ++nv) {
+            //const PetscInt neighbor = neighborVerts[nv];
+            //const PetscInt index = reverseVertList[neighbor];
+            //if (updatedVertex[LOCAL][index] < 0.5 && vertMask[index]==currentLevel) { // check local and global
+              //potentialvertex = neighbor;
+            //}
+          //}
+
+          //DMPlexRestoreNeighbors(vertDM, basevertex, 1, -1.0, -1, PETSC_FALSE, PETSC_TRUE, &nVert, &neighborVerts);
+
+          //PetscInt id = reverseVertList[potentialvertex]; // id is the index of vertex in vertlist. For example, vertlist[52] = 195. Here neighbor is 195 and id which came from reverseVertlist[neighbor] is the index which is 52.
+
+              //PetscReal x0[dim];
+              //DMPlexComputeCellGeometryFVM(vertDM, potentialvertex, NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
+
+              //DMPlexGetNeighbors(vertDM, potentialvertex, 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
+
+              //PetscInt result = FFM_VertexBased_SolveModified(dim, minVerts, x0, nVert, neighborVerts, updatedVertex[LOCAL], lsArray[LOCAL], &lsArray[GLOBAL][id], vertMask, currentLevel);
+              //updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
+              //numVertUpdated_vertexbased  += (updatedVertex[GLOBAL][id] > 0.5);
+
+              ////PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
+          ////if (Error > 1e-3 && updatedVertex[GLOBAL][id] == 1) {
+            ////PetscPrintf(PETSC_COMM_SELF, "level %d, At vertexbased_v1, we have error %f\n", currentLevel, Error);
+          ////}
+
+              //DMPlexRestoreNeighbors(vertDM, potentialvertex, 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts);
+
+          ////Animation part
+          //if (updatedVertex[GLOBAL][id] > 0.5) {
+              //PetscReal x[dim];
+              //DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+              //fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "vertexbased_v1");
+          //}
+        //}
+      //}
+    //}
+
+    //VecRestoreArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //VecRestoreArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    //VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+    //VecRestoreArray(FlagVec[GLOBAL], &FlagVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //VecRestoreArray(FlagVec[LOCAL], &FlagVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    //DMGlobalToLocal(vertDM, FlagVec[GLOBAL], INSERT_VALUES, FlagVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    //MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_vertexbased, 1, MPIU_INT, MPIU_SUM, vertComm);
+
+    //if (numVertUpdated_cellbased==0 && numVertUpdated_vertexbased==0) break;
+  //}
+
+
+  ////PetscScalar *updatedVertex[2] = {nullptr, nullptr};
+  ////VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  ////PetscInt nNOTSetVertices = 0;
+  ////for (PetscInt v = 0; v < nLocalVert; ++v) {
+    ////if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
+      ////++nNOTSetVertices;
+    ////}
+  ////}
+  ////printf("number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
+  ////VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
 //}
 
 // VertexBased_GeneralModifiedGreenGauss
 PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_potential, PetscInt id_base, PetscScalar *updatedVertex, PetscScalar *xCoord, PetscScalar *yCoord, const PetscInt *vertMask, const PetscInt currentLevel, PetscScalar *lsArray, PetscReal *updatedLS) {
-	
-	int rank;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-	//// Check neighbor vertices of potential vertex to find the ones that has known values including vertices of shared cells 
-	//PetscInt nVert, *neighborVerts;
-	//DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
-	////DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_TRUE); // Connected vertices
-	////PetscInt nVert = PETSC_DETERMINE;
-	////PetscInt *neighborVerts= NULL;
-	////DMPlexGetAdjacency(vertDM, vertList[id_potential], &nVert, &neighborVerts); // just the points that are connected with edge
-	//PetscInt vertIDs[nVert], nValid=0;
-	//for (PetscInt nv = 0; nv < nVert; ++nv) {
-		//PetscInt id = reverseVertList[neighborVerts[nv]];
-		//if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id] == currentLevel-1) { //vertMask[id]==currentLevel-1
-					//vertIDs[nValid++] = id;
-		//}
-	//}
-	
-	////////////printf("id potential is %d and x is %.14f and y is %.14f\n", id_potential, xCoord[id_potential], yCoord[id_potential]);
-	//if (id_potential == 3776) {
-		//xexit("we reach here\n");
-	//}
-	//for (PetscInt v = 0; v < nValid; ++v) {
-		//printf("idddd is %d\n", vertIDs[v]);
-	//}
-	//if (nValid < dim+1) return 0;
-	
-	// Check neighbor vertices of potential vertex to find the ones that have known values and shared edges with potential vertex to find all base points
-	//PetscInt nBase, *baseVerts;
-	//DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_FALSE, PETSC_TRUE, &nBase, &baseVerts); // Return neighboring vertices of a vertex by one level and excluding the corner ones
-	//PetscInt baseIDs[nBase], nValidBase = 0;
-	//for (PetscInt nv = 0; nv < nBase; ++nv) {
-		//PetscInt id = reverseVertList[baseVerts[nv]];
-		//if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5) {
-			//baseIDs[nValidBase++] = id;
-		//}
-	//}
-		
-	// Do the calculations for each valid base vertex
-	PetscReal best_phi = PETSC_MAX_REAL;
-	PetscInt result;
-	for (PetscInt i=0; i<2;++i) {
-		PetscInt level_limit;
-		if (i==0) {
-			level_limit = currentLevel-1;
-		} else{
-			level_limit = currentLevel;
-		}
-		DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE); // Connected vertices
-		PetscInt nBase = PETSC_DETERMINE;
-		PetscInt *baseVerts = NULL;
-		DMPlexGetAdjacency(vertDM, vertList[id_potential], &nBase, &baseVerts); // just the points that are connected with edge
-		PetscInt baseIDs[nBase], nValidBase = 0;
-		for (PetscInt nv = 0; nv < nBase; ++nv) {
-			PetscInt id = reverseVertList[baseVerts[nv]];
-			//printf("idnear is %d\n", id);
-			if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id] <= level_limit) {
-				baseIDs[nValidBase++] = id;
-			}
-		}
-		
-		//for (PetscInt v = 0; v < nValidBase; ++v) {
-			//printf("baseid is %d\n", baseIDs[v]);
-		//}
-		
-		for (PetscInt bv = 0; bv <  nValidBase; ++bv) {
-			PetscInt PnCells, *Pcells;
-		    DMPlexVertexGetCells(vertDM, vertList[id_potential], &PnCells, &Pcells);
-		    //printf("code1\n");
-		    id_base = baseIDs[bv];
-		    PetscInt BnCells, *Bcells;
-		    DMPlexVertexGetCells(vertDM, vertList[id_base], &BnCells, &Bcells);
-		
-		    PetscInt cellIDs[8], nCells = 0; // shared cells of base vertex and potential vertex
-			for (PetscInt i = 0; i < PnCells; ++i) {
-			    for (PetscInt j = 0; j < BnCells; ++j) {
-					DMPolytopeType cellType;
-					DMPlexGetCellType(vertDM, Pcells[i], &cellType);
-			        if (Pcells[i] == Bcells[j] && cellType != 12) {
-						cellIDs[nCells++] = Pcells[i];
-			        }
-			    }
-			}
-			
-			PetscInt stencilIDs[8], nStencil = 0;
-	
-			// helper lambda to check membership in baseIDs[]
-			auto isInBaseList = [&](PetscInt id) {
-			    for (PetscInt v = 0; v < nValidBase; ++v) {
-			        if (baseIDs[v] == id) return true;
-			    }
-			    return false;
-			};
-			
-			//printf("ncells is %d\n", nCells);
-			for (PetscInt i = 0; i < nCells; ++i) {
-			    PetscInt nCellVert, *cellverts;
-			    //printf("cellid is %d\n", cellIDs[i]);
-			    DMPlexCellGetVertices(vertDM, cellIDs[i], &nCellVert, &cellverts) >>
-			        ablate::utilities::PetscUtilities::checkError;
-							//printf("code3\n");
-			    for (PetscInt v = 0; v < nCellVert; ++v) {
-			        PetscInt id = reverseVertList[cellverts[v]];
-					//printf("id is %d\n", id);
-			        // filtering condition
-			        if (id != id_base &&
-			            updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 &&
-			            vertMask[id] <= level_limit &&
-			            !isInBaseList(id))       
-			        {
-			            stencilIDs[nStencil++] = id;
-			        }
-			        //printf("codeif\n");
-			    }
-			}
+  int rank;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-			// always insert id_base
-			stencilIDs[nStencil++] = id_base;
-			//for (PetscInt v = 0; v < nStencil; ++v) {
-				//printf("idstencil is %d with x %.14f and y %.14f\n", stencilIDs[v], xCoord[stencilIDs[v]], yCoord[stencilIDs[v]]);
-			//}
-			
-			if (nStencil < dim) continue;
-			
-			//// Get adjacency of base
-			//id_base = baseIDs[bv];
-		    //DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE);
-		    //PetscInt nAdjBase = PETSC_DETERMINE;
-		    //PetscInt* adjBase = NULL;
-		    //DMPlexGetAdjacency(vertDM, vertList[id_base], &nAdjBase, &adjBase);
-		    
-		    //PetscInt stencilIDs[8], nStencil = 0; // vertices of shared cell of base vertex and potential vertex
-			//for (PetscInt i = 0; i < nAdjBase; ++i) {
-				//PetscInt idA = reverseVertList[adjBase[i]];
-				//if ( updatedVertex[idA] > 0.5 && updatedVertex[idA] < 1.5 && vertMask[idA] == currentLevel-1 && PetscSign(lsArray[idA]) == PetscSign(lsArray[id_base]) ) {
-					//stencilIDs[nStencil++] = idA;
-				//}
-			//}
-			
-			PetscBool accept = PETSC_FALSE;
-			PetscReal best_phi_local = PETSC_MAX_REAL;
-			
-			for (PetscInt usedStencil = nStencil; usedStencil >= dim && !accept; --usedStencil) {
-				
-				std::sort(stencilIDs, stencilIDs + usedStencil, [&](PetscInt a, PetscInt b){
-	                  return PetscAbsReal(lsArray[a]) < PetscAbsReal(lsArray[b]);
-	            });
-	              
-				struct Edge { 
-					PetscInt v1, v2; 
-				};
-				Edge alledges[usedStencil+1]; 
-				PetscInt nallEdge = 0;
-	
-				for (PetscInt v = 0; v < usedStencil; ++v) {
-				    if (stencilIDs[v] != id_base) {
-						alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
-				        alledges[nallEdge++] = { std::min(id_base, stencilIDs[v]), std::max(id_base, stencilIDs[v]) };
-				    }
-				    if (stencilIDs[v] == id_base && usedStencil == dim) {
-						alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
-				    }
-				}
-		
-				//for (PetscInt v = 0; v < usedStencil+1; ++v) {
-					//printf("edge %d is %d, %d\n", v, alledges[v].v1, alledges[v].v2);
-				//}
-				
-				PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
-				PetscScalar N[3];
-				PetscScalar vol = 0.0;
-				PetscInt edge[2];			
-				for (PetscInt i = 0; i < nallEdge; ++i) {
-					edge[0]= alledges[i].v1;
-					edge[1] = alledges[i].v2;
-					PetscScalar vec[dim];
-					for (int d = 0; d < 3; d++) N[d] = 0.0;
-					vec[0] = xCoord[edge[1]] - xCoord[edge[0]];
-					vec[1] = yCoord[edge[1]] - yCoord[edge[0]];
-					N[0] = vec[1];
-					N[1] = -vec[0]; 
-					
-					PetscScalar midvec[2];
-					midvec[0] = 0.5*(xCoord[edge[1]] + xCoord[edge[0]]);
-					midvec[1] = 0.5*(yCoord[edge[1]] + yCoord[edge[0]]);
-					
-					PetscScalar cellcenter[2] = {xCoord[id_potential], yCoord[id_potential] };
-					for (PetscInt v = 0; v < usedStencil; ++v) {
-						cellcenter[0] += xCoord[stencilIDs[v]]; 
-						cellcenter[1] += yCoord[stencilIDs[v]]; 
-					}
-					cellcenter[0] /= usedStencil+1;
-					cellcenter[1] /= usedStencil+1;
-					
-					PetscScalar centertomid[dim];
-					for (PetscInt d = 0; d < dim; ++d) {
-						centertomid[d] = cellcenter[d] -  midvec[d];
-					} 
-					
-					if (N[0]*centertomid[0] + N[1]*centertomid[1] > 0.0) {
-						N[0] = -N[0];
-						N[1] = -N[1];
-					}
-					
-					for (PetscInt d = 0; d < dim; ++d) {
-					    for (PetscInt k = 0; k < 2; ++k) {
-					        PetscInt v = edge[k];
-					        if (updatedVertex[v] > 0.5 && updatedVertex[v] < 1.5) {
-								////////////printf("idwithls is %d and ls is %.14f\n", v, lsArray[v]);
-					            b[d] += 0.5 * lsArray[v] * N[d];
-					        } else {
-					            a[d] += 0.5 * N[d];
-					        }
-					    }
-					}	
-					
-				//printf("%d and %d\n", edge[0], edge[1]);
-				//printf("%f and %f\n", xCoord[edge[0]], yCoord[edge[0]]);
-				//printf("%f and %f\n", N[0], N[1]);
-				
-				}
-				
-				PetscInt start = alledges[0].v1;  // first vertex of e0
-				PetscInt prev = -1;
-				PetscInt cur = start;
-				
-				PetscInt orderedVerts[usedStencil+1]; // number of vertices = number of unique vertices
-				PetscInt nVerts = 0;
-				orderedVerts[nVerts++] = cur;  // first vertex
-				
-				while (nVerts < usedStencil+1) { // number of unique vertices
-				    for (PetscInt i = 0; i < usedStencil+1; ++i) {  // loop over all edges
-				        PetscInt v0 = alledges[i].v1;
-				        PetscInt v1 = alledges[i].v2;
-				        PetscInt next = -1;
-				
-				        if (v0 == cur && v1 != prev) next = v1;
-				        else if (v1 == cur && v0 != prev) next = v0;
-				
-				        if (next != -1) {
-				            orderedVerts[nVerts++] = next;
-				            prev = cur;
-				            cur = next;
-				            break; // move to next vertex
-				        }
-				    }
-				}
-				
-				PetscScalar temp_area = 0.0;
-				for (PetscInt i = 0; i < nVerts; ++i) {
-				    PetscInt j = (i + 1) % nVerts; // next vertex, wrap around
-				    PetscInt vi = orderedVerts[i];
-				    PetscInt vj = orderedVerts[j];
-				    temp_area += xCoord[vi] * yCoord[vj] - xCoord[vj] * yCoord[vi];
-				}
-				
-				vol = 0.5 * PetscAbsReal(temp_area);
-				////////////PetscPrintf(PETSC_COMM_SELF, "voltest is %f\n", vol);	
-				
-				for (PetscInt d = 0; d < dim; ++d) {
-					////////////PetscPrintf(PETSC_COMM_SELF, "a is %f and b is %f\n", a[d], b[d]);	
-					a[d] /= vol;
-					b[d] /= vol;
-				}
-		        
-		        PetscReal temp_phi = *updatedLS;	
-		        //printf("Try with %d stencils -> φ = %f\n", usedStencil, temp_phi);
-				PetscInt temp_result = SolveQuadFormula(dim, a, b, &temp_phi);
-				////////////printf("Try with %d stencils -> φ = %f, result=%d\n", usedStencil, temp_phi, result);
-				////////////PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and tempphi is %f and result is %d\n", id_potential, temp_phi, temp_result);	
-				if (temp_result != 1) continue;
-				
-				PetscBool monotone = PETSC_TRUE;
-				for (PetscInt v = 0; v < usedStencil; ++v) {
-			        if (PetscAbsReal(temp_phi) < PetscAbsReal(lsArray[stencilIDs[v]])) {
-			            ////////////printf("Rejected φ=%f because neighbor %d has |φ| smaller.\n", temp_phi, stencilIDs[v]);
-			            monotone = PETSC_FALSE;
-			            break;
-			        }
-			    }
-	
-			    if (monotone) {
-			        accept = PETSC_TRUE;
-			        best_phi_local = temp_phi;
-			    }
-				
-				if (accept && PetscAbsReal(best_phi_local) < PetscAbsReal(best_phi)) {
-					best_phi = best_phi_local;
-					result = temp_result;
-				}
-				////////////PetscPrintf(PETSC_COMM_SELF, "bestphi is %f\n", best_phi);	
-				//if (result == 1) {
-					//for (PetscInt v = 0; v < nStencil; ++v) {
-						//if ( PetscAbsReal(temp_phi) < 0.99*PetscAbsReal(lsArray[stencilIDs[v]]) ) {
-							//PetscPrintf(PETSC_COMM_SELF, "idp is %d and %f and vertIDs[v] is %d and ls is %f\n", id_potential, PetscAbsReal(temp_phi), stencilIDs[v], lsArray[stencilIDs[v]]);	
-							//accept = 0;
-							//result = 0;
-							////PetscPrintf(PETSC_COMM_SELF, "we were here\n");	
-							//break;
-						//} 
-					//}
-				//}
-			
-			} //stencil loop
-			
-		} // valid base loop
-	
-	}
-	
-	*updatedLS = best_phi;
-	//PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and ls is %.14f\n", id_potential, *updatedLS);	
-	
-	return result;
-	//PetscInt result = SolveQuadFormula(dim, a, b, updatedLS);
-	////PetscPrintf(PETSC_COMM_SELF, "id is %d and ls is %f and result is %d\n", id_potential, *updatedLS, result);	
-	//return result;
+  //// Check neighbor vertices of potential vertex to find the ones that has known values including vertices of shared cells
+  //PetscInt nVert, *neighborVerts;
+  //DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
+  ////DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_TRUE); // Connected vertices
+  ////PetscInt nVert = PETSC_DETERMINE;
+  ////PetscInt *neighborVerts= NULL;
+  ////DMPlexGetAdjacency(vertDM, vertList[id_potential], &nVert, &neighborVerts); // just the points that are connected with edge
+  //PetscInt vertIDs[nVert], nValid=0;
+  //for (PetscInt nv = 0; nv < nVert; ++nv) {
+    //PetscInt id = reverseVertList[neighborVerts[nv]];
+    //if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id] == currentLevel-1) { //vertMask[id]==currentLevel-1
+          //vertIDs[nValid++] = id;
+    //}
+  //}
+
+  ////////////printf("id potential is %d and x is %.14f and y is %.14f\n", id_potential, xCoord[id_potential], yCoord[id_potential]);
+  //if (id_potential == 3776) {
+    //xexit("we reach here\n");
+  //}
+  //for (PetscInt v = 0; v < nValid; ++v) {
+    //printf("idddd is %d\n", vertIDs[v]);
+  //}
+  //if (nValid < dim+1) return 0;
+
+  // Check neighbor vertices of potential vertex to find the ones that have known values and shared edges with potential vertex to find all base points
+  //PetscInt nBase, *baseVerts;
+  //DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_FALSE, PETSC_TRUE, &nBase, &baseVerts); // Return neighboring vertices of a vertex by one level and excluding the corner ones
+  //PetscInt baseIDs[nBase], nValidBase = 0;
+  //for (PetscInt nv = 0; nv < nBase; ++nv) {
+    //PetscInt id = reverseVertList[baseVerts[nv]];
+    //if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5) {
+      //baseIDs[nValidBase++] = id;
+    //}
+  //}
+
+  // Do the calculations for each valid base vertex
+  PetscReal best_phi = PETSC_MAX_REAL;
+  PetscInt result;
+  for (PetscInt i=0; i<2;++i) {
+    PetscInt level_limit;
+    if (i==0) {
+      level_limit = currentLevel-1;
+    } else{
+      level_limit = currentLevel;
+    }
+    DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE); // Connected vertices
+    PetscInt nBase = PETSC_DETERMINE;
+    PetscInt *baseVerts = NULL;
+    DMPlexGetAdjacency(vertDM, vertList[id_potential], &nBase, &baseVerts); // just the points that are connected with edge
+    PetscInt baseIDs[nBase], nValidBase = 0;
+    for (PetscInt nv = 0; nv < nBase; ++nv) {
+      PetscInt id = reverseVertList[baseVerts[nv]];
+      //printf("idnear is %d\n", id);
+      if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id] <= level_limit) {
+        baseIDs[nValidBase++] = id;
+      }
+    }
+
+    //for (PetscInt v = 0; v < nValidBase; ++v) {
+      //printf("baseid is %d\n", baseIDs[v]);
+    //}
+
+    for (PetscInt bv = 0; bv <  nValidBase; ++bv) {
+      PetscInt PnCells, *Pcells;
+        DMPlexVertexGetCells(vertDM, vertList[id_potential], &PnCells, &Pcells);
+        //printf("code1\n");
+        id_base = baseIDs[bv];
+        PetscInt BnCells, *Bcells;
+        DMPlexVertexGetCells(vertDM, vertList[id_base], &BnCells, &Bcells);
+
+        PetscInt cellIDs[8], nCells = 0; // shared cells of base vertex and potential vertex
+      for (PetscInt i = 0; i < PnCells; ++i) {
+          for (PetscInt j = 0; j < BnCells; ++j) {
+          DMPolytopeType cellType;
+          DMPlexGetCellType(vertDM, Pcells[i], &cellType);
+              if (Pcells[i] == Bcells[j] && cellType != 12) {
+            cellIDs[nCells++] = Pcells[i];
+              }
+          }
+      }
+
+      PetscInt stencilIDs[8], nStencil = 0;
+
+      // helper lambda to check membership in baseIDs[]
+      auto isInBaseList = [&](PetscInt id) {
+          for (PetscInt v = 0; v < nValidBase; ++v) {
+              if (baseIDs[v] == id) return true;
+          }
+          return false;
+      };
+
+      //printf("ncells is %d\n", nCells);
+      for (PetscInt i = 0; i < nCells; ++i) {
+          PetscInt nCellVert, *cellverts;
+          //printf("cellid is %d\n", cellIDs[i]);
+          DMPlexCellGetVertices(vertDM, cellIDs[i], &nCellVert, &cellverts) >>
+              ablate::utilities::PetscUtilities::checkError;
+              //printf("code3\n");
+          for (PetscInt v = 0; v < nCellVert; ++v) {
+              PetscInt id = reverseVertList[cellverts[v]];
+          //printf("id is %d\n", id);
+              // filtering condition
+              if (id != id_base &&
+                  updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 &&
+                  vertMask[id] <= level_limit &&
+                  !isInBaseList(id))
+              {
+                  stencilIDs[nStencil++] = id;
+              }
+              //printf("codeif\n");
+          }
+      }
+
+      // always insert id_base
+      stencilIDs[nStencil++] = id_base;
+      //for (PetscInt v = 0; v < nStencil; ++v) {
+        //printf("idstencil is %d with x %.14f and y %.14f\n", stencilIDs[v], xCoord[stencilIDs[v]], yCoord[stencilIDs[v]]);
+      //}
+
+      if (nStencil < dim) continue;
+
+      //// Get adjacency of base
+      //id_base = baseIDs[bv];
+        //DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE);
+        //PetscInt nAdjBase = PETSC_DETERMINE;
+        //PetscInt* adjBase = NULL;
+        //DMPlexGetAdjacency(vertDM, vertList[id_base], &nAdjBase, &adjBase);
+
+        //PetscInt stencilIDs[8], nStencil = 0; // vertices of shared cell of base vertex and potential vertex
+      //for (PetscInt i = 0; i < nAdjBase; ++i) {
+        //PetscInt idA = reverseVertList[adjBase[i]];
+        //if ( updatedVertex[idA] > 0.5 && updatedVertex[idA] < 1.5 && vertMask[idA] == currentLevel-1 && PetscSign(lsArray[idA]) == PetscSign(lsArray[id_base]) ) {
+          //stencilIDs[nStencil++] = idA;
+        //}
+      //}
+
+      PetscBool accept = PETSC_FALSE;
+      PetscReal best_phi_local = PETSC_MAX_REAL;
+
+      for (PetscInt usedStencil = nStencil; usedStencil >= dim && !accept; --usedStencil) {
+
+        std::sort(stencilIDs, stencilIDs + usedStencil, [&](PetscInt a, PetscInt b){
+                    return PetscAbsReal(lsArray[a]) < PetscAbsReal(lsArray[b]);
+              });
+
+        struct Edge {
+          PetscInt v1, v2;
+        };
+        Edge alledges[usedStencil+1];
+        PetscInt nallEdge = 0;
+
+        for (PetscInt v = 0; v < usedStencil; ++v) {
+            if (stencilIDs[v] != id_base) {
+            alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
+                alledges[nallEdge++] = { std::min(id_base, stencilIDs[v]), std::max(id_base, stencilIDs[v]) };
+            }
+            if (stencilIDs[v] == id_base && usedStencil == dim) {
+            alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
+            }
+        }
+
+        //for (PetscInt v = 0; v < usedStencil+1; ++v) {
+          //printf("edge %d is %d, %d\n", v, alledges[v].v1, alledges[v].v2);
+        //}
+
+        PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
+        PetscScalar N[3];
+        PetscScalar vol = 0.0;
+        PetscInt edge[2];
+        for (PetscInt i = 0; i < nallEdge; ++i) {
+          edge[0]= alledges[i].v1;
+          edge[1] = alledges[i].v2;
+          PetscScalar vec[dim];
+          for (int d = 0; d < 3; d++) N[d] = 0.0;
+          vec[0] = xCoord[edge[1]] - xCoord[edge[0]];
+          vec[1] = yCoord[edge[1]] - yCoord[edge[0]];
+          N[0] = vec[1];
+          N[1] = -vec[0];
+
+          PetscScalar midvec[2];
+          midvec[0] = 0.5*(xCoord[edge[1]] + xCoord[edge[0]]);
+          midvec[1] = 0.5*(yCoord[edge[1]] + yCoord[edge[0]]);
+
+          PetscScalar cellcenter[2] = {xCoord[id_potential], yCoord[id_potential] };
+          for (PetscInt v = 0; v < usedStencil; ++v) {
+            cellcenter[0] += xCoord[stencilIDs[v]];
+            cellcenter[1] += yCoord[stencilIDs[v]];
+          }
+          cellcenter[0] /= usedStencil+1;
+          cellcenter[1] /= usedStencil+1;
+
+          PetscScalar centertomid[dim];
+          for (PetscInt d = 0; d < dim; ++d) {
+            centertomid[d] = cellcenter[d] -  midvec[d];
+          }
+
+          if (N[0]*centertomid[0] + N[1]*centertomid[1] > 0.0) {
+            N[0] = -N[0];
+            N[1] = -N[1];
+          }
+
+          for (PetscInt d = 0; d < dim; ++d) {
+              for (PetscInt k = 0; k < 2; ++k) {
+                  PetscInt v = edge[k];
+                  if (updatedVertex[v] > 0.5 && updatedVertex[v] < 1.5) {
+                ////////////printf("idwithls is %d and ls is %.14f\n", v, lsArray[v]);
+                      b[d] += 0.5 * lsArray[v] * N[d];
+                  } else {
+                      a[d] += 0.5 * N[d];
+                  }
+              }
+          }
+
+        //printf("%d and %d\n", edge[0], edge[1]);
+        //printf("%f and %f\n", xCoord[edge[0]], yCoord[edge[0]]);
+        //printf("%f and %f\n", N[0], N[1]);
+
+        }
+
+        PetscInt start = alledges[0].v1;  // first vertex of e0
+        PetscInt prev = -1;
+        PetscInt cur = start;
+
+        PetscInt orderedVerts[usedStencil+1]; // number of vertices = number of unique vertices
+        PetscInt nVerts = 0;
+        orderedVerts[nVerts++] = cur;  // first vertex
+
+        while (nVerts < usedStencil+1) { // number of unique vertices
+            for (PetscInt i = 0; i < usedStencil+1; ++i) {  // loop over all edges
+                PetscInt v0 = alledges[i].v1;
+                PetscInt v1 = alledges[i].v2;
+                PetscInt next = -1;
+
+                if (v0 == cur && v1 != prev) next = v1;
+                else if (v1 == cur && v0 != prev) next = v0;
+
+                if (next != -1) {
+                    orderedVerts[nVerts++] = next;
+                    prev = cur;
+                    cur = next;
+                    break; // move to next vertex
+                }
+            }
+        }
+
+        PetscScalar temp_area = 0.0;
+        for (PetscInt i = 0; i < nVerts; ++i) {
+            PetscInt j = (i + 1) % nVerts; // next vertex, wrap around
+            PetscInt vi = orderedVerts[i];
+            PetscInt vj = orderedVerts[j];
+            temp_area += xCoord[vi] * yCoord[vj] - xCoord[vj] * yCoord[vi];
+        }
+
+        vol = 0.5 * PetscAbsReal(temp_area);
+        ////////////PetscPrintf(PETSC_COMM_SELF, "voltest is %f\n", vol);
+
+        for (PetscInt d = 0; d < dim; ++d) {
+          ////////////PetscPrintf(PETSC_COMM_SELF, "a is %f and b is %f\n", a[d], b[d]);
+          a[d] /= vol;
+          b[d] /= vol;
+        }
+
+            PetscReal temp_phi = *updatedLS;
+            //printf("Try with %d stencils -> φ = %f\n", usedStencil, temp_phi);
+        PetscInt temp_result = SolveQuadFormula(dim, a, b, &temp_phi);
+        ////////////printf("Try with %d stencils -> φ = %f, result=%d\n", usedStencil, temp_phi, result);
+        ////////////PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and tempphi is %f and result is %d\n", id_potential, temp_phi, temp_result);
+        if (temp_result != 1) continue;
+
+        PetscBool monotone = PETSC_TRUE;
+        for (PetscInt v = 0; v < usedStencil; ++v) {
+              if (PetscAbsReal(temp_phi) < PetscAbsReal(lsArray[stencilIDs[v]])) {
+                  ////////////printf("Rejected φ=%f because neighbor %d has |φ| smaller.\n", temp_phi, stencilIDs[v]);
+                  monotone = PETSC_FALSE;
+                  break;
+              }
+          }
+
+          if (monotone) {
+              accept = PETSC_TRUE;
+              best_phi_local = temp_phi;
+          }
+
+        if (accept && PetscAbsReal(best_phi_local) < PetscAbsReal(best_phi)) {
+          best_phi = best_phi_local;
+          result = temp_result;
+        }
+        ////////////PetscPrintf(PETSC_COMM_SELF, "bestphi is %f\n", best_phi);
+        //if (result == 1) {
+          //for (PetscInt v = 0; v < nStencil; ++v) {
+            //if ( PetscAbsReal(temp_phi) < 0.99*PetscAbsReal(lsArray[stencilIDs[v]]) ) {
+              //PetscPrintf(PETSC_COMM_SELF, "idp is %d and %f and vertIDs[v] is %d and ls is %f\n", id_potential, PetscAbsReal(temp_phi), stencilIDs[v], lsArray[stencilIDs[v]]);
+              //accept = 0;
+              //result = 0;
+              ////PetscPrintf(PETSC_COMM_SELF, "we were here\n");
+              //break;
+            //}
+          //}
+        //}
+
+      } //stencil loop
+
+    } // valid base loop
+
+  }
+
+  *updatedLS = best_phi;
+  //PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and ls is %.14f\n", id_potential, *updatedLS);
+
+  return result;
+  //PetscInt result = SolveQuadFormula(dim, a, b, updatedLS);
+  ////PetscPrintf(PETSC_COMM_SELF, "id is %d and ls is %f and result is %d\n", id_potential, *updatedLS, result);
+  //return result;
 }
 
 // VertexBased_RBF
 PetscInt Reconstruction::FFM_VertexBased_RBF(const PetscInt dim, PetscInt id_potential, PetscInt id_base, PetscScalar *updatedVertex, PetscScalar *xCoord, PetscScalar *yCoord, const PetscInt *vertMask, const PetscInt currentLevel, PetscScalar *lsArray, PetscReal *updatedLS) {
-	
-	int rank;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+
+  int rank;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
     PetscInt PnCells, *Pcells;
     DMPlexVertexGetCells(vertDM, vertList[id_potential], &PnCells, &Pcells);
-    
+
     PetscInt BnCells, *Bcells;
     DMPlexVertexGetCells(vertDM, vertList[id_base], &BnCells, &Bcells);
-    		
-	PetscInt capacity = 20;
-	PetscInt nValid = 2;
-	int* vertIDs = (int*)malloc(capacity * sizeof(int));
-	vertIDs[0] = id_potential;
-	vertIDs[1] = id_base;
-	
-	for (PetscInt i = 0; i < PnCells; ++i) {
-	    for (PetscInt j = 0; j < BnCells; ++j) {
-	        if (Pcells[i] == Bcells[j]) {
-	            PetscInt nVert, *verts;
-	            DMPlexCellGetVertices(vertDM, Pcells[i], &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-	            for (PetscInt v = 0; v < nVert; ++v) {
-	                PetscInt id = reverseVertList[verts[v]];
-	                if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id]==currentLevel-1 && id != id_potential && id != id_base ) {
-	                    if (nValid >= capacity) {
-	                        capacity *= 2; // double size
-	                        vertIDs = (int*)realloc(vertIDs, capacity * sizeof(int));
-	                    }
-	                    vertIDs[nValid++] = id;
-	                }
-	            }
-	        }
-	    }
-	}
 
-	//// Check neighbor vertices of potential vertex to find the ones that has known values including vertices of shared cells 
-	//PetscInt nVert, *neighborVerts;
-	//DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
-	//PetscInt vertIDs[nVert+1], nValid = 1; // nValid is initialized as 1 to include the potential vertex to list
-	//vertIDs[0] = id_potential;
-	//for (PetscInt nv = 0; nv < nVert; ++nv) {
-		//PetscInt index = reverseVertList[neighborVerts[nv]];
-		//if (updatedVertex[index] > 0.5 && updatedVertex[index] < 1.5 && vertMask[index]==currentLevel-1) { //should it be in previous level????
-			//vertIDs[nValid] = index;
-			//++nValid;
-		//}
-	//}
-	
-	//PetscFree(neighborVerts);		
-	if (nValid-1 < dim+1) return 0;
-		
-	PetscInt n = nValid + 3; // 3 is the number of polynomial terms of order 1
-			
-	PetscReal RHS[dim][n] = {0};
-	Mat A;
-	MatCreate(PETSC_COMM_SELF, &A); //for LAPACK, the matrix must be stored entirely on one process, so we have PETSC_COMM_SELF.
-	MatSetType(A, MATDENSE); // LAPACK requires MATDENSE
-	MatSetSizes(A, n,n,n,n); // the local and global number of rows should be equal since we stored the matrix entirely on one process.
-	MatSetUp(A);
-		
-	// filling matrix A
-	PetscReal r, value, m = 3.0; // m is the power for phs kernel
-	PetscReal dx, dy;
-	PetscInt vi, vj;
-	for (PetscInt i = 0; i < nValid; i++) {
-		vi = vertIDs[i];
-		for (PetscInt j = 0; j < nValid; j++) {
-			vj = vertIDs[j];
-			dx = xCoord[vi] - xCoord[vj];
-			dy = yCoord[vi] - yCoord[vj];
-			r  = PetscSqrtReal(dx*dx + dy*dy);
-			value = PetscPowReal(r, m); 
-			MatSetValue(A, i, j, value, INSERT_VALUES);
-		}
-	}
-	
-	for (PetscInt i = 0; i < nValid; ++i) {
-		vi = vertIDs[i];
-		MatSetValue(A, i, nValid + 0, 1.0, INSERT_VALUES);
-		MatSetValue(A, i, nValid + 1, xCoord[vi], INSERT_VALUES);
-		MatSetValue(A, i, nValid + 2, yCoord[vi], INSERT_VALUES);
-	}
-	
-	for (PetscInt j = 0; j < nValid; ++j) {
-		vj = vertIDs[j];
-		MatSetValue(A, nValid + 0, j, 1.0, INSERT_VALUES); 
-		MatSetValue(A, nValid + 1, j, xCoord[vj], INSERT_VALUES); 
-		MatSetValue(A, nValid + 2, j, yCoord[vj], INSERT_VALUES);
-	}
-	
-	for (PetscInt ii = 0; ii < 3; ++ii) {
-		for (PetscInt jj = 0; jj < 3; ++jj) {
-			MatSetValue(A, nValid + ii, nValid + jj, 0.0, INSERT_VALUES);
-		}
-	}
-	
-	MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
-	MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
-	// end of filling matrix A
-	
-	// filling right hand sides
-	for (PetscInt d = 0; d < dim; ++d) {
-		for (PetscInt i = 0; i < nValid; ++i) {
-			vi = vertIDs[i];
-			dx = xCoord[id_potential] - xCoord[vi];
-			dy = yCoord[id_potential] - yCoord[vi];
-			r = PetscSqrtReal(dx*dx + dy*dy);
-			if (d == 0) {
-				RHS[d][i] = m * PetscPowReal(r, m-2) * (xCoord[id_potential]-xCoord[vi]);
-			} else {
-				RHS[d][i] = m * PetscPowReal(r, m-2) * (yCoord[id_potential]-yCoord[vi]);
-			}
-		}
-	}
-	
-	for (PetscInt d = 0; d < dim; ++d) {
-		RHS[d][nValid+d+1] = 1.0;
-	}
-	// end of filling right hand sides
+  PetscInt capacity = 20;
+  PetscInt nValid = 2;
+  int* vertIDs = (int*)malloc(capacity * sizeof(int));
+  vertIDs[0] = id_potential;
+  vertIDs[1] = id_base;
 
-	PetscScalar* Aptr;
-	MatDenseGetArray(A,&Aptr); 
-			
-	PetscBLASInt N = n, nrhs = 1, lda = n, ldb = n, info;
-	PetscBLASInt ipiv[n];
-	
-	LAPACKgetrf_(&N, &N, Aptr, &lda, ipiv, &info);
-	if (info != 0) throw std::runtime_error("GETRF failed");
-	
-	for (PetscInt d = 0; d < dim; ++d) {
-		LAPACKgetrs_("N", &N, &nrhs, Aptr, &lda, ipiv, RHS[d], &ldb, &info);
-		if (info != 0) throw std::runtime_error("GETRS failed");
-	}
-			
-	// This will create the gradient vector a*phi + b where phi is the level set value to find
-	PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
-	
-	for (PetscInt d = 0; d < dim; ++d) {
-		for (PetscInt i = 0; i < nValid; ++i) {
-			vi = vertIDs[i];
-			if (i == 0) {
-				a[d] = a[d] +  RHS[d][i];
-			} else {
-				b[d] = b[d] +  RHS[d][i] * lsArray[vi];
-			}
-		}
-	}	
-	
-	PetscInt result = SolveQuadFormula(dim, a, b, updatedLS);
-	//PetscPrintf(PETSC_COMM_SELF, "id is %d and ls is %f and result is %d\n", id_potential, *updatedLS, result);	
-	return result;
-	//PetscReal vol;
-	//DMPlexComputeCellGeometryFVM(vertDM, cellList[10], &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
-	//for (PetscInt d = 0; d < dim; ++d) {
-		//a[d] /= vol;
-		//b[d] /= vol;
-	//}
+  for (PetscInt i = 0; i < PnCells; ++i) {
+      for (PetscInt j = 0; j < BnCells; ++j) {
+          if (Pcells[i] == Bcells[j]) {
+              PetscInt nVert, *verts;
+              DMPlexCellGetVertices(vertDM, Pcells[i], &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+              for (PetscInt v = 0; v < nVert; ++v) {
+                  PetscInt id = reverseVertList[verts[v]];
+                  if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id]==currentLevel-1 && id != id_potential && id != id_base ) {
+                      if (nValid >= capacity) {
+                          capacity *= 2; // double size
+                          vertIDs = (int*)realloc(vertIDs, capacity * sizeof(int));
+                      }
+                      vertIDs[nValid++] = id;
+                  }
+              }
+          }
+      }
+  }
+
+  //// Check neighbor vertices of potential vertex to find the ones that has known values including vertices of shared cells
+  //PetscInt nVert, *neighborVerts;
+  //DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
+  //PetscInt vertIDs[nVert+1], nValid = 1; // nValid is initialized as 1 to include the potential vertex to list
+  //vertIDs[0] = id_potential;
+  //for (PetscInt nv = 0; nv < nVert; ++nv) {
+    //PetscInt index = reverseVertList[neighborVerts[nv]];
+    //if (updatedVertex[index] > 0.5 && updatedVertex[index] < 1.5 && vertMask[index]==currentLevel-1) { //should it be in previous level????
+      //vertIDs[nValid] = index;
+      //++nValid;
+    //}
+  //}
+
+  //PetscFree(neighborVerts);
+  if (nValid-1 < dim+1) return 0;
+
+  PetscInt n = nValid + 3; // 3 is the number of polynomial terms of order 1
+
+  PetscReal RHS[dim][n] = {0};
+  Mat A;
+  MatCreate(PETSC_COMM_SELF, &A); //for LAPACK, the matrix must be stored entirely on one process, so we have PETSC_COMM_SELF.
+  MatSetType(A, MATDENSE); // LAPACK requires MATDENSE
+  MatSetSizes(A, n,n,n,n); // the local and global number of rows should be equal since we stored the matrix entirely on one process.
+  MatSetUp(A);
+
+  // filling matrix A
+  PetscReal r, value, m = 3.0; // m is the power for phs kernel
+  PetscReal dx, dy;
+  PetscInt vi, vj;
+  for (PetscInt i = 0; i < nValid; i++) {
+    vi = vertIDs[i];
+    for (PetscInt j = 0; j < nValid; j++) {
+      vj = vertIDs[j];
+      dx = xCoord[vi] - xCoord[vj];
+      dy = yCoord[vi] - yCoord[vj];
+      r  = PetscSqrtReal(dx*dx + dy*dy);
+      value = PetscPowReal(r, m);
+      MatSetValue(A, i, j, value, INSERT_VALUES);
+    }
+  }
+
+  for (PetscInt i = 0; i < nValid; ++i) {
+    vi = vertIDs[i];
+    MatSetValue(A, i, nValid + 0, 1.0, INSERT_VALUES);
+    MatSetValue(A, i, nValid + 1, xCoord[vi], INSERT_VALUES);
+    MatSetValue(A, i, nValid + 2, yCoord[vi], INSERT_VALUES);
+  }
+
+  for (PetscInt j = 0; j < nValid; ++j) {
+    vj = vertIDs[j];
+    MatSetValue(A, nValid + 0, j, 1.0, INSERT_VALUES);
+    MatSetValue(A, nValid + 1, j, xCoord[vj], INSERT_VALUES);
+    MatSetValue(A, nValid + 2, j, yCoord[vj], INSERT_VALUES);
+  }
+
+  for (PetscInt ii = 0; ii < 3; ++ii) {
+    for (PetscInt jj = 0; jj < 3; ++jj) {
+      MatSetValue(A, nValid + ii, nValid + jj, 0.0, INSERT_VALUES);
+    }
+  }
+
+  MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
+  MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
+  // end of filling matrix A
+
+  // filling right hand sides
+  for (PetscInt d = 0; d < dim; ++d) {
+    for (PetscInt i = 0; i < nValid; ++i) {
+      vi = vertIDs[i];
+      dx = xCoord[id_potential] - xCoord[vi];
+      dy = yCoord[id_potential] - yCoord[vi];
+      r = PetscSqrtReal(dx*dx + dy*dy);
+      if (d == 0) {
+        RHS[d][i] = m * PetscPowReal(r, m-2) * (xCoord[id_potential]-xCoord[vi]);
+      } else {
+        RHS[d][i] = m * PetscPowReal(r, m-2) * (yCoord[id_potential]-yCoord[vi]);
+      }
+    }
+  }
+
+  for (PetscInt d = 0; d < dim; ++d) {
+    RHS[d][nValid+d+1] = 1.0;
+  }
+  // end of filling right hand sides
+
+  PetscScalar* Aptr;
+  MatDenseGetArray(A,&Aptr);
+
+  PetscBLASInt N = n, nrhs = 1, lda = n, ldb = n, info;
+  PetscBLASInt ipiv[n];
+
+  LAPACKgetrf_(&N, &N, Aptr, &lda, ipiv, &info);
+  if (info != 0) throw std::runtime_error("GETRF failed");
+
+  for (PetscInt d = 0; d < dim; ++d) {
+    LAPACKgetrs_("N", &N, &nrhs, Aptr, &lda, ipiv, RHS[d], &ldb, &info);
+    if (info != 0) throw std::runtime_error("GETRS failed");
+  }
+
+  // This will create the gradient vector a*phi + b where phi is the level set value to find
+  PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
+
+  for (PetscInt d = 0; d < dim; ++d) {
+    for (PetscInt i = 0; i < nValid; ++i) {
+      vi = vertIDs[i];
+      if (i == 0) {
+        a[d] = a[d] +  RHS[d][i];
+      } else {
+        b[d] = b[d] +  RHS[d][i] * lsArray[vi];
+      }
+    }
+  }
+
+  PetscInt result = SolveQuadFormula(dim, a, b, updatedLS);
+  //PetscPrintf(PETSC_COMM_SELF, "id is %d and ls is %f and result is %d\n", id_potential, *updatedLS, result);
+  return result;
+  //PetscReal vol;
+  //DMPlexComputeCellGeometryFVM(vertDM, cellList[10], &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
+  //for (PetscInt d = 0; d < dim; ++d) {
+    //a[d] /= vol;
+    //b[d] /= vol;
+  //}
 }
 
 // VertexBased_ModifiedGreenGauss
 PetscInt Reconstruction::FFM_VertexBased_ModifiedGreenGauss(const PetscInt dim, PetscInt id_potential, PetscInt id_base, PetscScalar *updatedVertex, PetscScalar *xCoord, PetscScalar *yCoord, const PetscInt *vertMask, const PetscInt currentLevel, PetscScalar *lsArray, PetscReal *updatedLS) {
-	
-	int rank;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	
-	// This will create the gradient vector a*phi + b where phi is the level set value to find
-	PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
-	
-	PetscInt vStart, vEnd;
-	DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd);   // Range of vertices
-	
-	PetscInt nFace_base;
-	const PetscInt *faces_base;
-	DMPlexGetSupportSize(vertDM, vertList[id_base], &nFace_base);
-	DMPlexGetSupport(vertDM, vertList[id_base], &faces_base);
-	PetscInt baseEdgeVerts[nFace_base], base_nEdgeVerts=0; // vertices that have shared edge with the base vertex not including the base vertex
-	for (PetscInt f = 0; f < nFace_base; f++) {
-		PetscInt nClosure, *closure = NULL;
-		DMPlexGetTransitiveClosure(vertDM, faces_base[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
 
-		for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
-			if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
-				const PetscInt clID = reverseVertList[closure[cl]];
-				if (updatedVertex[clID] > 0.5 && updatedVertex[clID] < 1.5 && vertMask[clID] == currentLevel -1 && clID != id_base) { 
-					baseEdgeVerts[base_nEdgeVerts] = clID;
-					++base_nEdgeVerts;
-				}
-			}
-		}
-	}
-		
-	// Check neighbor vertices of potential vertex to find the ones that has known values including vertices of shared cells 
-	PetscInt nVert, *neighborVerts;
-	DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and excluding the corner ones
-	PetscInt vertIDs[nVert], nValid=0;
-	for (PetscInt nv = 0; nv < nVert; ++nv) {
-		PetscInt index = reverseVertList[neighborVerts[nv]];
-		if (updatedVertex[index] > 0.5 && updatedVertex[index] < 1.5 && vertMask[index]==currentLevel-1) {
-			for (PetscInt i = 0; i < base_nEdgeVerts; i++) {
-				if ( index == baseEdgeVerts[i]) {
-					vertIDs[nValid] = index;
-					++nValid;
-				}
-			}
-			//if (rank==0 && vertList[id_potential]==4000) {
-				//PetscPrintf(PETSC_COMM_SELF, "vertid is %d, %f, %f\n", index, xCoord[index], yCoord[index]);
-			//}
-			//PetscPrintf(PETSC_COMM_SELF, "vertid is %d\n", vertIDs[nValid]);
-		}
-	}
-	
-	vertIDs[nValid] = id_base; // adding base vertex
-	++nValid;
-	PetscFree(neighborVerts);	
-	if (nValid < dim+1) return 0;
-	
-	PetscInt nFace;
-	const PetscInt *faces;
-	DMPlexGetSupportSize(vertDM, vertList[id_potential], &nFace);
-	DMPlexGetSupport(vertDM, vertList[id_potential], &faces);
-	PetscInt EdgeVerts[nFace], nEdgeVerts=0; // vertices that have shared edge with the potential vertex
-	for (PetscInt f = 0; f < nFace; f++) {
-		PetscInt nClosure, *closure = NULL;
-		DMPlexGetTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+  int rank;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-		for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
-			if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
-				const PetscInt clID = reverseVertList[closure[cl]];
-				//if (rank==1 && vertList[id_potential]==4000) {
-						//PetscPrintf(PETSC_COMM_SELF, "idcl is %d, %f, %f\n", clID, xCoord[clID], yCoord[clID]);
-				//}	
-				if (updatedVertex[clID] > 0.5 && updatedVertex[clID] < 1.5 && vertMask[clID] == currentLevel -1 && clID == id_base) { //&& clID < nLocalVert
-					EdgeVerts[nEdgeVerts] = clID;
-					//if (rank==1 && vertList[id_potential]==4000) {
-						//PetscPrintf(PETSC_COMM_SELF, "id is %d, %f, %f\n", clID, xCoord[clID], yCoord[clID]);
-					//}	
-					//PetscPrintf(PETSC_COMM_SELF, "edgevert is %d\n", EdgeVerts[nEdgeVerts]);
-					++nEdgeVerts;
-				}
-			}
-		}
-	}
-	
-	// potential vertex
-	for (PetscInt n = 0; n < nValid; n++) {
-		PetscInt id = vertIDs[n];
-		for (PetscInt i = 0; i < nEdgeVerts; i++) {
-			if (id != EdgeVerts[i] && id != id_base) {
-				PetscReal N[3] = {0.0, 0.0, 0.0};
-				
-				PetscReal vx = xCoord[id_potential] - xCoord[id];
-				PetscReal vy = yCoord[id_potential] - yCoord[id];
-				
-				N[0] = -vy;
-				N[1] =  vx;
-				
-				// Flip if pointing inward
-				PetscReal refx = xCoord[id_potential] - xCoord[id_base];
-				PetscReal refy = yCoord[id_potential] - yCoord[id_base];
-				PetscReal dot = N[0]*refx + N[1]*refy;
-				if (dot < 0) {
-					N[0] = -N[0];
-					N[1] = -N[1];
-				}				
-				
-				//PetscPrintf(PETSC_COMM_SELF, "id is %d\n", id);
-				for (PetscInt d = 0; d < dim; ++d) {
-					a[d] = a[d] + 0.5 * N[d];
-					//PetscPrintf(PETSC_COMM_SELF, "b%d is %f, ls is %f and n%d is %f\n", d, b[d], lsArray[id], d, N[d]);
-					b[d] = b[d] +  0.5 * lsArray[id] * N[d];
-					//PetscPrintf(PETSC_COMM_SELF, "b%d is %f\n", d, b[d]);
-				}	
-					
-			}
-		}
-	}
-	
-	// base vertex
-	for (PetscInt n = 0; n < nValid; n++) {
-		PetscInt id = vertIDs[n];
-		if (id != id_base) {
-			PetscReal N[3] = {0.0, 0.0, 0.0};
-			
-			PetscReal vx = xCoord[id] - xCoord[id_base];
-			PetscReal vy = yCoord[id] - yCoord[id_base];
-				
-			N[0] = -vy;
-			N[1] =  vx;
-				
-			// Flip if pointing inward
-			PetscReal refx = xCoord[id_base] - xCoord[id_potential];
-			PetscReal refy = yCoord[id_base] - yCoord[id_potential];
-			PetscReal dot = N[0]*refx + N[1]*refy;
-			if (dot < 0) {
-				N[0] = -N[0];
-				N[1] = -N[1];
-			}				
-			
-//PetscPrintf(PETSC_COMM_SELF, "id is %d\n", id);		
-			for (PetscInt d = 0; d < dim; ++d) {
-				//PetscPrintf(PETSC_COMM_SELF, "b%d is %f, ls is %f and n%d is %f\n", d, b[d], lsArray[id], d, N[d]);
-				b[d] = b[d] +  0.5 * lsArray[id] * N[d];
-				//PetscPrintf(PETSC_COMM_SELF, "b%d is %f and ls is%f\n", d, b[d], lsArray[id_base]);
-				b[d] = b[d] +  0.5 * lsArray[id_base] * N[d];
-				//PetscPrintf(PETSC_COMM_SELF, "for base, b%d is %f\n", d, b[d]);
-			}	
-		}
-				
-	}
+  // This will create the gradient vector a*phi + b where phi is the level set value to find
+  PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
 
-	PetscReal vol;
-	DMPlexComputeCellGeometryFVM(vertDM, cellList[10], &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
-	for (PetscInt d = 0; d < dim; ++d) {
-		a[d] /= vol;
-		b[d] /= vol;
-	}
-	
-	PetscInt result = SolveQuadFormula(dim, a, b, updatedLS);
-	//return SolveQuadFormula(dim, a, b, updatedLS);
-	//PetscPrintf(PETSC_COMM_SELF, "id is %d and ls is %f and result is %d\n", id_potential, *updatedLS, result);	
-	return result;
+  PetscInt vStart, vEnd;
+  DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd);   // Range of vertices
+
+  PetscInt nFace_base;
+  const PetscInt *faces_base;
+  DMPlexGetSupportSize(vertDM, vertList[id_base], &nFace_base);
+  DMPlexGetSupport(vertDM, vertList[id_base], &faces_base);
+  PetscInt baseEdgeVerts[nFace_base], base_nEdgeVerts=0; // vertices that have shared edge with the base vertex not including the base vertex
+  for (PetscInt f = 0; f < nFace_base; f++) {
+    PetscInt nClosure, *closure = NULL;
+    DMPlexGetTransitiveClosure(vertDM, faces_base[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+
+    for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
+      if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
+        const PetscInt clID = reverseVertList[closure[cl]];
+        if (updatedVertex[clID] > 0.5 && updatedVertex[clID] < 1.5 && vertMask[clID] == currentLevel -1 && clID != id_base) {
+          baseEdgeVerts[base_nEdgeVerts] = clID;
+          ++base_nEdgeVerts;
+        }
+      }
+    }
+  }
+
+  // Check neighbor vertices of potential vertex to find the ones that has known values including vertices of shared cells
+  PetscInt nVert, *neighborVerts;
+  DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and excluding the corner ones
+  PetscInt vertIDs[nVert], nValid=0;
+  for (PetscInt nv = 0; nv < nVert; ++nv) {
+    PetscInt index = reverseVertList[neighborVerts[nv]];
+    if (updatedVertex[index] > 0.5 && updatedVertex[index] < 1.5 && vertMask[index]==currentLevel-1) {
+      for (PetscInt i = 0; i < base_nEdgeVerts; i++) {
+        if ( index == baseEdgeVerts[i]) {
+          vertIDs[nValid] = index;
+          ++nValid;
+        }
+      }
+      //if (rank==0 && vertList[id_potential]==4000) {
+        //PetscPrintf(PETSC_COMM_SELF, "vertid is %d, %f, %f\n", index, xCoord[index], yCoord[index]);
+      //}
+      //PetscPrintf(PETSC_COMM_SELF, "vertid is %d\n", vertIDs[nValid]);
+    }
+  }
+
+  vertIDs[nValid] = id_base; // adding base vertex
+  ++nValid;
+  PetscFree(neighborVerts);
+  if (nValid < dim+1) return 0;
+
+  PetscInt nFace;
+  const PetscInt *faces;
+  DMPlexGetSupportSize(vertDM, vertList[id_potential], &nFace);
+  DMPlexGetSupport(vertDM, vertList[id_potential], &faces);
+  PetscInt EdgeVerts[nFace], nEdgeVerts=0; // vertices that have shared edge with the potential vertex
+  for (PetscInt f = 0; f < nFace; f++) {
+    PetscInt nClosure, *closure = NULL;
+    DMPlexGetTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+
+    for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
+      if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
+        const PetscInt clID = reverseVertList[closure[cl]];
+        //if (rank==1 && vertList[id_potential]==4000) {
+            //PetscPrintf(PETSC_COMM_SELF, "idcl is %d, %f, %f\n", clID, xCoord[clID], yCoord[clID]);
+        //}
+        if (updatedVertex[clID] > 0.5 && updatedVertex[clID] < 1.5 && vertMask[clID] == currentLevel -1 && clID == id_base) { //&& clID < nLocalVert
+          EdgeVerts[nEdgeVerts] = clID;
+          //if (rank==1 && vertList[id_potential]==4000) {
+            //PetscPrintf(PETSC_COMM_SELF, "id is %d, %f, %f\n", clID, xCoord[clID], yCoord[clID]);
+          //}
+          //PetscPrintf(PETSC_COMM_SELF, "edgevert is %d\n", EdgeVerts[nEdgeVerts]);
+          ++nEdgeVerts;
+        }
+      }
+    }
+  }
+
+  // potential vertex
+  for (PetscInt n = 0; n < nValid; n++) {
+    PetscInt id = vertIDs[n];
+    for (PetscInt i = 0; i < nEdgeVerts; i++) {
+      if (id != EdgeVerts[i] && id != id_base) {
+        PetscReal N[3] = {0.0, 0.0, 0.0};
+
+        PetscReal vx = xCoord[id_potential] - xCoord[id];
+        PetscReal vy = yCoord[id_potential] - yCoord[id];
+
+        N[0] = -vy;
+        N[1] =  vx;
+
+        // Flip if pointing inward
+        PetscReal refx = xCoord[id_potential] - xCoord[id_base];
+        PetscReal refy = yCoord[id_potential] - yCoord[id_base];
+        PetscReal dot = N[0]*refx + N[1]*refy;
+        if (dot < 0) {
+          N[0] = -N[0];
+          N[1] = -N[1];
+        }
+
+        //PetscPrintf(PETSC_COMM_SELF, "id is %d\n", id);
+        for (PetscInt d = 0; d < dim; ++d) {
+          a[d] = a[d] + 0.5 * N[d];
+          //PetscPrintf(PETSC_COMM_SELF, "b%d is %f, ls is %f and n%d is %f\n", d, b[d], lsArray[id], d, N[d]);
+          b[d] = b[d] +  0.5 * lsArray[id] * N[d];
+          //PetscPrintf(PETSC_COMM_SELF, "b%d is %f\n", d, b[d]);
+        }
+
+      }
+    }
+  }
+
+  // base vertex
+  for (PetscInt n = 0; n < nValid; n++) {
+    PetscInt id = vertIDs[n];
+    if (id != id_base) {
+      PetscReal N[3] = {0.0, 0.0, 0.0};
+
+      PetscReal vx = xCoord[id] - xCoord[id_base];
+      PetscReal vy = yCoord[id] - yCoord[id_base];
+
+      N[0] = -vy;
+      N[1] =  vx;
+
+      // Flip if pointing inward
+      PetscReal refx = xCoord[id_base] - xCoord[id_potential];
+      PetscReal refy = yCoord[id_base] - yCoord[id_potential];
+      PetscReal dot = N[0]*refx + N[1]*refy;
+      if (dot < 0) {
+        N[0] = -N[0];
+        N[1] = -N[1];
+      }
+
+//PetscPrintf(PETSC_COMM_SELF, "id is %d\n", id);
+      for (PetscInt d = 0; d < dim; ++d) {
+        //PetscPrintf(PETSC_COMM_SELF, "b%d is %f, ls is %f and n%d is %f\n", d, b[d], lsArray[id], d, N[d]);
+        b[d] = b[d] +  0.5 * lsArray[id] * N[d];
+        //PetscPrintf(PETSC_COMM_SELF, "b%d is %f and ls is%f\n", d, b[d], lsArray[id_base]);
+        b[d] = b[d] +  0.5 * lsArray[id_base] * N[d];
+        //PetscPrintf(PETSC_COMM_SELF, "for base, b%d is %f\n", d, b[d]);
+      }
+    }
+
+  }
+
+  PetscReal vol;
+  DMPlexComputeCellGeometryFVM(vertDM, cellList[10], &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
+  for (PetscInt d = 0; d < dim; ++d) {
+    a[d] /= vol;
+    b[d] /= vol;
+  }
+
+  PetscInt result = SolveQuadFormula(dim, a, b, updatedLS);
+  //return SolveQuadFormula(dim, a, b, updatedLS);
+  //PetscPrintf(PETSC_COMM_SELF, "id is %d and ls is %f and result is %d\n", id_potential, *updatedLS, result);
+  return result;
 }
 
 // modified green gauss for vertexbased
 // Hybrid FMM
 void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], Vec xVec[2], Vec yVec[2], FILE *animFile) {
-	
-	int rank;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	
-	PetscInt vStart, vEnd;
-	DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd);   // Range of vertices
 
-	PetscInt dim;
-	DMGetDimension(vertDM, &dim);
+  int rank;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-	MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
-	
-	// This vector contains zero or one as flag for the minimum level set among all the vertices in a level. One is for used before and zero is not used before.
-	Vec FlagVec[2]; 
-	DMGetLocalVector(vertDM, &FlagVec[LOCAL]) >> utilities::PetscUtilities::checkError; 
-	DMGetGlobalVector(vertDM, &FlagVec[GLOBAL]) >> utilities::PetscUtilities::checkError; 
-	VecZeroEntries(FlagVec[LOCAL]); VecZeroEntries(FlagVec[GLOBAL]); 
-	
-	while (true) {
-		// All work must be done on the local vector as a vertex associated with a cell might not be owned by this rank
-		//  even if the cell is owned by this rank.
-		PetscScalar *lsArray[2] = {nullptr, nullptr};
-		VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  PetscInt vStart, vEnd;
+  DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd);   // Range of vertices
 
-		PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-		VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		
-		PetscScalar *lstrue[2] = {nullptr, nullptr};    
-		VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
-		VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		PetscScalar *FlagVertex[2] = {nullptr, nullptr}; 
-		VecGetArray(FlagVec[GLOBAL], &FlagVertex[GLOBAL]) >> utilities::PetscUtilities::checkError; 
-		VecGetArray(FlagVec[LOCAL], &FlagVertex[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		PetscScalar *xCoord[2] = {nullptr, nullptr}; 
-		VecGetArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError; 
-		VecGetArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		PetscScalar *yCoord[2] = {nullptr, nullptr}; 
-		VecGetArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError; 
-		VecGetArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
-				
-		PetscInt numVertUpdated_cellbased = 0;
-		PetscInt numVertUpdated_vertexbased;
-		for (PetscInt c = 0; c < nTotalCell; ++c) {
-			if (cellMask[c]==currentLevel) {
-				PetscInt cell = cellList[c];
-				PetscInt nVert, *verts;
-				DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+  PetscInt dim;
+  DMGetDimension(vertDM, &dim);
 
-				PetscInt nSetVertices = 0, vertID = -1;
-				for (PetscInt v = 0; v < nVert; ++v) {
-					PetscInt id = reverseVertList[verts[v]];					
-					if (updatedVertex[LOCAL][id] > 0.5 && updatedVertex[LOCAL][id] < 1.5) {
-						++nSetVertices;
-					}
-					else {
-						vertID = verts[v]; // When nUpdated+1 == nVert this will contain the ID of the single vertex to be updated
-					}					
-				}
-								
-				const PetscInt id = reverseVertList[vertID];	
-				
-				if (id < nLocalVert && nSetVertices + 1 == nVert) { 	
-					// This will create the gradient vector a*phi + b where phi is the level set value to find
-					PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
-					
-					PetscInt nFace;
-					const PetscInt *faces;
+  MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
 
-					// Get all faces associated with the cell
-					DMPlexGetConeSize(vertDM, cell, &nFace) >> ablate::utilities::PetscUtilities::checkError;
-					DMPlexGetCone(vertDM, cell, &faces) >> ablate::utilities::PetscUtilities::checkError;
-					for (PetscInt f = 0; f < nFace; ++f) {
-						PetscReal N[3] = {0.0, 0.0, 0.0};
-						DMPlexFaceCentroidOutwardAreaNormal(vertDM, cell, faces[f], NULL, N);
+  // This vector contains zero or one as flag for the minimum level set among all the vertices in a level. One is for used before and zero is not used before.
+  Vec FlagVec[2];
+  DMGetLocalVector(vertDM, &FlagVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+  DMGetGlobalVector(vertDM, &FlagVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecZeroEntries(FlagVec[LOCAL]); VecZeroEntries(FlagVec[GLOBAL]);
 
-						// All points associated with this face
-						PetscInt nClosure, *closure = NULL;
-						DMPlexGetTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+  while (true) {
+    // All work must be done on the local vector as a vertex associated with a cell might not be owned by this rank
+    //  even if the cell is owned by this rank.
+    PetscScalar *lsArray[2] = {nullptr, nullptr};
+    VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-						PetscReal cnt = 0.0, ave = 0.0, vertCoeff = 0.0;
-						for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
-							if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
+    PetscScalar *updatedVertex[2] = {nullptr, nullptr};
+    VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
-								const PetscInt clID = reverseVertList[closure[cl]];
-								if (closure[cl]==vertID) {
-									if (updatedVertex[LOCAL][clID] > 0.5 && updatedVertex[LOCAL][clID] < 1.5) throw std::runtime_error("How can this be possible?\n");
-									++vertCoeff;
-								}
-								else {
-									if (updatedVertex[LOCAL][clID] < 0.5 || updatedVertex[LOCAL][clID] > 1.5) throw std::runtime_error("How can this be possible?\n");
-									ave += lsArray[LOCAL][clID];
-								}
+    PetscScalar *lstrue[2] = {nullptr, nullptr};
+    VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-								cnt += 1.0;
-							}
-						}
+    PetscScalar *FlagVertex[2] = {nullptr, nullptr};
+    VecGetArray(FlagVec[GLOBAL], &FlagVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    VecGetArray(FlagVec[LOCAL], &FlagVertex[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-						DMPlexRestoreTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+    PetscScalar *xCoord[2] = {nullptr, nullptr};
+    VecGetArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    VecGetArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-						// Function value at the face center
-						ave /= cnt;
-						vertCoeff /= cnt;
-						for (PetscInt d = 0; d < dim; ++d) {
-							a[d] += vertCoeff * N[d];
-							b[d] += ave * N[d];
-						}	
-					}
+    PetscScalar *yCoord[2] = {nullptr, nullptr};
+    VecGetArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    VecGetArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-					PetscReal vol;
-					DMPlexComputeCellGeometryFVM(vertDM, cell, &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
-					for (PetscInt d = 0; d < dim; ++d) {
-						a[d] /= vol;
-						b[d] /= vol;
-					}
-										
-					PetscScalar resetsign = PetscSignReal(lsArray[GLOBAL][id]);
-					PetscInt result = SolveQuadFormula(dim, a, b, &lsArray[GLOBAL][id]);
-							
-					if (result == 1.0 && updatedVertex[GLOBAL][id] == 0.0) {
-						for (PetscInt v = 0; v < nVert; ++v) {
-							PetscInt verts_id = reverseVertList[verts[v]];
-							if (verts_id != id && PetscAbsReal(lsArray[LOCAL][verts_id])*0.99 > PetscAbsReal(lsArray[GLOBAL][id])) { 
-								result = 0.0;
-								lsArray[GLOBAL][id] = resetsign*PETSC_MAX_REAL;
-							}	
-						}
-						updatedVertex[LOCAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
-					}
+    PetscInt numVertUpdated_cellbased = 0;
+    PetscInt numVertUpdated_vertexbased;
+    for (PetscInt c = 0; c < nTotalCell; ++c) {
+      if (cellMask[c]==currentLevel) {
+        PetscInt cell = cellList[c];
+        PetscInt nVert, *verts;
+        DMPlexCellGetVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
 
-					updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
-					numVertUpdated_cellbased += (updatedVertex[GLOBAL][id] > 0.5);
-																																													
-					//PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
-					//if (Error > 1e-3) {
-						//PetscPrintf(PETSC_COMM_SELF, "level %d, At cellbased, we have error %f and id is %d\n", currentLevel, Error, id);
-					//}
-					
-					// Animation part
-					if (updatedVertex[GLOBAL][id] > 0.5) {
-					    PetscReal x[dim];
-					    DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-					    fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
-					    fflush(animFile); 
-					}
-	
-				}
-				DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
-			}
-		}
-		
-		// These update are necessary since we just updated the global vectors in cellbased part
-		DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-		DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		//vertexbased
-		MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_cellbased, 1, MPIU_INT, MPIU_SUM, vertComm);
-			    
-		numVertUpdated_vertexbased = 0;
-		if (numVertUpdated_cellbased==0) {
-			// Check if there is any vertex to update; maybe we have done all the updates before
-			PetscBool anyVertexToUpdate = PETSC_FALSE;
-			for (PetscInt v = 0; v < nLocalVert; ++v) {
-				if (vertMask[v] == currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-					anyVertexToUpdate = PETSC_TRUE;
-					break;
-				}
-			}		
-			
-			if (anyVertexToUpdate) {
-				// finding an unknonw vertex and has a base vertex in previous level with the minimum level set
-				PetscInt id_potential = -1;
-				PetscInt id_base = -1;
-				PetscReal bestPhi = PETSC_MAX_REAL;
-				for (PetscInt v = 0; v < nLocalVert; ++v) {
-					if (vertMask[v] == currentLevel && updatedVertex[LOCAL][v] < 0.5) {   // not chosen yet
-						// find base neighbor
-						PetscInt basevertex = -1;
-						DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE); // Connected vertices
-						PetscInt nVert = PETSC_DETERMINE;
-						PetscInt *neighborVerts = NULL;
-						DMPlexGetAdjacency(vertDM, vertList[v], &nVert, &neighborVerts); // just the points that are connected with edge
-						
-						PetscReal phibase = PETSC_MAX_REAL;
-				        for (PetscInt nv = 0; nv < nVert; ++nv) {
-							PetscInt index = reverseVertList[neighborVerts[nv]];
-				            if (vertMask[index] < currentLevel && updatedVertex[LOCAL][index] > 0.5) { // we can have two known vertex in previous level with equal level set, so I choose the first one //vertMask[index] == currentLevel-1
-								if (PetscAbsReal(lsArray[LOCAL][index]) < phibase) {
-									phibase = PetscAbsReal(lsArray[LOCAL][index]);
-									basevertex = neighborVerts[nv];
-								}
-				            }
-				        }
-						if (basevertex < 0) continue; // no valid base found, skip this candidate
-						
-						PetscInt candidateBase = reverseVertList[basevertex];
-				        PetscReal phiVal = PetscAbsReal(lsArray[LOCAL][candidateBase]);
-				        PetscReal candidateBaseSign = PetscSignReal(lsArray[LOCAL][candidateBase]);
+        PetscInt nSetVertices = 0, vertID = -1;
+        for (PetscInt v = 0; v < nVert; ++v) {
+          PetscInt id = reverseVertList[verts[v]];
+          if (updatedVertex[LOCAL][id] > 0.5 && updatedVertex[LOCAL][id] < 1.5) {
+            ++nSetVertices;
+          }
+          else {
+            vertID = verts[v]; // When nUpdated+1 == nVert this will contain the ID of the single vertex to be updated
+          }
+        }
 
-				        // compute global minimum in previous level
-				        PetscReal phiMin = PETSC_MAX_REAL;
-				        for (PetscInt i = 0; i < nTotalVert; ++i) { // why total???
-				            if (vertMask[i] == currentLevel-1 && updatedVertex[LOCAL][i] > 0.5) { //vertMask[i] == currentLevel - 1
-								if (PetscSignReal(lsArray[LOCAL][i]) == candidateBaseSign) {
-									PetscReal phicompare = PetscAbsReal(lsArray[LOCAL][i]);
-									phiMin = PetscMin(phiMin, phicompare);
-								}
-				            }
-				        }
-				
-				        // strict rule: pick only if base is minimum
-				        if (PetscAbsReal(phiVal - phiMin) < 1e-12 || phiVal <= phiMin) {
-				            id_potential = v;
-				            id_base = candidateBase;
-				            break;  // found the “best” one
-				        }
-				
-				        // fallback: track best candidate seen so far
-				        if (phiVal < bestPhi) {
-				            id_potential = v;
-				            id_base = candidateBase;
-				            bestPhi = phiVal;
-				        }
-				        
-					}
-				}
-								
-				if (id_base > -1 && id_potential > -1) {		
-					//------------------original vertexbased solver							
-			        //PetscReal x0[dim];
-			        //DMPlexComputeCellGeometryFVM(vertDM, vertList[id_potential], NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
-			        //PetscInt nVert;
-					//PetscInt *neighborVerts;
-			        //DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
-			        //const PetscInt minVerts = dim+1;
-			        //PetscInt result = FFM_VertexBased_Solve(dim, minVerts, x0, nVert, neighborVerts, updatedVertex[LOCAL], lsArray[LOCAL], &lsArray[GLOBAL][id_potential],  vertMask, currentLevel);
-			        //------------------end of original vertexbased solver	
-			        
-			        //------------------modifiedgreengauss vertexbased solver								
-					//PetscInt result = FFM_VertexBased_ModifiedGreenGauss(dim, id_potential, id_base, updatedVertex[LOCAL], xCoord[LOCAL], yCoord[LOCAL], vertMask, currentLevel, lsArray[LOCAL], &lsArray[GLOBAL][id_potential]);
-					//------------------end of modifiedgreengauss vertexbased solver		
-					
-					//------------------RBF vertexbased solver								
-					//PetscInt result = FFM_VertexBased_RBF(dim, id_potential, id_base, updatedVertex[LOCAL], xCoord[LOCAL], yCoord[LOCAL], vertMask, currentLevel, lsArray[LOCAL], &lsArray[GLOBAL][id_potential]);
-					//------------------end of RBF vertexbased solver	
-					
-					//------------------generalmodifiedgreengauss vertexbased solver								
-					PetscInt result = FFM_VertexBased_GMGG(dim, id_potential, id_base, updatedVertex[LOCAL], xCoord[LOCAL], yCoord[LOCAL], vertMask, currentLevel, lsArray[LOCAL], &lsArray[GLOBAL][id_potential]);
-					//------------------end of generalmodifiedgreengauss vertexbased solver		
-					
-			        updatedVertex[GLOBAL][id_potential] = PetscMin(updatedVertex[GLOBAL][id_potential] + result, 1.0);
-			        numVertUpdated_vertexbased  += (updatedVertex[GLOBAL][id_potential] > 0.5);		
-			        			        
-			        if (updatedVertex[GLOBAL][id_potential] > 0.5) {
-						updatedVertex[GLOBAL][id_potential] = 0.75;
-					}
-									        
-			        //PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
-					//if (Error > 1e-3 && updatedVertex[GLOBAL][id] == 1) {
-						//PetscPrintf(PETSC_COMM_SELF, "level %d, At vertexbased_v1, we have error %f\n", currentLevel, Error);
-					//}
-								
-			        //DMPlexRestoreNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts);
-						
-					//Animation part
-					if (updatedVertex[GLOBAL][id_potential] > 0.5) {
-					    PetscReal x[dim];
-					    DMPlexComputeCellGeometryFVM(vertDM, vertList[id_potential], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-					    fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id_potential, x[0], x[1], "vertexbased_v1");
-					    fflush(animFile); 
-					}
-					
-				}
-			}
-		}
-						
-		VecRestoreArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecRestoreArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+        const PetscInt id = reverseVertList[vertID];
 
-		VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-		
-		VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-		
-		VecRestoreArray(FlagVec[GLOBAL], &FlagVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError; 
-		VecRestoreArray(FlagVec[LOCAL], &FlagVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-		DMGlobalToLocal(vertDM, FlagVec[GLOBAL], INSERT_VALUES, FlagVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-				
-		MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_vertexbased, 1, MPIU_INT, MPIU_SUM, vertComm);
-		
-		if (numVertUpdated_cellbased==0 && numVertUpdated_vertexbased==0) break;
-	}
-	
-    
-	//PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-	//VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	//PetscInt nNOTSetVertices = 0; 
-	//for (PetscInt v = 0; v < nLocalVert; ++v) {
-		//if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-			//++nNOTSetVertices;
-		//}
-	//}
-	//printf("number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
-	//VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+        if (id < nLocalVert && nSetVertices + 1 == nVert) {
+          // This will create the gradient vector a*phi + b where phi is the level set value to find
+          PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
+
+          PetscInt nFace;
+          const PetscInt *faces;
+
+          // Get all faces associated with the cell
+          DMPlexGetConeSize(vertDM, cell, &nFace) >> ablate::utilities::PetscUtilities::checkError;
+          DMPlexGetCone(vertDM, cell, &faces) >> ablate::utilities::PetscUtilities::checkError;
+          for (PetscInt f = 0; f < nFace; ++f) {
+            PetscReal N[3] = {0.0, 0.0, 0.0};
+            DMPlexFaceCentroidOutwardAreaNormal(vertDM, cell, faces[f], NULL, N);
+
+            // All points associated with this face
+            PetscInt nClosure, *closure = NULL;
+            DMPlexGetTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+
+            PetscReal cnt = 0.0, ave = 0.0, vertCoeff = 0.0;
+            for (PetscInt cl = 0; cl < nClosure * 2; cl += 2) {
+              if (closure[cl] >= vStart && closure[cl] < vEnd) {  // Only use the points corresponding to a vertex
+
+                const PetscInt clID = reverseVertList[closure[cl]];
+                if (closure[cl]==vertID) {
+                  if (updatedVertex[LOCAL][clID] > 0.5 && updatedVertex[LOCAL][clID] < 1.5) throw std::runtime_error("How can this be possible?\n");
+                  ++vertCoeff;
+                }
+                else {
+                  if (updatedVertex[LOCAL][clID] < 0.5 || updatedVertex[LOCAL][clID] > 1.5) throw std::runtime_error("How can this be possible?\n");
+                  ave += lsArray[LOCAL][clID];
+                }
+
+                cnt += 1.0;
+              }
+            }
+
+            DMPlexRestoreTransitiveClosure(vertDM, faces[f], PETSC_TRUE, &nClosure, &closure) >> ablate::utilities::PetscUtilities::checkError;
+
+            // Function value at the face center
+            ave /= cnt;
+            vertCoeff /= cnt;
+            for (PetscInt d = 0; d < dim; ++d) {
+              a[d] += vertCoeff * N[d];
+              b[d] += ave * N[d];
+            }
+          }
+
+          PetscReal vol;
+          DMPlexComputeCellGeometryFVM(vertDM, cell, &vol, NULL, NULL) >> ablate::utilities::PetscUtilities::checkError;
+          for (PetscInt d = 0; d < dim; ++d) {
+            a[d] /= vol;
+            b[d] /= vol;
+          }
+
+          PetscScalar resetsign = PetscSignReal(lsArray[GLOBAL][id]);
+          PetscInt result = SolveQuadFormula(dim, a, b, &lsArray[GLOBAL][id]);
+
+          if (result == 1.0 && updatedVertex[GLOBAL][id] == 0.0) {
+            for (PetscInt v = 0; v < nVert; ++v) {
+              PetscInt verts_id = reverseVertList[verts[v]];
+              if (verts_id != id && PetscAbsReal(lsArray[LOCAL][verts_id])*0.99 > PetscAbsReal(lsArray[GLOBAL][id])) {
+                result = 0.0;
+                lsArray[GLOBAL][id] = resetsign*PETSC_MAX_REAL;
+              }
+            }
+            updatedVertex[LOCAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
+          }
+
+          updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
+          numVertUpdated_cellbased += (updatedVertex[GLOBAL][id] > 0.5);
+
+          //PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
+          //if (Error > 1e-3) {
+            //PetscPrintf(PETSC_COMM_SELF, "level %d, At cellbased, we have error %f and id is %d\n", currentLevel, Error, id);
+          //}
+
+          // Animation part
+          if (updatedVertex[GLOBAL][id] > 0.5) {
+              PetscReal x[dim];
+              DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+              fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
+              fflush(animFile);
+          }
+
+        }
+        DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
+      }
+    }
+
+    // These update are necessary since we just updated the global vectors in cellbased part
+    DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    //vertexbased
+    MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_cellbased, 1, MPIU_INT, MPIU_SUM, vertComm);
+
+    numVertUpdated_vertexbased = 0;
+    if (numVertUpdated_cellbased==0) {
+      // Check if there is any vertex to update; maybe we have done all the updates before
+      PetscBool anyVertexToUpdate = PETSC_FALSE;
+      for (PetscInt v = 0; v < nLocalVert; ++v) {
+        if (vertMask[v] == currentLevel && updatedVertex[LOCAL][v] < 0.5) {
+          anyVertexToUpdate = PETSC_TRUE;
+          break;
+        }
+      }
+
+      if (anyVertexToUpdate) {
+        // finding an unknonw vertex and has a base vertex in previous level with the minimum level set
+        PetscInt id_potential = -1;
+        PetscInt id_base = -1;
+        PetscReal bestPhi = PETSC_MAX_REAL;
+        for (PetscInt v = 0; v < nLocalVert; ++v) {
+          if (vertMask[v] == currentLevel && updatedVertex[LOCAL][v] < 0.5) {   // not chosen yet
+            // find base neighbor
+            PetscInt basevertex = -1;
+            DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE); // Connected vertices
+            PetscInt nVert = PETSC_DETERMINE;
+            PetscInt *neighborVerts = NULL;
+            DMPlexGetAdjacency(vertDM, vertList[v], &nVert, &neighborVerts); // just the points that are connected with edge
+
+            PetscReal phibase = PETSC_MAX_REAL;
+                for (PetscInt nv = 0; nv < nVert; ++nv) {
+              PetscInt index = reverseVertList[neighborVerts[nv]];
+                    if (vertMask[index] < currentLevel && updatedVertex[LOCAL][index] > 0.5) { // we can have two known vertex in previous level with equal level set, so I choose the first one //vertMask[index] == currentLevel-1
+                if (PetscAbsReal(lsArray[LOCAL][index]) < phibase) {
+                  phibase = PetscAbsReal(lsArray[LOCAL][index]);
+                  basevertex = neighborVerts[nv];
+                }
+                    }
+                }
+            if (basevertex < 0) continue; // no valid base found, skip this candidate
+
+            PetscInt candidateBase = reverseVertList[basevertex];
+                PetscReal phiVal = PetscAbsReal(lsArray[LOCAL][candidateBase]);
+                PetscReal candidateBaseSign = PetscSignReal(lsArray[LOCAL][candidateBase]);
+
+                // compute global minimum in previous level
+                PetscReal phiMin = PETSC_MAX_REAL;
+                for (PetscInt i = 0; i < nTotalVert; ++i) { // why total???
+                    if (vertMask[i] == currentLevel-1 && updatedVertex[LOCAL][i] > 0.5) { //vertMask[i] == currentLevel - 1
+                if (PetscSignReal(lsArray[LOCAL][i]) == candidateBaseSign) {
+                  PetscReal phicompare = PetscAbsReal(lsArray[LOCAL][i]);
+                  phiMin = PetscMin(phiMin, phicompare);
+                }
+                    }
+                }
+
+                // strict rule: pick only if base is minimum
+                if (PetscAbsReal(phiVal - phiMin) < 1e-12 || phiVal <= phiMin) {
+                    id_potential = v;
+                    id_base = candidateBase;
+                    break;  // found the “best” one
+                }
+
+                // fallback: track best candidate seen so far
+                if (phiVal < bestPhi) {
+                    id_potential = v;
+                    id_base = candidateBase;
+                    bestPhi = phiVal;
+                }
+
+          }
+        }
+
+        if (id_base > -1 && id_potential > -1) {
+          //------------------original vertexbased solver
+              //PetscReal x0[dim];
+              //DMPlexComputeCellGeometryFVM(vertDM, vertList[id_potential], NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
+              //PetscInt nVert;
+          //PetscInt *neighborVerts;
+              //DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
+              //const PetscInt minVerts = dim+1;
+              //PetscInt result = FFM_VertexBased_Solve(dim, minVerts, x0, nVert, neighborVerts, updatedVertex[LOCAL], lsArray[LOCAL], &lsArray[GLOBAL][id_potential],  vertMask, currentLevel);
+              //------------------end of original vertexbased solver
+
+              //------------------modifiedgreengauss vertexbased solver
+          //PetscInt result = FFM_VertexBased_ModifiedGreenGauss(dim, id_potential, id_base, updatedVertex[LOCAL], xCoord[LOCAL], yCoord[LOCAL], vertMask, currentLevel, lsArray[LOCAL], &lsArray[GLOBAL][id_potential]);
+          //------------------end of modifiedgreengauss vertexbased solver
+
+          //------------------RBF vertexbased solver
+          //PetscInt result = FFM_VertexBased_RBF(dim, id_potential, id_base, updatedVertex[LOCAL], xCoord[LOCAL], yCoord[LOCAL], vertMask, currentLevel, lsArray[LOCAL], &lsArray[GLOBAL][id_potential]);
+          //------------------end of RBF vertexbased solver
+
+          //------------------generalmodifiedgreengauss vertexbased solver
+          PetscInt result = FFM_VertexBased_GMGG(dim, id_potential, id_base, updatedVertex[LOCAL], xCoord[LOCAL], yCoord[LOCAL], vertMask, currentLevel, lsArray[LOCAL], &lsArray[GLOBAL][id_potential]);
+          //------------------end of generalmodifiedgreengauss vertexbased solver
+
+              updatedVertex[GLOBAL][id_potential] = PetscMin(updatedVertex[GLOBAL][id_potential] + result, 1.0);
+              numVertUpdated_vertexbased  += (updatedVertex[GLOBAL][id_potential] > 0.5);
+
+              if (updatedVertex[GLOBAL][id_potential] > 0.5) {
+            updatedVertex[GLOBAL][id_potential] = 0.75;
+          }
+
+              //PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][id] - lstrue[GLOBAL][id]);
+          //if (Error > 1e-3 && updatedVertex[GLOBAL][id] == 1) {
+            //PetscPrintf(PETSC_COMM_SELF, "level %d, At vertexbased_v1, we have error %f\n", currentLevel, Error);
+          //}
+
+              //DMPlexRestoreNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts);
+
+          //Animation part
+          if (updatedVertex[GLOBAL][id_potential] > 0.5) {
+              PetscReal x[dim];
+              DMPlexComputeCellGeometryFVM(vertDM, vertList[id_potential], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+              fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id_potential, x[0], x[1], "vertexbased_v1");
+              fflush(animFile);
+          }
+
+        }
+      }
+    }
+
+    VecRestoreArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecRestoreArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+    VecRestoreArray(FlagVec[GLOBAL], &FlagVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+    VecRestoreArray(FlagVec[LOCAL], &FlagVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+    DMGlobalToLocal(vertDM, FlagVec[GLOBAL], INSERT_VALUES, FlagVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+    MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_vertexbased, 1, MPIU_INT, MPIU_SUM, vertComm);
+
+    if (numVertUpdated_cellbased==0 && numVertUpdated_vertexbased==0) break;
+  }
+
+
+  //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
+  //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscInt nNOTSetVertices = 0;
+  //for (PetscInt v = 0; v < nLocalVert; ++v) {
+    //if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
+      //++nNOTSetVertices;
+    //}
+  //}
+  //printf("number of unset vertices in level %d is %d\n", currentLevel, nNOTSetVertices);
+  //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
 }
 
@@ -3688,257 +3673,257 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
 // 1) How the error grows as the level increases
 //***********************************************************************************************
 void Reconstruction::FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec lsVec[2]) {
-	
-	int rank;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	
-	PetscInt dim;
-	DMGetDimension(vertDM, &dim);
 
-	Vec updatedVec[2];
-	DMGetLocalVector(vertDM, &updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-	DMGetGlobalVector(vertDM, &updatedVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecZeroEntries(updatedVec[LOCAL]);
-	VecZeroEntries(updatedVec[GLOBAL]);
+  int rank;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-	PetscScalar *updatedVertex[2] = {nullptr, nullptr}, *lsArr[2] = {nullptr, nullptr};
-	VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> utilities::PetscUtilities::checkError;
-	VecGetArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecGetArray(lsVec[LOCAL], &lsArr[LOCAL]) >> utilities::PetscUtilities::checkError;
-	
-	// Declaring a copy of level set vector to check the error later in FMM 
-	Vec lsVecCopy[2];
-	VecDuplicate(lsVec[GLOBAL], &lsVecCopy[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	VecDuplicate(lsVec[LOCAL], &lsVecCopy[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	VecCopy(lsVec[GLOBAL], lsVecCopy[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	VecCopy(lsVec[LOCAL], lsVecCopy[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	
-	// Declaring coordinate vectors to save coordinates to avoid any issue for finding the coordinates of ghost vertices in other ranks
-	Vec xVec[2], yVec[2];
-	DMGetLocalVector(vertDM, &xVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-	DMGetGlobalVector(vertDM, &xVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	DMGetLocalVector(vertDM, &yVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-	DMGetGlobalVector(vertDM, &yVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	
-	PetscScalar *xCoord[2] = {nullptr, nullptr}, *yCoord[2] = {nullptr, nullptr};
-	VecGetArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecGetArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
-	VecGetArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecGetArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
-	
-	for (PetscInt v = 0; v < nLocalVert; ++v) {
-		PetscReal x[dim];
-		DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
-		xCoord[LOCAL][v] = x[0];
-		xCoord[GLOBAL][v] = x[0];
-		yCoord[LOCAL][v] = x[1];
-		yCoord[GLOBAL][v] = x[1];
-	}
-	
-	DMGlobalToLocal(vertDM, xVec[GLOBAL], INSERT_VALUES, xVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-	DMGlobalToLocal(vertDM, yVec[GLOBAL], INSERT_VALUES, yVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-	
-	//char filename[64];
-	//if (rank == 1) {
-		//snprintf(filename, sizeof(filename), "coord_rank%d.txt", rank);
-		//FILE *file6 = fopen(filename, "w");
-		//for (PetscInt v = 0; v < nTotalVert; ++v) {
-			//PetscFPrintf(PETSC_COMM_SELF, file6, "%d, %f, %f\n", v, xCoord[LOCAL][v], yCoord[LOCAL][v]);
-		//}
-	//}
-	VecRestoreArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecRestoreArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
-	VecRestoreArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecRestoreArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
-	
-	for (PetscInt v = 0; v < nLocalVert; ++v) {
-		if (vertMask[v]==1) {
-			updatedVertex[LOCAL][v] = 1;
-			updatedVertex[GLOBAL][v] = 1;
-		}
-		else if (vertMask[v]>1) {
-			lsArr[LOCAL][v] = PetscSignReal(lsArr[LOCAL][v])*PETSC_MAX_REAL;
-			lsArr[GLOBAL][v] = PetscSignReal(lsArr[GLOBAL][v])*PETSC_MAX_REAL;
-		}
-	}
-	
-	for (PetscInt v = nLocalVert; v < nTotalVert; ++v) {
-		if (vertMask[v]==1) {
-			updatedVertex[LOCAL][v] = 1;
-		}
-		else if (vertMask[v]>1) {
-			lsArr[LOCAL][v] = PetscSignReal(lsArr[LOCAL][v])*PETSC_MAX_REAL;
-		}
-	}
-		
-	VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> utilities::PetscUtilities::checkError;
-	VecRestoreArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	VecRestoreArray(lsVec[LOCAL], &lsArr[LOCAL]) >> utilities::PetscUtilities::checkError;
-	
-	char filename[64];
-	snprintf(filename, sizeof(filename), "anim_rank%d.txt", rank);
-	FILE *animFile = fopen(filename, "w");
-	if (!animFile) {
-		throw std::runtime_error("Could not open update log file");
-	}
-	
-	//PetscLogDouble t1, t2, elapsed;
-	//PetscTime(&t1);
+  PetscInt dim;
+  DMGetDimension(vertDM, &dim);
 
-	// In my tests on a unit circle the cell-based method has an accuracy of O(h^1.6), vertex-based V1 has O(h^1.2), and
-	//  vertex-based V2 has O(h^0.91).
-	for (PetscInt currentLevel = 2; currentLevel <= nLevels; ++currentLevel) {
-		Reconstruction::FMM_PrimeHybrid(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, xVec, yVec, animFile);
-		//xexit("exit to check level set");
-		//Reconstruction::FMM_Hybrid(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, animFile,  PETSC_TRUE);
-	    // It looks like the cell-based one works best for quads and the vertex-based one for simplices, but this needs to be investigated.
-	    //Reconstruction::FMM_CellBased(currentLevel, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, animFile);
-		//SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMMmid1.txt", 1);
-	    // In certain instances not all of the vertices will be updated. A case where this happens is the following:
-	    //  2  --  1  -- 1
-	    //  2  --  1  -- 1
-	    //  2A --  2B -- 1
-	    //  3  --  2  -- 1
-	    // where 1 are vertices associated with cut-cells, 2/2A/2B are neighboring vertices, and 3 is the next level
-	    // Vertex 2B will be updated, but as vertex 3 will not be updated vertex 2A will alwasy be associated with a cell
-	    // that has two or more unknowns.
-	    //
-	    // Therefore, use the method given in "Fast methods for the Eikonal and related Hamilton–Jacobi equations on unstructured meshes"
-	    // by Sethian and Vladimirsky to handle those nodes.
-	    //
-	    // Note: Why not do this for all of the nodes? In some cases there may be only one neighboring vertex that is "accepted" (label==1).
-	    //        Rather than do a 1D approximation do the cell-based algorithm above and use this to fix any problem vertices
-	    //Reconstruction::FMM_VertexBased_V1(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, animFile);
-		//SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMMmid1.txt", 1);
-	    //Reconstruction::FMM_VertexBased_V1(currentLevel, dim, cellMask, vertMask, updatedVec, lsVec, lsVecCopy);
-		//SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMMmid2.txt", 1);
-	    // In some cases there will still be an issue, so do the vertex based code but on a cell-by-cell basis
-	    //Reconstruction::FMM_VertexBased_V2(currentLevel, cellMask, vertMask, updatedVec, lsVec, lsVecCopy);
-	//SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMMmid3.txt", 1);
-	//xexit("");
-	
-		VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	    for (PetscInt v = 0; v < nLocalVert; ++v) {
-	      if (vertMask[v]==currentLevel && updatedVertex[GLOBAL][v]<0.5){
-	        PetscReal x[3];
-	        DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-	        printf("plot(%+f,%+f,'bs');%d;\n", x[0], x[1], v);
-	        int rank;
-	        MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	        printf("rank: %d\n", rank);
-	        printf("level: %d\n", currentLevel);
-	        throw std::runtime_error("A vertex has not been updated.\n");
-	      }
-	    }
-	    VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
-	  }
-	
-	fclose(animFile);
-	
-	//PetscTime(&t2);
-	//elapsed = t2 - t1;
-	//PetscPrintf(PETSC_COMM_WORLD,"Elapsed time: %g seconds\n",elapsed);
+  Vec updatedVec[2];
+  DMGetLocalVector(vertDM, &updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+  DMGetGlobalVector(vertDM, &updatedVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecZeroEntries(updatedVec[LOCAL]);
+  VecZeroEntries(updatedVec[GLOBAL]);
 
-	SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMM.txt", 1);
-	
-	DMRestoreLocalVector(vertDM, &updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-	DMRestoreGlobalVector(vertDM, &updatedVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  PetscScalar *updatedVertex[2] = {nullptr, nullptr}, *lsArr[2] = {nullptr, nullptr};
+  VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> utilities::PetscUtilities::checkError;
+  VecGetArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecGetArray(lsVec[LOCAL], &lsArr[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+  // Declaring a copy of level set vector to check the error later in FMM
+  Vec lsVecCopy[2];
+  VecDuplicate(lsVec[GLOBAL], &lsVecCopy[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  VecDuplicate(lsVec[LOCAL], &lsVecCopy[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  VecCopy(lsVec[GLOBAL], lsVecCopy[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  VecCopy(lsVec[LOCAL], lsVecCopy[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+  // Declaring coordinate vectors to save coordinates to avoid any issue for finding the coordinates of ghost vertices in other ranks
+  Vec xVec[2], yVec[2];
+  DMGetLocalVector(vertDM, &xVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+  DMGetGlobalVector(vertDM, &xVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  DMGetLocalVector(vertDM, &yVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+  DMGetGlobalVector(vertDM, &yVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+
+  PetscScalar *xCoord[2] = {nullptr, nullptr}, *yCoord[2] = {nullptr, nullptr};
+  VecGetArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecGetArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
+  VecGetArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecGetArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+  for (PetscInt v = 0; v < nLocalVert; ++v) {
+    PetscReal x[dim];
+    DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
+    xCoord[LOCAL][v] = x[0];
+    xCoord[GLOBAL][v] = x[0];
+    yCoord[LOCAL][v] = x[1];
+    yCoord[GLOBAL][v] = x[1];
+  }
+
+  DMGlobalToLocal(vertDM, xVec[GLOBAL], INSERT_VALUES, xVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+  DMGlobalToLocal(vertDM, yVec[GLOBAL], INSERT_VALUES, yVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+  //char filename[64];
+  //if (rank == 1) {
+    //snprintf(filename, sizeof(filename), "coord_rank%d.txt", rank);
+    //FILE *file6 = fopen(filename, "w");
+    //for (PetscInt v = 0; v < nTotalVert; ++v) {
+      //PetscFPrintf(PETSC_COMM_SELF, file6, "%d, %f, %f\n", v, xCoord[LOCAL][v], yCoord[LOCAL][v]);
+    //}
+  //}
+  VecRestoreArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecRestoreArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
+  VecRestoreArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecRestoreArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+  for (PetscInt v = 0; v < nLocalVert; ++v) {
+    if (vertMask[v]==1) {
+      updatedVertex[LOCAL][v] = 1;
+      updatedVertex[GLOBAL][v] = 1;
+    }
+    else if (vertMask[v]>1) {
+      lsArr[LOCAL][v] = PetscSignReal(lsArr[LOCAL][v])*PETSC_MAX_REAL;
+      lsArr[GLOBAL][v] = PetscSignReal(lsArr[GLOBAL][v])*PETSC_MAX_REAL;
+    }
+  }
+
+  for (PetscInt v = nLocalVert; v < nTotalVert; ++v) {
+    if (vertMask[v]==1) {
+      updatedVertex[LOCAL][v] = 1;
+    }
+    else if (vertMask[v]>1) {
+      lsArr[LOCAL][v] = PetscSignReal(lsArr[LOCAL][v])*PETSC_MAX_REAL;
+    }
+  }
+
+  VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> utilities::PetscUtilities::checkError;
+  VecRestoreArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  VecRestoreArray(lsVec[LOCAL], &lsArr[LOCAL]) >> utilities::PetscUtilities::checkError;
+
+  char filename[64];
+  snprintf(filename, sizeof(filename), "anim_rank%d.txt", rank);
+  FILE *animFile = fopen(filename, "w");
+  if (!animFile) {
+    throw std::runtime_error("Could not open update log file");
+  }
+
+  //PetscLogDouble t1, t2, elapsed;
+  //PetscTime(&t1);
+
+  // In my tests on a unit circle the cell-based method has an accuracy of O(h^1.6), vertex-based V1 has O(h^1.2), and
+  //  vertex-based V2 has O(h^0.91).
+  for (PetscInt currentLevel = 2; currentLevel <= nLevels; ++currentLevel) {
+    Reconstruction::FMM_PrimeHybrid(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, xVec, yVec, animFile);
+    //xexit("exit to check level set");
+    //Reconstruction::FMM_Hybrid(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, animFile,  PETSC_TRUE);
+      // It looks like the cell-based one works best for quads and the vertex-based one for simplices, but this needs to be investigated.
+      //Reconstruction::FMM_CellBased(currentLevel, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, animFile);
+    //SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMMmid1.txt", 1);
+      // In certain instances not all of the vertices will be updated. A case where this happens is the following:
+      //  2  --  1  -- 1
+      //  2  --  1  -- 1
+      //  2A --  2B -- 1
+      //  3  --  2  -- 1
+      // where 1 are vertices associated with cut-cells, 2/2A/2B are neighboring vertices, and 3 is the next level
+      // Vertex 2B will be updated, but as vertex 3 will not be updated vertex 2A will alwasy be associated with a cell
+      // that has two or more unknowns.
+      //
+      // Therefore, use the method given in "Fast methods for the Eikonal and related Hamilton–Jacobi equations on unstructured meshes"
+      // by Sethian and Vladimirsky to handle those nodes.
+      //
+      // Note: Why not do this for all of the nodes? In some cases there may be only one neighboring vertex that is "accepted" (label==1).
+      //        Rather than do a 1D approximation do the cell-based algorithm above and use this to fix any problem vertices
+      //Reconstruction::FMM_VertexBased_V1(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, animFile);
+    //SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMMmid1.txt", 1);
+      //Reconstruction::FMM_VertexBased_V1(currentLevel, dim, cellMask, vertMask, updatedVec, lsVec, lsVecCopy);
+    //SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMMmid2.txt", 1);
+      // In some cases there will still be an issue, so do the vertex based code but on a cell-by-cell basis
+      //Reconstruction::FMM_VertexBased_V2(currentLevel, cellMask, vertMask, updatedVec, lsVec, lsVecCopy);
+  //SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMMmid3.txt", 1);
+  //xexit("");
+
+    VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
+      for (PetscInt v = 0; v < nLocalVert; ++v) {
+        if (vertMask[v]==currentLevel && updatedVertex[GLOBAL][v]<0.5){
+          PetscReal x[3];
+          DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+          printf("plot(%+f,%+f,'bs');%d;\n", x[0], x[1], v);
+          int rank;
+          MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+          printf("rank: %d\n", rank);
+          printf("level: %d\n", currentLevel);
+          throw std::runtime_error("A vertex has not been updated.\n");
+        }
+      }
+      VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    }
+
+  fclose(animFile);
+
+  //PetscTime(&t2);
+  //elapsed = t2 - t1;
+  //PetscPrintf(PETSC_COMM_WORLD,"Elapsed time: %g seconds\n",elapsed);
+
+  SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMM.txt", 1);
+
+  DMRestoreLocalVector(vertDM, &updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+  DMRestoreGlobalVector(vertDM, &updatedVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
 }
 
 PetscBool Reconstruction::CutCellfromLS(DM aux_dm, const PetscInt point, const ablate::domain::Field *levelSetField, Vec auxVector) {
-	int rank;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+  int rank;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 
-	PetscInt nv, *verts;
-	DMPlexCellGetVertices(aux_dm, point, &nv, &verts);
+  PetscInt nv, *verts;
+  DMPlexCellGetVertices(aux_dm, point, &nv, &verts);
 
-	PetscScalar *lsArray;
-	VecGetArray(auxVector, &lsArray);
-	
-	const PetscScalar ZERO_TOL =  1e-15;
-	PetscInt nPos = 0, nNeg = 0, nZero = 0;
-		    
-	for (PetscInt i = 0; i < nv; i++) {
-		PetscScalar *lsVal= nullptr;
-		DMPlexPointLocalFieldRead(aux_dm, verts[i], levelSetField->id, lsArray, &lsVal);
-			
-		if (*lsVal > ZERO_TOL) nPos++;
-		else if (*lsVal < -ZERO_TOL) nNeg++;
-		else nZero++;
-	}
-	
-	DMPlexCellRestoreVertices(aux_dm, point, &nv, &verts);	
-	VecRestoreArray(auxVector, &lsArray);
-	
-	return ( (nPos > 0 && nNeg) > 0 || nZero > 0) ? PETSC_TRUE : PETSC_FALSE;
+  PetscScalar *lsArray;
+  VecGetArray(auxVector, &lsArray);
+
+  const PetscScalar ZERO_TOL =  1e-15;
+  PetscInt nPos = 0, nNeg = 0, nZero = 0;
+
+  for (PetscInt i = 0; i < nv; i++) {
+    PetscScalar *lsVal= nullptr;
+    DMPlexPointLocalFieldRead(aux_dm, verts[i], levelSetField->id, lsArray, &lsVal);
+
+    if (*lsVal > ZERO_TOL) nPos++;
+    else if (*lsVal < -ZERO_TOL) nNeg++;
+    else nZero++;
+  }
+
+  DMPlexCellRestoreVertices(aux_dm, point, &nv, &verts);
+  VecRestoreArray(auxVector, &lsArray);
+
+  return ( (nPos > 0 && nNeg) > 0 || nZero > 0) ? PETSC_TRUE : PETSC_FALSE;
 }
 
 //Newton-raphson method
 PetscScalar Reconstruction::Newton(const PetscReal* x, void* ctx) {
-	
-	EllipseCtx* ellipse = (EllipseCtx*)ctx; // Treat this raw pointer (ctx) as if it points to an EllipseCtx struct.
+
+  EllipseCtx* ellipse = (EllipseCtx*)ctx; // Treat this raw pointer (ctx) as if it points to an EllipseCtx struct.
     PetscScalar a = ellipse->a;
     PetscScalar b = ellipse->b;
-    	
-	PetscScalar initial_guess[4] = {0.0, PETSC_PI / 2.0, PETSC_PI, 3.0 * PETSC_PI / 2.0};
+
+  PetscScalar initial_guess[4] = {0.0, PETSC_PI / 2.0, PETSC_PI, 3.0 * PETSC_PI / 2.0};
     PetscScalar best_theta = 0.0;
     PetscScalar min_f = PETSC_MAX_REAL;
-    
-	for (PetscInt i = 0; i < 4; ++i) {
+
+  for (PetscInt i = 0; i < 4; ++i) {
         PetscScalar theta = initial_guess[i];
         PetscScalar eps = 1.0;
         PetscInt iter = 0;
         const PetscInt max_iter = 50;
         const PetscScalar tol = 1e-10;
         PetscScalar theta_new, df, d2f;
-	
-		while (fabs(eps) > tol && iter < max_iter) {
-			Reconstruction::EllipseEq(x, theta, a, b, &df, &d2f); 	
-				
+
+    while (fabs(eps) > tol && iter < max_iter) {
+      Reconstruction::EllipseEq(x, theta, a, b, &df, &d2f);
+
             if (fabs(d2f) < 1e-14) {
                 theta_new = theta - 0.1 * df; // small step instead of df/d2f
             } else {
                 theta_new = theta - df / d2f;
             }
-			
-			theta_new = theta - df/d2f;
-			theta_new = fmod(theta_new, 2.0 * PETSC_PI); 
-	        if (theta_new < 0.0) theta_new += 2.0 * PETSC_PI;
-	        
-			eps = theta_new - theta;		
-			theta = theta_new;
-			++iter;
-		}
-		
-		PetscScalar df_unused;
+
+      theta_new = theta - df/d2f;
+      theta_new = fmod(theta_new, 2.0 * PETSC_PI);
+          if (theta_new < 0.0) theta_new += 2.0 * PETSC_PI;
+
+      eps = theta_new - theta;
+      theta = theta_new;
+      ++iter;
+    }
+
+    PetscScalar df_unused;
         PetscScalar f = Reconstruction::EllipseEq(x, theta, a, b, &df_unused, &d2f);
-        
+
         // Optionally: skip if d2f <= 0 (not a min)
         if (d2f > 0 && f < min_f) {
             min_f = f;
             best_theta = theta;
         }
     }
-    
+
     if (min_f == PETSC_INFINITY) {
         throw std::runtime_error("No valid minimum found.\n");
     }
-    
+
     return best_theta;
 }
 
 PetscScalar Reconstruction::EllipseEq(const PetscReal* x, PetscScalar theta, PetscScalar a, PetscScalar b, PetscScalar* df, PetscScalar* d2f) {
-			
-	*df = 2.0*(-a*sin(theta))*(a*cos(theta)-x[0]) + 2.0*(b*cos(theta))*(b*sin(theta)-x[1]);      
-	*d2f = 2.0 * ((-a*PetscCosReal(theta)) * (a*PetscCosReal(theta) - x[0]) + 
-						PetscSqr(a)*PetscSqr(PetscSinReal(theta)) +
-						(-b*PetscSinReal(theta)) * (b*PetscSinReal(theta) - x[1]) +
-						PetscSqr(b)*PetscSqr(PetscCosReal(theta)));
-	PetscScalar f = PetscSqr(a*cos(theta)-x[0]) + PetscSqr(b*sin(theta)-x[1]);
-	
-	return f;
+
+  *df = 2.0*(-a*sin(theta))*(a*cos(theta)-x[0]) + 2.0*(b*cos(theta))*(b*sin(theta)-x[1]);
+  *d2f = 2.0 * ((-a*PetscCosReal(theta)) * (a*PetscCosReal(theta) - x[0]) +
+            PetscSqr(a)*PetscSqr(PetscSinReal(theta)) +
+            (-b*PetscSinReal(theta)) * (b*PetscSinReal(theta) - x[1]) +
+            PetscSqr(b)*PetscSqr(PetscCosReal(theta)));
+  PetscScalar f = PetscSqr(a*cos(theta)-x[0]) + PetscSqr(b*sin(theta)-x[1]);
+
+  return f;
 }
 
 // This function uses newton-raphson method to find the shortest distance between a point in domain and the elliptic interface
@@ -3946,137 +3931,137 @@ PetscScalar Reconstruction::LSellipse(const PetscReal* x, const PetscInt dim) {
     EllipseCtx ctx;
     ctx.a = 1.0;
     ctx.b = 0.5;
-    
+
     PetscScalar f_min, df, d2f;
-    
+
     PetscScalar theta_min = Reconstruction::Newton(x, &ctx);
-    f_min = Reconstruction::EllipseEq(x, theta_min, ctx.a, ctx.b, &df, &d2f); 
+    f_min = Reconstruction::EllipseEq(x, theta_min, ctx.a, ctx.b, &df, &d2f);
     PetscScalar dist = PetscSqrtReal(f_min);
-    
+
     PetscScalar sign = (PetscSqr(x[0]/ctx.a) + PetscSqr(x[1]/ctx.b) < 1.0) ? -1.0 : 1.0;
-	PetscScalar ls = sign * dist;
-	
-	return ls;
+  PetscScalar ls = sign * dist;
+
+  return ls;
 }
 
 PetscScalar Reconstruction::NewtonCassiniOval(const PetscReal* x, void* ctx) {
     CassiniOvalCtx* cassinioval = (CassiniOvalCtx*)ctx;
     PetscScalar a = cassinioval->a;
     PetscScalar c = cassinioval->c;
-    
+
     PetscScalar best_f = PETSC_INFINITY;
     PetscScalar best_theta = 0.0;
     PetscInt best_branch = 0;
-    
+
     PetscInt N_guess = 100; // Number of initial guesses
     for (PetscInt b = 0; b < 2; b++) {
-		for (PetscInt n = 0; n < N_guess; n++) {
-			PetscScalar th = n* 2*PETSC_PI/N_guess;
-			PetscScalar df, d2f;
-			PetscScalar fval = CassiniOvalEq(x, th, a, c, b, &df, &d2f);
-			if (fval < best_f) {
-				best_f = fval;
+    for (PetscInt n = 0; n < N_guess; n++) {
+      PetscScalar th = n* 2*PETSC_PI/N_guess;
+      PetscScalar df, d2f;
+      PetscScalar fval = CassiniOvalEq(x, th, a, c, b, &df, &d2f);
+      if (fval < best_f) {
+        best_f = fval;
                 best_theta = th;
                 best_branch = b;
             }
         }
-	}
-	
-	if (best_f == PETSC_INFINITY) {
-		throw std::runtime_error("No valid minimum found.");
-	}
-	
-	PetscInt max_iter = 50;
+  }
+
+  if (best_f == PETSC_INFINITY) {
+    throw std::runtime_error("No valid minimum found.");
+  }
+
+  PetscInt max_iter = 50;
     PetscScalar tol = 1e-10;
-    
+
     PetscScalar theta = best_theta;
     PetscInt b = best_branch;
     PetscScalar df_curr, d2f_curr;
     PetscScalar f_curr = CassiniOvalEq(x, theta, a, c, b, &df_curr, &d2f_curr);
-    
+
     for (PetscInt iter = 0; iter < max_iter; iter++) {
-		// check convergence
-		if (PetscAbsReal(df_curr) < tol) {
-			break;
-		}
-		
-		// compute step
-		PetscScalar step;
-		if (d2f_curr > 0.0) {
-			step = df_curr / d2f_curr;
-		} else {
-			step = 0.01 * df_curr;
-		}
-		
-		PetscScalar theta_new;
-		theta_new = theta - step;
-		theta_new = fmod(theta_new, 2 * PETSC_PI);
-		
-		PetscScalar f_new;
-		PetscScalar df_new, d2f_new;
-		f_new = CassiniOvalEq(x, theta_new, a, c, b, &df_new, &d2f_new);
-		
-		if (f_new < f_curr) {
-			theta = theta_new;
-			f_curr = f_new;
-			df_curr = df_new;
-			d2f_curr = d2f_new;
-		} else {
-			theta_new = theta - 0.5 * step;
-			theta_new = fmod(theta_new, 2 * PETSC_PI);
-			f_new = CassiniOvalEq(x, theta_new, a, c, b, &df_new, &d2f_new);
-			if (f_new < f_curr) {
-				theta = theta_new;
-				f_curr = f_new;
-				df_curr = df_new;
-				d2f_curr = d2f_new;
-			} else {
-				break;
-			}
-		}
-	}
-	
+    // check convergence
+    if (PetscAbsReal(df_curr) < tol) {
+      break;
+    }
+
+    // compute step
+    PetscScalar step;
+    if (d2f_curr > 0.0) {
+      step = df_curr / d2f_curr;
+    } else {
+      step = 0.01 * df_curr;
+    }
+
+    PetscScalar theta_new;
+    theta_new = theta - step;
+    theta_new = fmod(theta_new, 2 * PETSC_PI);
+
+    PetscScalar f_new;
+    PetscScalar df_new, d2f_new;
+    f_new = CassiniOvalEq(x, theta_new, a, c, b, &df_new, &d2f_new);
+
+    if (f_new < f_curr) {
+      theta = theta_new;
+      f_curr = f_new;
+      df_curr = df_new;
+      d2f_curr = d2f_new;
+    } else {
+      theta_new = theta - 0.5 * step;
+      theta_new = fmod(theta_new, 2 * PETSC_PI);
+      f_new = CassiniOvalEq(x, theta_new, a, c, b, &df_new, &d2f_new);
+      if (f_new < f_curr) {
+        theta = theta_new;
+        f_curr = f_new;
+        df_curr = df_new;
+        d2f_curr = d2f_new;
+      } else {
+        break;
+      }
+    }
+  }
+
     return f_curr;
 }
 
 PetscScalar Reconstruction::CassiniOvalEq(const PetscReal* x, PetscScalar theta, PetscScalar a, PetscScalar c, PetscInt branch, PetscScalar* df, PetscScalar* d2f) {
-	PetscScalar s2 = PetscSinReal(2.0 * theta);
-	PetscScalar c2 = PetscCosReal(2.0 * theta);
-	PetscScalar inner = PetscPowReal(a, 4) - PetscPowReal(c, 4) * s2 * s2;
-   
+  PetscScalar s2 = PetscSinReal(2.0 * theta);
+  PetscScalar c2 = PetscCosReal(2.0 * theta);
+  PetscScalar inner = PetscPowReal(a, 4) - PetscPowReal(c, 4) * s2 * s2;
+
     if (inner < 0.0) {
         *df = PETSC_INFINITY;
         *d2f = PETSC_INFINITY;
         return PETSC_INFINITY;
     }
-    
+
     PetscScalar sigma = 1.0;
     PetscScalar u;
     if (branch == 1) {
-		u = c * c * c2 + PetscSqrtReal(inner);
-	} else {
-		u = c * c * c2 - PetscSqrtReal(inner);
-		sigma = -1.0;
-	}
-	
-	if (u < 0) {
-		*df = PETSC_INFINITY;
+    u = c * c * c2 + PetscSqrtReal(inner);
+  } else {
+    u = c * c * c2 - PetscSqrtReal(inner);
+    sigma = -1.0;
+  }
+
+  if (u < 0) {
+    *df = PETSC_INFINITY;
         *d2f = PETSC_INFINITY;
         return PETSC_INFINITY;
-	}
-	
-	PetscScalar r = PetscSqrtReal(u);
-	PetscScalar X = r * PetscCosReal(theta);
-	PetscScalar Y = r * PetscSinReal(theta);
-	PetscScalar f = (X-x[0])*(X-x[0]) + (Y-x[1])*(Y-x[1]);
-		
-	// Derivatives
-	PetscScalar delta = PetscSqrtReal(inner);
-	PetscScalar S = x[0] * PetscCosReal(theta) + x[1] * PetscSinReal(theta);
-	PetscScalar S_prime = -x[0] * PetscSinReal(theta) + x[1] * PetscCosReal(theta);
-	PetscScalar u_prime = -2.0*PetscPowReal(c, 2)*s2 - sigma*2*PetscPowReal(c, 4)*s2*c2/delta;
-	PetscScalar u_dprime = -4*PetscPowReal(c, 2)*c2 - (4*sigma*PetscPowReal(c, 4)*PetscCosReal(4*theta))/delta - (4*sigma*PetscPowReal(c, 8)*s2*s2*c2*c2)/(PetscPowReal(delta, 3));
-	
+  }
+
+  PetscScalar r = PetscSqrtReal(u);
+  PetscScalar X = r * PetscCosReal(theta);
+  PetscScalar Y = r * PetscSinReal(theta);
+  PetscScalar f = (X-x[0])*(X-x[0]) + (Y-x[1])*(Y-x[1]);
+
+  // Derivatives
+  PetscScalar delta = PetscSqrtReal(inner);
+  PetscScalar S = x[0] * PetscCosReal(theta) + x[1] * PetscSinReal(theta);
+  PetscScalar S_prime = -x[0] * PetscSinReal(theta) + x[1] * PetscCosReal(theta);
+  PetscScalar u_prime = -2.0*PetscPowReal(c, 2)*s2 - sigma*2*PetscPowReal(c, 4)*s2*c2/delta;
+  PetscScalar u_dprime = -4*PetscPowReal(c, 2)*c2 - (4*sigma*PetscPowReal(c, 4)*PetscCosReal(4*theta))/delta - (4*sigma*PetscPowReal(c, 8)*s2*s2*c2*c2)/(PetscPowReal(delta, 3));
+
     *df = u_prime*(1-S/r) - 2*r*S_prime;
     *d2f = u_dprime*(1-S/r) - 2*u_prime*S_prime/r + S*u_prime*u_prime/(2*r*r*r) + 2*r*S;
 
@@ -4087,10 +4072,10 @@ PetscScalar Reconstruction::LScassinioval(const PetscReal* x, const PetscInt dim
     CassiniOvalCtx ctx;
     ctx.c = 1.0;
     ctx.a = 1.05;
-    
+
     PetscScalar f_min = NewtonCassiniOval(x, &ctx);
     PetscScalar dist = PetscSqrtReal(PetscMax(f_min, 0.0)); // ensure positive inside sqrt
-    
+
     // Sign determination using the implicit Cassini oval equation
     PetscScalar F = ((x[0]-ctx.c)*(x[0]-ctx.c) + x[1]*x[1]) * ((x[0]+ctx.c)*(x[0]+ctx.c) + x[1]*x[1]) - PetscPowReal(ctx.a, 4);
     PetscScalar sign = (F < 0.0) ? -1.0 : 1.0; // Negative inside, positive outside
@@ -4103,12 +4088,12 @@ PetscScalar Reconstruction::NewtonStar(const PetscReal* x, void* ctx, PetscScala
     StarCtx* star = (StarCtx*)ctx;
     PetscScalar a = star->a;
     PetscScalar b = star->b;
-    
+
     PetscScalar best_f = PETSC_INFINITY;
     PetscScalar best_theta = 0.0;
-    
+
     // Using 600 points to not get trapped in the wrong lobe's local minimum
-    PetscInt N_guess = 600; 
+    PetscInt N_guess = 600;
     for (PetscInt n = 0; n < N_guess; n++) {
         PetscScalar th = n * 2.0 * PETSC_PI / (PetscScalar)N_guess;
         PetscScalar fval = StarEq(x, th, a, b, nullptr, nullptr);
@@ -4128,14 +4113,14 @@ PetscScalar Reconstruction::NewtonStar(const PetscReal* x, void* ctx, PetscScala
 
         if (PetscAbsReal(df) < tol) break;
         // Epsilon prevents division by zero
-        PetscScalar step = df / (d2f + 1e-9); 
+        PetscScalar step = df / (d2f + 1e-9);
         // Damping factor (0.5) prevents oscillation on sharp diagonals
         PetscScalar theta_new = theta - 0.5 * step;
-        
+
         if (PetscAbsReal(theta_new - theta) < tol) break;
         theta = theta_new;
     }
-    
+
     *theta_star = theta;
     return StarEq(x, theta, a, b, nullptr, nullptr);
 }
@@ -4146,27 +4131,27 @@ PetscScalar Reconstruction::StarEq(const PetscReal* x, PetscScalar theta, PetscS
     PetscScalar st = PetscSinReal(theta);
     PetscScalar ck = PetscCosReal(k*theta);
     PetscScalar sk = PetscSinReal(k*theta);
-    
+
     // Parametric Radius: r(theta) = b + a*cos(4*theta)
     PetscScalar r   = b + a*ck;
     PetscScalar dr  = -a*k*sk;
     PetscScalar d2r = -a*k*k*ck;
-    
+
     // Map to Cartesian
     PetscScalar X = r * ct;
     PetscScalar Y = r * st;
-    
+
     // Squared Distance Function f = (X-x0)^2 + (Y-y0)^2
     PetscScalar f = (X-x[0])*(X-x[0]) + (Y-x[1])*(Y-x[1]);
-    
+
     // First derivatives of X, Y w.r.t theta
     PetscScalar dX = dr*ct - r*st;
     PetscScalar dY = dr*st + r*ct;
-    
+
     // Second derivatives of X, Y w.r.t theta
     PetscScalar d2X = d2r*ct - 2.0*dr*st - r*ct;
     PetscScalar d2Y = d2r*st + 2.0*dr*ct - r*st;
-            
+
     if (df) {
         *df = 2.0*(X - x[0])*dX + 2.0*(Y - x[1])*dY;
     }
@@ -4179,40 +4164,40 @@ PetscScalar Reconstruction::StarEq(const PetscReal* x, PetscScalar theta, PetscS
 
 PetscScalar Reconstruction::LSstar(const PetscReal* x, const PetscInt dim) {
     StarCtx ctx;
-    ctx.a = 0.3; 
-    ctx.b = 0.6; 
-    
+    ctx.a = 0.3;
+    ctx.b = 0.6;
+
     PetscScalar theta_star;
     PetscScalar f_min = NewtonStar(x, &ctx, &theta_star);
     PetscScalar dist = PetscSqrtReal(PetscMax(f_min, 0.0));
-    
+
     // Star is defined by: r(theta) = b + a*cos(4theta)
     PetscScalar r_query = PetscSqrtReal(x[0]*x[0] + x[1]*x[1]);
     PetscScalar query_theta = PetscAtan2Real(x[1], x[0]);
-    
+
     if (r_query < 1e-12) {
         // Center: always inside for star with b > a
         return -(ctx.b - ctx.a);
     }
-    
+
     // for a star shape, the boundary is single valued in polar coordinates
     // So we can simply check if the point is inside or outside by comparing r with r(theta)
     // However, this only works if the star is star shaped (which it is when b > a)
-    
+
     PetscScalar r_star_at_angle = ctx.b + ctx.a * PetscCosReal(4.0 * query_theta);
     PetscScalar tol = 1e-12;
     PetscScalar sign;
-    
+
     if (r_query > r_star_at_angle + tol) {
         sign = 1.0;
     } else if (r_query < r_star_at_angle - tol) {
-        sign = -1.0; 
+        sign = -1.0;
     } else {
         // Very close to boundary - use the distance from Newton
         // Points exactly on boundary get sign = 1.0 (outside convention)
         sign = 1.0;
     }
-    
+
     return sign * dist;
 }
 
@@ -4239,162 +4224,162 @@ PetscScalar Reconstruction::LStwoCircles(const PetscReal* x, const PetscInt dim)
 
 // This function just uses the known signed distance function of a circle to calculate the shortest distance of each point in domain to the interface
 PetscScalar Reconstruction::LScircle(const PetscReal* x, const PetscInt dim) {
-	
-	PetscScalar sumSquared = 0.0;
-	for (PetscInt i = 0; i < dim; i++) {
-		sumSquared += x[i] * x[i];
-	}
-	
-	PetscScalar ls = PetscSqrtReal(sumSquared) - 1; // Compute the level set at a vertex
 
-	return ls;
+  PetscScalar sumSquared = 0.0;
+  for (PetscInt i = 0; i < dim; i++) {
+    sumSquared += x[i] * x[i];
+  }
+
+  PetscScalar ls = PetscSqrtReal(sumSquared) - 1; // Compute the level set at a vertex
+
+  return ls;
 }
 
 void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field levelSetField, Vec auxVector) {
 
-	int rank, size;
-	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-	MPI_Comm_size(PETSC_COMM_WORLD, &size);
-	
-	DMViewFromOptions(aux_dm, NULL, "-dm_view");
-	Reconstruction_SaveDM(aux_dm, "mesh.txt");
-		
-	//PetscSection section;
-	//DMGetLocalSection(aux_dm, &section);
-	//PetscInt numFields;
-	//PetscSectionGetNumFields(section, &numFields);
-	//for (PetscInt i = 0; i < numFields; i++) {
-		//const char* fieldname;
-		//PetscSectionGetFieldName(section, i, &fieldname);
-		//PetscPrintf(PETSC_COMM_SELF, "%s\n", fieldname);
-	//}
-	//PetscPrintf(PETSC_COMM_SELF, "num of fields is %d\n", numFields);
-	
-	PetscInt vStart = -1, vEnd= -1;
-	DMPlexGetDepthStratum(aux_dm, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
-	//PetscPrintf(PETSC_COMM_SELF, "the vstart is %d, and the vend is %d\n", vStart, vEnd);
-	
-	Vec globalVec;
-	DMGetGlobalVector(aux_dm, &globalVec);
-	
-	PetscInt lsfieldID = levelSetField.id;
-	const PetscInt dim = subDomain->GetDimensions();
-	PetscReal x[dim]; // coordinates of vertices
-	
-	//char filename[64];
-	//snprintf(filename, sizeof(filename), "ls_rank0.txt");
-	//FILE *file = fopen(filename, "r"); 
-	//PetscScalar *lsArray;
-	//VecGetArray(auxVector, &lsArray);
-	//for (PetscInt v = 0; v < nLocalVert; v++) {
-	    //PetscScalar *lsVal = nullptr;
-	    //DMPlexPointLocalFieldRef(aux_dm, vertList[v], lsfieldID, lsArray, &lsVal); // Access level set field
-	
-	    //DMPlexComputeCellGeometryFVM(aux_dm, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get vertex coordinates
-	
-	    ////Read level set value from file
-		//double x0, y0, ls_read_double;
-		//int nRead = fscanf(file, "%lf %lf %lf", &x0, &y0, &ls_read_double);
-	    //if (nRead != 3) {
-	        //PetscPrintf(PETSC_COMM_SELF, "Error reading line %d from file\n", v);
-	        //ls_read_double = 0.0; // fallback value
-	    //}
+  int rank, size;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+  MPI_Comm_size(PETSC_COMM_WORLD, &size);
 
-		//*lsVal = static_cast<PetscScalar>(ls_read_double);
-	    //PetscPrintf(PETSC_COMM_SELF, "Vertex %d: x=(%f,%f) ls=%f\n", v, x[0], x[1], *lsVal);
-	//}
-	
-	//VecRestoreArray(auxVector, &lsArray);
-	//fclose(file);
-	
-	//char filename[64];
-	//snprintf(filename, sizeof(filename), "ls_rank%d.txt", rank);
-	//FILE *file = fopen(filename, "w");
-	
-	PetscScalar *lsArray; // This variable works as a pointer to the level set field in auxiliary vector and the level set field in aux vector is set if we manually set the interface like a simple circle
-	VecGetArray(auxVector, &lsArray);
-	
-	for (PetscInt v = 0; v < nLocalVert; v++) {
-		PetscScalar *lsVal= nullptr;
-		DMPlexPointLocalFieldRef(aux_dm, vertList[v], lsfieldID, lsArray, &lsVal); // Access to a specific field variable corresponding to the correct index in aux vector for a specific point in aux dm
-		
-		DMPlexComputeCellGeometryFVM(aux_dm, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex				
-		//*lsVal = LScircle(x, dim);
-		//*lsVal = LSellipse(x, dim);
-		//*lsVal = LScassinioval(x, dim);
-		*lsVal = LSstar(x, dim);
-		//*lsVal = LStwoCircles(x, dim);
-		
-		//PetscFPrintf(PETSC_COMM_SELF, file, "%d, %f, %f, %.16f\n", v, x[0], x[1], *lsVal);
-	}
-	//fclose(file);
-	VecRestoreArray(auxVector, &lsArray) >> ablate::utilities::PetscUtilities::checkError;
- 
-	DMLocalToGlobal(aux_dm, auxVector, INSERT_VALUES, globalVec);
-	DMGlobalToLocal(aux_dm, globalVec, INSERT_VALUES, auxVector);
-	MPI_Barrier(PETSC_COMM_WORLD);
-		
-	PetscInt *vertMask = nullptr, *cellMask = nullptr;
-	DMGetWorkArray(vertDM, nTotalVert, MPIU_INT, &vertMask) >> ablate::utilities::PetscUtilities::checkError;
-	DMGetWorkArray(cellDM, nTotalCell, MPIU_INT, &cellMask) >> ablate::utilities::PetscUtilities::checkError;
-	
-	SetMasks(aux_dm, auxVector, levelSetField, nLevels, cellMask, vertMask);
+  DMViewFromOptions(aux_dm, NULL, "-dm_view");
+  Reconstruction_SaveDM(aux_dm, "mesh.txt");
 
-	// Setting the lsVec which is a vector of level set values for vertices associated with cut-cells
-	Vec lsVec[2] = {nullptr, nullptr};                 // [LOCAL, GLOBAL]
-	PetscScalar *lsArr[2] = {nullptr, nullptr};        
-	DMGetLocalVector(vertDM, &lsVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	DMGetGlobalVector(vertDM, &lsVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	VecZeroEntries(lsVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	VecZeroEntries(lsVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	VecGetArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	VecGetArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	
-	VecGetArray(auxVector, &lsArray);
-	
-	for (PetscInt v = 0; v < nLocalVert; ++v) {
-		PetscInt nv, *verts;
-		DMPlexCellGetVertices(aux_dm, vertList[v], &nv, &verts);
-		
-		for (PetscInt i = 0; i < nv; i++) {
-			PetscScalar *lsVal= nullptr;
-			DMPlexPointLocalFieldRead(aux_dm, verts[i], lsfieldID, lsArray, &lsVal);
-			
-			const PetscInt id = reverseVertList[verts[i]];
-			lsArr[LOCAL][id] = *lsVal;
-		}
-		DMPlexCellRestoreVertices(aux_dm, vertList[v], &nv, &verts);	
-	}
-		
-	VecRestoreArray(auxVector, &lsArray) >> ablate::utilities::PetscUtilities::checkError;
-			
-	DMLocalToGlobal(vertDM, lsVec[LOCAL], INSERT_VALUES, lsVec[GLOBAL]);
-	DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]);
-	
-	VecRestoreArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	VecRestoreArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-			
-	//DMRestoreLocalVector(vertDM, &lsVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-	//DMRestoreGlobalVector(vertDM, &lsVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-	
-	FMM(cellMask, vertMask, lsVec);
-	xexit("exit here test");
-	
-		
-	//PetscReal *closestPoint;
-	//DMGetWorkArray(vertGradDM, nLocalVert*dim, MPIU_REAL, &closestPoint) >> ablate::utilities::PetscUtilities::checkError;
-	//PetscInt *cpCell;
-	//DMGetWorkArray(vertDM, nLocalVert, MPIU_INT, &cpCell) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscSection section;
+  //DMGetLocalSection(aux_dm, &section);
+  //PetscInt numFields;
+  //PetscSectionGetNumFields(section, &numFields);
+  //for (PetscInt i = 0; i < numFields; i++) {
+    //const char* fieldname;
+    //PetscSectionGetFieldName(section, i, &fieldname);
+    //PetscPrintf(PETSC_COMM_SELF, "%s\n", fieldname);
+  //}
+  //PetscPrintf(PETSC_COMM_SELF, "num of fields is %d\n", numFields);
 
-	//InitalizeLevelSet(aux_dm, auxVector, levelSetField, cellMask, vertMask, lsVec, closestPoint, cpCell);
-	//SaveData(vertDM, closestPoint, nLocalVert, vertList, "cp.txt", dim);
-	//SaveData(vertDM, lsVec[LOCAL], nTotalVert, vertList, "vertLS0_L.txt", 1);
-	//SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS0_G.txt", 1);
+  PetscInt vStart = -1, vEnd= -1;
+  DMPlexGetDepthStratum(aux_dm, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscPrintf(PETSC_COMM_SELF, "the vstart is %d, and the vend is %d\n", vStart, vEnd);
 
-	//FMM(cellMask, vertMask, lsVec);
-	
+  Vec globalVec;
+  DMGetGlobalVector(aux_dm, &globalVec);
 
-	
+  PetscInt lsfieldID = levelSetField.id;
+  const PetscInt dim = subDomain->GetDimensions();
+  PetscReal x[dim]; // coordinates of vertices
+
+  //char filename[64];
+  //snprintf(filename, sizeof(filename), "ls_rank0.txt");
+  //FILE *file = fopen(filename, "r");
+  //PetscScalar *lsArray;
+  //VecGetArray(auxVector, &lsArray);
+  //for (PetscInt v = 0; v < nLocalVert; v++) {
+      //PetscScalar *lsVal = nullptr;
+      //DMPlexPointLocalFieldRef(aux_dm, vertList[v], lsfieldID, lsArray, &lsVal); // Access level set field
+
+      //DMPlexComputeCellGeometryFVM(aux_dm, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get vertex coordinates
+
+      ////Read level set value from file
+    //double x0, y0, ls_read_double;
+    //int nRead = fscanf(file, "%lf %lf %lf", &x0, &y0, &ls_read_double);
+      //if (nRead != 3) {
+          //PetscPrintf(PETSC_COMM_SELF, "Error reading line %d from file\n", v);
+          //ls_read_double = 0.0; // fallback value
+      //}
+
+    //*lsVal = static_cast<PetscScalar>(ls_read_double);
+      //PetscPrintf(PETSC_COMM_SELF, "Vertex %d: x=(%f,%f) ls=%f\n", v, x[0], x[1], *lsVal);
+  //}
+
+  //VecRestoreArray(auxVector, &lsArray);
+  //fclose(file);
+
+  //char filename[64];
+  //snprintf(filename, sizeof(filename), "ls_rank%d.txt", rank);
+  //FILE *file = fopen(filename, "w");
+
+  PetscScalar *lsArray; // This variable works as a pointer to the level set field in auxiliary vector and the level set field in aux vector is set if we manually set the interface like a simple circle
+  VecGetArray(auxVector, &lsArray);
+
+  for (PetscInt v = 0; v < nLocalVert; v++) {
+    PetscScalar *lsVal= nullptr;
+    DMPlexPointLocalFieldRef(aux_dm, vertList[v], lsfieldID, lsArray, &lsVal); // Access to a specific field variable corresponding to the correct index in aux vector for a specific point in aux dm
+
+    DMPlexComputeCellGeometryFVM(aux_dm, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
+    //*lsVal = LScircle(x, dim);
+    //*lsVal = LSellipse(x, dim);
+    //*lsVal = LScassinioval(x, dim);
+    *lsVal = LSstar(x, dim);
+    //*lsVal = LStwoCircles(x, dim);
+
+    //PetscFPrintf(PETSC_COMM_SELF, file, "%d, %f, %f, %.16f\n", v, x[0], x[1], *lsVal);
+  }
+  //fclose(file);
+  VecRestoreArray(auxVector, &lsArray) >> ablate::utilities::PetscUtilities::checkError;
+
+  DMLocalToGlobal(aux_dm, auxVector, INSERT_VALUES, globalVec);
+  DMGlobalToLocal(aux_dm, globalVec, INSERT_VALUES, auxVector);
+  MPI_Barrier(PETSC_COMM_WORLD);
+
+  PetscInt *vertMask = nullptr, *cellMask = nullptr;
+  DMGetWorkArray(vertDM, nTotalVert, MPIU_INT, &vertMask) >> ablate::utilities::PetscUtilities::checkError;
+  DMGetWorkArray(cellDM, nTotalCell, MPIU_INT, &cellMask) >> ablate::utilities::PetscUtilities::checkError;
+
+  SetMasks(aux_dm, auxVector, levelSetField, nLevels, cellMask, vertMask);
+
+  // Setting the lsVec which is a vector of level set values for vertices associated with cut-cells
+  Vec lsVec[2] = {nullptr, nullptr};                 // [LOCAL, GLOBAL]
+  PetscScalar *lsArr[2] = {nullptr, nullptr};
+  DMGetLocalVector(vertDM, &lsVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  DMGetGlobalVector(vertDM, &lsVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  VecZeroEntries(lsVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  VecZeroEntries(lsVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+  VecGetArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  VecGetArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+  VecGetArray(auxVector, &lsArray);
+
+  for (PetscInt v = 0; v < nLocalVert; ++v) {
+    PetscInt nv, *verts;
+    DMPlexCellGetVertices(aux_dm, vertList[v], &nv, &verts);
+
+    for (PetscInt i = 0; i < nv; i++) {
+      PetscScalar *lsVal= nullptr;
+      DMPlexPointLocalFieldRead(aux_dm, verts[i], lsfieldID, lsArray, &lsVal);
+
+      const PetscInt id = reverseVertList[verts[i]];
+      lsArr[LOCAL][id] = *lsVal;
+    }
+    DMPlexCellRestoreVertices(aux_dm, vertList[v], &nv, &verts);
+  }
+
+  VecRestoreArray(auxVector, &lsArray) >> ablate::utilities::PetscUtilities::checkError;
+
+  DMLocalToGlobal(vertDM, lsVec[LOCAL], INSERT_VALUES, lsVec[GLOBAL]);
+  DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]);
+
+  VecRestoreArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  VecRestoreArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+  //DMRestoreLocalVector(vertDM, &lsVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+  //DMRestoreGlobalVector(vertDM, &lsVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
+
+  FMM(cellMask, vertMask, lsVec);
+  xexit("exit here test");
+
+
+  //PetscReal *closestPoint;
+  //DMGetWorkArray(vertGradDM, nLocalVert*dim, MPIU_REAL, &closestPoint) >> ablate::utilities::PetscUtilities::checkError;
+  //PetscInt *cpCell;
+  //DMGetWorkArray(vertDM, nLocalVert, MPIU_INT, &cpCell) >> ablate::utilities::PetscUtilities::checkError;
+
+  //InitalizeLevelSet(aux_dm, auxVector, levelSetField, cellMask, vertMask, lsVec, closestPoint, cpCell);
+  //SaveData(vertDM, closestPoint, nLocalVert, vertList, "cp.txt", dim);
+  //SaveData(vertDM, lsVec[LOCAL], nTotalVert, vertList, "vertLS0_L.txt", 1);
+  //SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS0_G.txt", 1);
+
+  //FMM(cellMask, vertMask, lsVec);
+
+
+
 }
 
 
@@ -4463,7 +4448,7 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
 //SaveData(vertDM, lsVec[LOCAL], nTotalVert, vertList, "vertLS1_L.txt", 1);
 //SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS1_G.txt", 1);
 //xexit("");
-  
+
   //Vec curv[2];
   //DMGetLocalVector(vertDM, &curv[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
   //DMGetGlobalVector(vertDM, &curv[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
