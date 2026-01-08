@@ -428,7 +428,7 @@ void Reconstruction::SaveData(DM dm, const PetscInt *array, const PetscInt nList
 
         for (PetscInt d = 0; d < dim; ++d) fprintf(f1, "%.16e\t", x[d]);
 
-        for (PetscInt d = 0; d < Nc; ++d) fprintf(f1, "%d\t", array[p*Nc + d]);
+        for (PetscInt d = 0; d < Nc; ++d) fprintf(f1, "%" PetscInt_FMT"\t", array[p*Nc + d]);
 
         fprintf(f1, "\n");
       }
@@ -742,7 +742,7 @@ void Reconstruction::InitalizeLevelSet(DM vofDM, Vec vofVec, const ablate::domai
       if (lsCount[v] < 1) {
         PetscReal x[dim];
         DMPlexComputeCellGeometryFVM(vertDM, vert, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-        printf("%d;plot(%f,%f,'r*');\n", v, x[0], x[1]);
+        printf("%" PetscInt_FMT";plot(%f,%f,'r*');\n", v, x[0], x[1]);
         throw std::runtime_error("Vertex is marked as next to a cut cell but is not!");
       }
 
@@ -1733,7 +1733,7 @@ void Reconstruction::FMM_CellBased(const PetscInt currentLevel, const PetscInt *
           if (updatedVertex[GLOBAL][id] > 0.5) {
               PetscReal x[dim];
               DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-              fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
+              fprintf(animFile, "%d %" PetscInt_FMT" %" PetscInt_FMT" %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
           }
 
         }
@@ -2060,7 +2060,7 @@ void Reconstruction::FMM_CellBased_V2(const PetscInt currentLevel, const PetscIn
 
         if (validCells > 0) {
 
-printf("%d\n", validCells);
+printf("%" PetscInt_FMT"\n", validCells);
 printf("%+f\t%+f\n", a[0], b[0]);
 printf("%+f\t%+f\n", a[1], b[1]);
 
@@ -3492,7 +3492,7 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
           if (updatedVertex[GLOBAL][id] > 0.5) {
               PetscReal x[dim];
               DMPlexComputeCellGeometryFVM(vertDM, vertList[id], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-              fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
+              fprintf(animFile, "%d %" PetscInt_FMT" %" PetscInt_FMT" %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
               fflush(animFile);
           }
 
@@ -3618,7 +3618,7 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
           if (updatedVertex[GLOBAL][id_potential] > 0.5) {
               PetscReal x[dim];
               DMPlexComputeCellGeometryFVM(vertDM, vertList[id_potential], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-              fprintf(animFile, "%d %d %d %f %f %s\n", rank, currentLevel, id_potential, x[0], x[1], "vertexbased_v1");
+              fprintf(animFile, "%d %" PetscInt_FMT" %" PetscInt_FMT" %f %f %s\n", rank, currentLevel, id_potential, x[0], x[1], "vertexbased_v1");
               fflush(animFile);
           }
 
@@ -3809,11 +3809,11 @@ void Reconstruction::FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec
         if (vertMask[v]==currentLevel && updatedVertex[GLOBAL][v]<0.5){
           PetscReal x[3];
           DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-          printf("plot(%+f,%+f,'bs');%d;\n", x[0], x[1], v);
+          printf("plot(%+f,%+f,'bs');%" PetscInt_FMT";\n", x[0], x[1], v);
           int rank;
           MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
           printf("rank: %d\n", rank);
-          printf("level: %d\n", currentLevel);
+          printf("level: %" PetscInt_FMT"\n", currentLevel);
           throw std::runtime_error("A vertex has not been updated.\n");
         }
       }

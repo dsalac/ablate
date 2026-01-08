@@ -1076,7 +1076,7 @@ void ablate::levelSet::Utilities::Reinitialize(
 
 #ifdef saveData
   char fname[255];
-  sprintf(fname, "vof0_%03d.txt", saveIter);
+  sprintf(fname, "vof0_%03" PetscInt_FMT".txt", saveIter);
   SaveCellData(solDM, solVec, fname, vofField, 1, subDomain);
 #endif
 
@@ -1131,7 +1131,7 @@ VecGetArray(workVec, &workArray);
 
 
 #ifdef saveData
-  sprintf(fname, "vof1_%03d.txt", saveIter);
+  sprintf(fname, "vof1_%03" PetscInt_FMT".txt", saveIter);
   SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
 #endif
 
@@ -1154,14 +1154,14 @@ VecGetArray(workVec, &workArray);
 
 #ifdef saveData
 {
-  sprintf(fname, "mask0_%03d.txt", saveIter);
+  sprintf(fname, "mask0_%03" PetscInt_FMT".txt", saveIter);
   FILE *f1 = fopen(fname, "w");
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     const PetscInt cell = cellRange.GetPoint(c);
     PetscReal x[dim];
     DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
     for (PetscInt d = 0; d < dim; ++d) fprintf(f1, "%+f\t", x[d]);
-    fprintf(f1, "%d\n", cellMask[c]);
+    fprintf(f1, "%" PetscInt_FMT"\n", cellMask[c]);
   }
   fclose(f1);
 }
@@ -1268,17 +1268,17 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
 #ifdef saveData
 {
-  sprintf(fname, "mask1_%03d.txt", saveIter);
+  sprintf(fname, "mask1_%03" PetscInt_FMT".txt", saveIter);
   FILE *f1 = fopen(fname, "w");
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     const PetscInt cell = cellRange.GetPoint(c);
     PetscReal x[dim];
     DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
     for (PetscInt d = 0; d < dim; ++d) fprintf(f1, "%+f\t", x[d]);
-    fprintf(f1, "%d\n", cellMask[c]);
+    fprintf(f1, "%" PetscInt_FMT"\n", cellMask[c]);
   }
   fclose(f1);
-  sprintf(fname, "cellNormal0_%03d.txt", saveIter);
+  sprintf(fname, "cellNormal0_%03" PetscInt_FMT".txt", saveIter);
   SaveCellData(auxDM, auxVec, fname, cellNormalField, dim, subDomain);
 }
 #endif
@@ -1361,7 +1361,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
 
 #ifdef saveData
-  sprintf(fname, "ls1_%03d.txt", saveIter);
+  sprintf(fname, "ls1_%03" PetscInt_FMT".txt", saveIter);
   SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
 #endif
 
@@ -1498,17 +1498,17 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
 #ifdef saveData
 {
-  sprintf(fname, "mask2_%03d.txt", saveIter);
+  sprintf(fname, "mask2_%03" PetscInt_FMT".txt", saveIter);
   FILE *f1 = fopen(fname, "w");
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     const PetscInt cell = cellRange.GetPoint(c);
     PetscReal x[dim];
     DMPlexComputeCellGeometryFVM(solDM, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
     for (PetscInt d = 0; d < dim; ++d) fprintf(f1, "%+f\t", x[d]);
-    fprintf(f1, "%d\n", cellMask[c]);
+    fprintf(f1, "%" PetscInt_FMT"\n", cellMask[c]);
   }
   fclose(f1);
-  sprintf(fname, "ls2_%03d.txt", saveIter);
+  sprintf(fname, "ls2_%03" PetscInt_FMT".txt", saveIter);
   SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
 }
 #endif
@@ -1625,7 +1625,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
   }
 
 #ifdef saveData
-  sprintf(fname, "ls3_%03d.txt", saveIter);
+  sprintf(fname, "ls3_%03" PetscInt_FMT".txt", saveIter);
   SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
 #endif
 
@@ -1641,7 +1641,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
   }
 
 #ifdef saveData
-  sprintf(fname, "mask3_%03d.txt", saveIter);
+  sprintf(fname, "mask3_%03" PetscInt_FMT".txt", saveIter);
   SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
 #endif
 
@@ -1664,7 +1664,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
   subDomain->UpdateAuxLocalVector();
 #ifdef saveData
-  sprintf(fname, "curv0_%03d.txt", saveIter);
+  sprintf(fname, "curv0_%03" PetscInt_FMT".txt", saveIter);
   SaveCellData(auxDM, auxVec, fname, curvID, 1, subDomain);
 #endif
 
@@ -1711,7 +1711,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
 
 #ifdef saveData
-  sprintf(fname, "vertH0_%03d.txt", saveIter);
+  sprintf(fname, "vertH0_%03" PetscInt_FMT".txt", saveIter);
   SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
 #endif
 
@@ -1800,7 +1800,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
 
 #ifdef saveData
-  sprintf(fname, "vertH1_%03d.txt", saveIter);
+  sprintf(fname, "vertH1_%03" PetscInt_FMT".txt", saveIter);
   SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
 #endif
 
@@ -1853,7 +1853,7 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
 
 
 #ifdef saveData
-  sprintf(fname, "vertH2_%03d.txt", saveIter);
+  sprintf(fname, "vertH2_%03" PetscInt_FMT".txt", saveIter);
   SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
 #endif
 
@@ -1887,9 +1887,9 @@ for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
   subDomain->UpdateAuxLocalVector();
 
 #ifdef saveData
-  sprintf(fname, "cellH0_%03d.txt", saveIter);
+  sprintf(fname, "cellH0_%03" PetscInt_FMT".txt", saveIter);
   SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
-  sprintf(fname, "cellNormal1_%03d.txt", saveIter);
+  sprintf(fname, "cellNormal1_%03" PetscInt_FMT".txt", saveIter);
   SaveCellData(auxDM, auxVec, fname, cellNormalField, dim, subDomain);
 
 #endif
