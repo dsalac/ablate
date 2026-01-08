@@ -5,6 +5,17 @@
 #include <petscfv.h>
 #include "utilities/petscUtilities.hpp"
 
+PetscErrorCode DMPlexGetAllCells_Internal(DM plex, IS *cellIS)
+{
+  PetscInt depth;
+
+  PetscFunctionBegin;
+  PetscCall(DMPlexGetDepth(plex, &depth));
+  PetscCall(DMGetStratumIS(plex, "dim", depth, cellIS));
+  if (!*cellIS) PetscCall(DMGetStratumIS(plex, "depth", depth, cellIS));
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
 PetscErrorCode ISIntersect_Caching_Internal(IS is1, IS is2, IS *isect) {
     PetscFunctionBegin;
     *isect = NULL;
@@ -110,7 +121,7 @@ PetscErrorCode ablate::finiteElement::FiniteElementSolver::ComputeIFunction(Pets
         PetscCall(ISIntersect_Caching_Internal(allcellIS, pointIS, &cellIS));
         PetscCall(ISDestroy(&pointIS));
     }
-    PetscCall(DMPlexComputeResidual_Internal(plex, key, cellIS, time, locX, locX_t, time, locF, nullptr));
+    PetscCall(DMPlexComputeResidualByKey(plex, key, cellIS, time, locX, locX_t, time, locF, nullptr));
     PetscCall(ISDestroy(&cellIS));
 
     PetscCall(ISDestroy(&allcellIS));
@@ -154,7 +165,7 @@ PetscErrorCode ablate::finiteElement::FiniteElementSolver::ComputeIJacobian(Pets
     }
     PetscCall(MatZeroEntries(JacP));
 
-    PetscCall(DMPlexComputeJacobian_Internal(plex, key, cellIS, time, X_tShift, locX, locX_t, Jac, JacP, nullptr));
+    PetscCall(DMPlexComputeJacobianByKey(plex, key, cellIS, time, X_tShift, locX, locX_t, Jac, JacP, nullptr));
     PetscCall(ISDestroy(&cellIS));
 
     PetscCall(ISDestroy(&allcellIS));
