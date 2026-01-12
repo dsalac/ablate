@@ -156,12 +156,12 @@ Reconstruction::Reconstruction(const std::shared_ptr<ablate::domain::SubDomain> 
   convolution = std::make_shared<ablate::levelSet::GaussianConvolution>(subAuxDM, 3, 1.0);
 
   // Create the ranges <--- These might be deleted if they aren't actually needed
-  subDomain->GetRange(nullptr, 0, vertRange);
-  subDomain->GetCellRange(region, cellRange);   // Range of cells without boundary ghosts
+//  subDomain->GetRange(nullptr, 0, vertRange);
+//  subDomain->GetCellRange(region, cellRange);   // Range of cells without boundary ghosts
 
   // Get the point->index mapping for cells
-  reverseVertRange = ablate::domain::ReverseRange(vertRange);
-  reverseCellRange = ablate::domain::ReverseRange(cellRange);
+//  reverseVertRange = ablate::domain::ReverseRange(vertRange);
+//  reverseCellRange = ablate::domain::ReverseRange(cellRange);
 
 
   // Create individual DMs for vertex- and cell-based data. We need a separate DM for each Vec
@@ -3845,17 +3845,19 @@ PetscScalar Reconstruction::LScircle(const PetscReal* x, const PetscInt dim) {
   return ls;
 }
 
+
+
 void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field levelSetField, Vec auxVector) {
 
-  PetscLogDouble t1, t2, elapsed;
-  PetscTime(&t1);
 
   int rank, size;
   MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   MPI_Comm_size(PETSC_COMM_WORLD, &size);
 
-  DMViewFromOptions(aux_dm, NULL, "-dm_view");
-  Reconstruction_SaveDM(aux_dm, "mesh.txt");
+
+//  DMViewFromOptions(aux_dm, NULL, "-dm_view");
+//  Reconstruction_SaveDM(aux_dm, "mesh.txt");
+
 
   PetscInt vStart = -1, vEnd= -1;
   DMPlexGetDepthStratum(aux_dm, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
@@ -3908,12 +3910,17 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
   SaveData(aux_dm, global_lsArray, nLocalVert, vertList, "lstrue.txt", Nc);
   PetscFree(global_lsArray);
 
+
   PetscInt *vertMask = nullptr, *cellMask = nullptr;
   DMGetWorkArray(vertDM, nTotalVert, MPIU_INT, &vertMask) >> ablate::utilities::PetscUtilities::checkError;
   DMGetWorkArray(cellDM, nTotalCell, MPIU_INT, &cellMask) >> ablate::utilities::PetscUtilities::checkError;
 
+  PetscLogDouble t1, t2, elapsed;
+  PetscTime(&t1);
+
   SetMasks(aux_dm, auxVector, levelSetField, nLevels, cellMask, vertMask);
 
+#if 0 // I don't think the lsvec needs to have any values
   // Setting the lsVec which is a vector of level set values for vertices associated with cut-cells
   Vec lsVec[2] = {nullptr, nullptr};                 // [LOCAL, GLOBAL]
   PetscScalar *lsArr[2] =  {nullptr, nullptr};
@@ -3924,7 +3931,6 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
   VecGetArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
   VecGetArray(auxVector, &lsArray);
-
   for (PetscInt v = 0; v < nLocalVert; ++v) {
     PetscInt nv, *verts;
     DMPlexCellGetVertices(aux_dm, vertList[v], &nv, &verts);
@@ -3938,13 +3944,11 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
     }
     DMPlexCellRestoreVertices(aux_dm, vertList[v], &nv, &verts);
   }
-
   VecRestoreArray(auxVector, &lsArray) >> ablate::utilities::PetscUtilities::checkError;
-
   DMLocalToGlobal(vertDM, lsVec[LOCAL], INSERT_VALUES, lsVec[GLOBAL]);
   DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]);
-
   VecRestoreArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
+#endif
 
   FMM(cellMask, vertMask, lsVec);
 
