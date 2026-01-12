@@ -629,25 +629,24 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
 
   for (PetscInt v = 0; v < nTotalVert; ++v) vertMaskVecArray[v] = nLevels + 2;
 
+  if (rank==1) PetscPrintf(PETSC_COMM_SELF, "%d, %f\n", 5941, vertMaskVecArray[5941]);
+  
   // First find the min level for each vertex considering neighboring cell levels
   for (PetscInt v = 0; v < nLocalVert; ++v) {
       PetscInt vertex = vertList[v];
-	  
-	  if (rank==6) PetscPrintf(PETSC_COMM_SELF, "%d, %f\n", 8644, vertMaskVecArray[8644]);
-	  
+	 
       PetscInt nCell, *cells;
       DMPlexVertexGetCells(cellDM, vertex, &nCell, &cells) >> ablate::utilities::PetscUtilities::checkError;
       for (PetscInt c = 0; c < nCell; ++c) {
 	      const PetscInt id = reverseCellList[cells[c]];
-	      if (rank==6 && v == 8644) PetscPrintf(PETSC_COMM_SELF, "%d, %f, %d, %d\n", 8644, vertMaskVecArray[8644], id, cellMask[id]);
+	      if (rank==1 && v == 5941) PetscPrintf(PETSC_COMM_SELF, "%d, %f, %d, %d\n", 5941, vertMaskVecArray[5941], id, cellMask[id]);
 	      if (cellMask[id] == 0 || cellMask[id] == -1 || id >= nTotalCell) continue;
 	      vertMaskVecArray[v] = PetscMin(vertMaskVecArray[v], PetscAbsReal(cellMask[id]));
-	      if (rank==6 && v == 8644) PetscPrintf(PETSC_COMM_SELF, "%d, %f, %d, %d\n", 8644, vertMaskVecArray[8644], id, cellMask[id]);
+	      if (rank==1 && v == 5941) PetscPrintf(PETSC_COMM_SELF, "%d, %f, %d, %d\n", 5941, vertMaskVecArray[5941], id, cellMask[id]);
       }
       DMPlexCellRestoreVertices(cellDM, vertex, &nCell, &cells) >> ablate::utilities::PetscUtilities::checkError;
   }
   
-  xexit("exit here");
   // Next set the additional vertices associated with boundary cells
   for (PetscInt c = 0; c < nTotalCell; ++c) {
     if (cellMask[c] == -1) {
@@ -2264,223 +2263,431 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
 // VertexBased_GeneralModifiedGreenGauss
 PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_potential, PetscInt id_base, PetscScalar *updatedVertex, PetscScalar *xCoord, PetscScalar *yCoord, const PetscInt *vertMask, const PetscInt currentLevel, PetscScalar *lsArray, PetscReal *updatedLS) {
 
-  int rank;
-  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-  
-  // Do the calculations for each valid base vertex
-  PetscReal best_phi = PETSC_MAX_REAL;
-  PetscInt result;
-  for (PetscInt i=0; i<2;++i) {
-    PetscInt level_limit;
-    if (i==0) {
-      level_limit = currentLevel-1;
-    } else{
-      level_limit = currentLevel;
-    }
-    DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE); // Connected vertices
-    PetscInt nBase = PETSC_DETERMINE;
-    PetscInt *baseVerts = NULL;
-    DMPlexGetAdjacency(vertDM, vertList[id_potential], &nBase, &baseVerts); // just the points that are connected with edge
-    PetscInt baseIDs[nBase], nValidBase = 0;
-    for (PetscInt nv = 0; nv < nBase; ++nv) {
-      PetscInt id = reverseVertList[baseVerts[nv]];
-      if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id] <= level_limit) {
-        baseIDs[nValidBase++] = id;
-      }
-    }
+	int rank;
+	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+	
+	if (rank==1) PetscPrintf(PETSC_COMM_SELF, "id_potential starts here %d\n", id_potential);	
+	// Do the calculations for each valid base vertex
+	PetscReal best_phi = PETSC_MAX_REAL;
+	PetscInt result = 0;
+	for (PetscInt i=0; i<2;++i) {
+		PetscInt level_limit;
+		if (i==0) {
+		  level_limit = currentLevel-1;
+		} else {
+		  level_limit = currentLevel;
+		}
+		DMSetBasicAdjacency(vertDM, PETSC_FALSE, PETSC_FALSE); // Connected vertices
+		PetscInt nBase = PETSC_DETERMINE;
+		PetscInt *baseVerts = NULL;
+		DMPlexGetAdjacency(vertDM, vertList[id_potential], &nBase, &baseVerts); // just the points that are connected with edge
+		PetscInt baseIDs[nBase], nValidBase = 0;
+		for (PetscInt nv = 0; nv < nBase; ++nv) {
+		  PetscInt id = reverseVertList[baseVerts[nv]];
+		  if (updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id] <= level_limit) {
+			baseIDs[nValidBase++] = id;
+		  }
+		}
+		
+		if (rank==1) {
+		for (PetscInt v = 0; v < nValidBase; ++v) {
+			PetscPrintf(PETSC_COMM_SELF, "baseid is %d and i is %d\n", baseIDs[v], v);
+		}
+		}
+		
+		PetscInt best_stencil_size = 0;
+		for (PetscInt bv = 0; bv <  nValidBase; ++bv) {
+			PetscInt PnCells, *Pcells;
+			DMPlexVertexGetCells(vertDM, vertList[id_potential], &PnCells, &Pcells);
+			id_base = baseIDs[bv];
+			PetscInt BnCells, *Bcells;
+			DMPlexVertexGetCells(vertDM, vertList[id_base], &BnCells, &Bcells);
+	
+			PetscInt cellIDs[8], nCells = 0; // shared cells of base vertex and potential vertex
+			for (PetscInt i = 0; i < PnCells; ++i) {
+				for (PetscInt j = 0; j < BnCells; ++j) {
+					DMPolytopeType cellType;
+					DMPlexGetCellType(vertDM, Pcells[i], &cellType);
+					if (Pcells[i] == Bcells[j] && cellType != 12) {
+						cellIDs[nCells++] = Pcells[i];
+					}
+				}
+			}
 
-    for (PetscInt bv = 0; bv <  nValidBase; ++bv) {
-      PetscInt PnCells, *Pcells;
-        DMPlexVertexGetCells(vertDM, vertList[id_potential], &PnCells, &Pcells);
-        //printf("code1\n");
-        id_base = baseIDs[bv];
-        PetscInt BnCells, *Bcells;
-        DMPlexVertexGetCells(vertDM, vertList[id_base], &BnCells, &Bcells);
+			PetscInt stencilIDs[8], nStencil = 0;
 
-        PetscInt cellIDs[8], nCells = 0; // shared cells of base vertex and potential vertex
-      for (PetscInt i = 0; i < PnCells; ++i) {
-          for (PetscInt j = 0; j < BnCells; ++j) {
-          DMPolytopeType cellType;
-          DMPlexGetCellType(vertDM, Pcells[i], &cellType);
-              if (Pcells[i] == Bcells[j] && cellType != 12) {
-            cellIDs[nCells++] = Pcells[i];
-              }
-          }
-      }
+			// helper lambda to check membership in baseIDs[]
+		    auto isInBaseList = [&](PetscInt id) {
+				for (PetscInt v = 0; v < nValidBase; ++v) {
+					if (baseIDs[v] == id) return true;
+				}
+				return false;
+			};
 
-      PetscInt stencilIDs[8], nStencil = 0;
+			for (PetscInt i = 0; i < nCells; ++i) {
+				PetscInt nCellVert, *cellverts;
+				DMPlexCellGetVertices(vertDM, cellIDs[i], &nCellVert, &cellverts) >>
+				ablate::utilities::PetscUtilities::checkError;
+				for (PetscInt v = 0; v < nCellVert; ++v) {
+					PetscInt id = reverseVertList[cellverts[v]];
+					if (id != id_base && updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 && vertMask[id] <= level_limit && !isInBaseList(id)) {
+						stencilIDs[nStencil++] = id;
+					}
+				}
+			}
+      
+			if (rank==1) PetscPrintf(PETSC_COMM_SELF, "idbase %d\n", id_base);
+			// always insert id_base
+			stencilIDs[nStencil++] = id_base;
+			if (rank==1) {
+			for (PetscInt v = 0; v < nStencil; ++v) {
+				PetscPrintf(PETSC_COMM_SELF, "idstencil is %d with x %.14f and y %.14f and ls is %.14f\n", stencilIDs[v], xCoord[stencilIDs[v]], yCoord[stencilIDs[v]], lsArray[stencilIDs[v]]);
+			}
+			}
+			if (nStencil < dim) continue;
+			
+			PetscReal best_phi_local = PETSC_MAX_REAL;
+			auto TrySubset = [&](PetscInt *inputstencils, PetscInt nStencil, PetscReal &best_phi_local, PetscReal &best_phi, PetscInt &result, PetscInt *mainstencils, PetscInt nmainStencil) {
+				
+				std::sort(inputstencils, inputstencils + nStencil, [&](PetscInt a, PetscInt b) {
+					return PetscAbsReal(lsArray[a]) < PetscAbsReal(lsArray[b]);
+				});
+				
+				if (rank==1) {
+				for (PetscInt v = 0; v < nStencil; ++v) {
+					PetscPrintf(PETSC_COMM_SELF, "idstencil with nStencil %d is %d with x %.14f and y %.14f and ls is %.14f\n", nStencil, inputstencils[v], xCoord[inputstencils[v]], yCoord[inputstencils[v]], lsArray[inputstencils[v]]);
+				}
+				}
+				
+			    // Build edges
+			    struct Edge {
+					PetscInt v1, v2;
+				};
+			    PetscInt nallEdge = 0;
+			    Edge alledges[nStencil+1];
+			    
+				for (PetscInt v = 0; v < nStencil; ++v) {
+		            if (inputstencils[v] != id_base) {
+						alledges[nallEdge++] = { std::min(id_potential, inputstencils[v]), std::max(id_potential, inputstencils[v]) };
+		                if (nStencil == 3) alledges[nallEdge++] = { std::min(id_base, inputstencils[v]), std::max(id_base, inputstencils[v]) };
+		            }
+		            if (inputstencils[v] == id_base && nStencil == dim) {
+						alledges[nallEdge++] = { std::min(id_potential, inputstencils[v]), std::max(id_potential, inputstencils[v]) };
+		            }
+		        }
+		        if (nStencil == 2) alledges[nallEdge++] = { std::min(inputstencils[0], inputstencils[1]), std::max(inputstencils[0], inputstencils[1]) }; //works for 2D
 
-      // helper lambda to check membership in baseIDs[]
-      auto isInBaseList = [&](PetscInt id) {
-          for (PetscInt v = 0; v < nValidBase; ++v) {
-              if (baseIDs[v] == id) return true;
-          }
-          return false;
-      };
+		        PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
+		        PetscScalar N[3];
+		        PetscScalar vol = 0.0;
+		        PetscInt edge[2];
+				for (PetscInt i = 0; i < nallEdge; ++i) {
+					edge[0]= alledges[i].v1;
+					edge[1] = alledges[i].v2;
+					PetscScalar vec[dim];
+					for (int d = 0; d < 3; d++) N[d] = 0.0;
+					vec[0] = xCoord[edge[1]] - xCoord[edge[0]];
+					vec[1] = yCoord[edge[1]] - yCoord[edge[0]];
+					N[0] = vec[1];
+					N[1] = -vec[0];
+		
+					PetscScalar midvec[2];
+					midvec[0] = 0.5*(xCoord[edge[1]] + xCoord[edge[0]]);
+					midvec[1] = 0.5*(yCoord[edge[1]] + yCoord[edge[0]]);
+		
+					PetscScalar cellcenter[2] = {xCoord[id_potential], yCoord[id_potential] };
+					for (PetscInt v = 0; v < nStencil; ++v) {
+						cellcenter[0] += xCoord[inputstencils[v]];
+						cellcenter[1] += yCoord[inputstencils[v]];
+					}
+					cellcenter[0] /= nStencil+1;
+					cellcenter[1] /= nStencil+1;
+		
+					PetscScalar centertomid[dim];
+					for (PetscInt d = 0; d < dim; ++d) {
+						centertomid[d] = cellcenter[d] -  midvec[d];
+					}
+		
+					if (N[0]*centertomid[0] + N[1]*centertomid[1] > 0.0) {
+						N[0] = -N[0];
+						N[1] = -N[1];
+					}
+		
+					for (PetscInt d = 0; d < dim; ++d) {
+						for (PetscInt k = 0; k < 2; ++k) {
+							PetscInt v = edge[k];
+							if (updatedVertex[v] > 0.5 && updatedVertex[v] < 1.5) {
+								b[d] += 0.5 * lsArray[v] * N[d];
+							} else {
+								a[d] += 0.5 * N[d];
+							}
+						}
+					}
+		          
+					if (rank==1) PetscPrintf(PETSC_COMM_SELF,"%d and %d\n", edge[0], edge[1]);
+					if (rank==1) PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", xCoord[edge[0]], yCoord[edge[0]]);
+					if (rank==1) PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", N[0], N[1]);
+		        }
+		        
+		        PetscInt start = alledges[0].v1;  // first vertex of e0
+		        PetscInt prev = -1;
+		        PetscInt cur = start;
+		
+		        PetscInt orderedVerts[nStencil+1]; // number of vertices = number of unique vertices
+		        PetscInt nVerts = 0;
+		        orderedVerts[nVerts++] = cur;  // first vertex
+		
+		        while (nVerts < nStencil+1) { // number of unique vertices
+		            for (PetscInt i = 0; i < nStencil+1; ++i) {  // loop over all edges //nStencil+1
+		                PetscInt v0 = alledges[i].v1;
+		                PetscInt v1 = alledges[i].v2;
+		                
+		                PetscInt next = -1;
+		                if (v0 == cur && v1 != prev) next = v1;
+		                else if (v1 == cur && v0 != prev) next = v0;
+		
+		                if (next != -1) {
+		                    orderedVerts[nVerts++] = next;
+		                    prev = cur;
+		                    cur = next;
+		                    break; // move to next vertex
+		                }
+		            }
+		            
+		        }
+		
+		        PetscScalar temp_area = 0.0;
+		        for (PetscInt i = 0; i < nVerts; ++i) {
+		            PetscInt j = (i + 1) % nVerts; // next vertex, wrap around
+		            PetscInt vi = orderedVerts[i];
+		            PetscInt vj = orderedVerts[j];
+		            temp_area += xCoord[vi] * yCoord[vj] - xCoord[vj] * yCoord[vi];
+		        }
+		
+		        vol = 0.5 * PetscAbsReal(temp_area);
+		        if (rank==1) PetscPrintf(PETSC_COMM_SELF, "vol is %f\n", vol);
+		        
+				for (PetscInt d = 0; d < dim; ++d) {
+				  if (rank==1) PetscPrintf(PETSC_COMM_SELF, "a is %f and b is %f\n", a[d], b[d]);	
+		          a[d] /= vol;
+		          b[d] /= vol;
+		        }
+		        
+		        PetscBool accept = PETSC_FALSE;
+				PetscReal temp_phi = *updatedLS;		
+		        if (rank==1)PetscPrintf(PETSC_COMM_SELF,"Try with %d stencils -> φ = %f\n", nStencil, temp_phi);
+		        PetscInt temp_result = SolveQuadFormula(dim, a, b, &temp_phi);
+		        if (rank==1)PetscPrintf(PETSC_COMM_SELF, "Try with %d stencils -> φ = %f, result=%d\n", nStencil, temp_phi, result);
+				if (rank==1)PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and tempphi is %f and result is %d\n", id_potential, temp_phi, temp_result);	
+		        if (temp_result != 1) return false; //no quadratic solution and return temp_result which is zero
+		
+		        PetscBool monotone = PETSC_TRUE;
+				for (PetscInt v = 0; v < nmainStencil; ++v) {
+					if (PetscAbsReal(temp_phi) < PetscAbsReal(lsArray[mainstencils[v]])) {
+						if (rank==1) PetscPrintf(PETSC_COMM_SELF, "Rejected φ=%f because neighbor %d has |φ| smaller.\n", temp_phi, mainstencils[v]);
+		                monotone = PETSC_FALSE;
+		                return false;
+					}
+				}
+		
+				if (monotone) {
+				  accept = PETSC_TRUE;
+				  best_phi_local = temp_phi;
+				}
+		
+		        //if (accept && PetscAbsReal(best_phi_local) < PetscAbsReal(best_phi)) {
+		          //best_phi = best_phi_local;
+		          //result = temp_result;
+		        //}
+		        if (accept) {
+				    if (nStencil > best_stencil_size || (nStencil == best_stencil_size && PetscAbsReal(temp_phi) < PetscAbsReal(best_phi))) {
+				        best_phi = temp_phi;
+				        best_stencil_size = nStencil;
+				        result = temp_result;
+				    }
+				}
+		        return true;
+			};
+			
+			// full stencil for a base
+			TrySubset(stencilIDs, nStencil, best_phi_local, best_phi, result, stencilIDs, nStencil);
+			
+			// all pairs
+			for (PetscInt i = 0; i < nStencil; ++i) {
+			    for (PetscInt j = i + 1; j < nStencil; ++j) {
+			        PetscInt pair[2] = { stencilIDs[i], stencilIDs[j] };
+			        TrySubset(pair, 2, best_phi_local, best_phi, result, stencilIDs, nStencil);
+			    }
+			}
 
-      for (PetscInt i = 0; i < nCells; ++i) {
-          PetscInt nCellVert, *cellverts;
-          DMPlexCellGetVertices(vertDM, cellIDs[i], &nCellVert, &cellverts) >>
-              ablate::utilities::PetscUtilities::checkError;
-          for (PetscInt v = 0; v < nCellVert; ++v) {
-              PetscInt id = reverseVertList[cellverts[v]];
-              if (id != id_base &&
-                  updatedVertex[id] > 0.5 && updatedVertex[id] < 1.5 &&
-                  vertMask[id] <= level_limit &&
-                  !isInBaseList(id))
-              {
-                  stencilIDs[nStencil++] = id;
-              }
-          }
-      }
+	////PetscPrintf(PETSC_COMM_SELF, "bestphi is %f\n", best_phi);	
+	//for (PetscInt usedStencil = nStencil; usedStencil >= dim && !accept; --usedStencil) {
+        ////std::sort(stencilIDs, stencilIDs + usedStencil, [&](PetscInt a, PetscInt b){
+                    ////return PetscAbsReal(lsArray[a]) < PetscAbsReal(lsArray[b]);
+              ////});
+        //PetscInt stencilStart = nStencil - usedStencil;
+        
+        //struct Edge {
+          //PetscInt v1, v2;
+        //};
+        //Edge alledges[usedStencil+1];
+        //PetscInt nallEdge = 0;
 
-      // always insert id_base
-      stencilIDs[nStencil++] = id_base;
-      if (nStencil < dim) continue;
+        //for (PetscInt v = stencilStart; v < nStencil; ++v) { //for (PetscInt v = 0; v < usedStencil; ++v)
+            //if (stencilIDs[v] != id_base) {
+            //alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
+                //alledges[nallEdge++] = { std::min(id_base, stencilIDs[v]), std::max(id_base, stencilIDs[v]) };
+            //}
+            //if (stencilIDs[v] == id_base && usedStencil == dim) {
+            //alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
+            //}
+        //}
+        
+        //for (PetscInt v = 0; v < usedStencil+1; ++v) {
+			//PetscPrintf(PETSC_COMM_SELF, "edge %d is %d, %d\n", v, alledges[v].v1, alledges[v].v2);
+		//}
 
-      PetscBool accept = PETSC_FALSE;
-      PetscReal best_phi_local = PETSC_MAX_REAL;
+        //PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
+        //PetscScalar N[3];
+        //PetscScalar vol = 0.0;
+        //PetscInt edge[2];
+        //for (PetscInt i = 0; i < nallEdge; ++i) {
+          //edge[0]= alledges[i].v1;
+          //edge[1] = alledges[i].v2;
+          //PetscScalar vec[dim];
+          //for (int d = 0; d < 3; d++) N[d] = 0.0;
+          //vec[0] = xCoord[edge[1]] - xCoord[edge[0]];
+          //vec[1] = yCoord[edge[1]] - yCoord[edge[0]];
+          //N[0] = vec[1];
+          //N[1] = -vec[0];
 
-      for (PetscInt usedStencil = nStencil; usedStencil >= dim && !accept; --usedStencil) {
+          //PetscScalar midvec[2];
+          //midvec[0] = 0.5*(xCoord[edge[1]] + xCoord[edge[0]]);
+          //midvec[1] = 0.5*(yCoord[edge[1]] + yCoord[edge[0]]);
 
-        std::sort(stencilIDs, stencilIDs + usedStencil, [&](PetscInt a, PetscInt b){
-                    return PetscAbsReal(lsArray[a]) < PetscAbsReal(lsArray[b]);
-              });
+          //PetscScalar cellcenter[2] = {xCoord[id_potential], yCoord[id_potential] };
+          ////for (PetscInt v = 0; v < usedStencil; ++v) {
+            ////cellcenter[0] += xCoord[stencilIDs[v]];
+            ////cellcenter[1] += yCoord[stencilIDs[v]];
+          ////}
+          ////cellcenter[0] /= usedStencil+1;
+          ////cellcenter[1] /= usedStencil+1;
+          //for (PetscInt v = stencilStart; v < nStencil; ++v) {
+			//cellcenter[0] += xCoord[stencilIDs[v]];
+			//cellcenter[1] += yCoord[stencilIDs[v]];
+		  //}
+		  //cellcenter[0] /= usedStencil+1;
+		  //cellcenter[1] /= usedStencil+1;
 
-        struct Edge {
-          PetscInt v1, v2;
-        };
-        Edge alledges[usedStencil+1];
-        PetscInt nallEdge = 0;
+          //PetscScalar centertomid[dim];
+          //for (PetscInt d = 0; d < dim; ++d) {
+            //centertomid[d] = cellcenter[d] -  midvec[d];
+          //}
 
-        for (PetscInt v = 0; v < usedStencil; ++v) {
-            if (stencilIDs[v] != id_base) {
-            alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
-                alledges[nallEdge++] = { std::min(id_base, stencilIDs[v]), std::max(id_base, stencilIDs[v]) };
-            }
-            if (stencilIDs[v] == id_base && usedStencil == dim) {
-            alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
-            }
-        }
+          //if (N[0]*centertomid[0] + N[1]*centertomid[1] > 0.0) {
+            //N[0] = -N[0];
+            //N[1] = -N[1];
+          //}
 
-        PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
-        PetscScalar N[3];
-        PetscScalar vol = 0.0;
-        PetscInt edge[2];
-        for (PetscInt i = 0; i < nallEdge; ++i) {
-          edge[0]= alledges[i].v1;
-          edge[1] = alledges[i].v2;
-          PetscScalar vec[dim];
-          for (int d = 0; d < 3; d++) N[d] = 0.0;
-          vec[0] = xCoord[edge[1]] - xCoord[edge[0]];
-          vec[1] = yCoord[edge[1]] - yCoord[edge[0]];
-          N[0] = vec[1];
-          N[1] = -vec[0];
+          //for (PetscInt d = 0; d < dim; ++d) {
+              //for (PetscInt k = 0; k < 2; ++k) {
+                  //PetscInt v = edge[k];
+                  //if (updatedVertex[v] > 0.5 && updatedVertex[v] < 1.5) {
+					   //PetscPrintf(PETSC_COMM_SELF, "idwithls is %d and ls is %.14f\n", v, lsArray[v]);
+                      //b[d] += 0.5 * lsArray[v] * N[d];
+                  //} else {
+                      //a[d] += 0.5 * N[d];
+                  //}
+              //}
+          //}
+          
+		//PetscPrintf(PETSC_COMM_SELF,"%d and %d\n", edge[0], edge[1]);
+		//PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", xCoord[edge[0]], yCoord[edge[0]]);
+		//PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", N[0], N[1]);
 
-          PetscScalar midvec[2];
-          midvec[0] = 0.5*(xCoord[edge[1]] + xCoord[edge[0]]);
-          midvec[1] = 0.5*(yCoord[edge[1]] + yCoord[edge[0]]);
+        //}
 
-          PetscScalar cellcenter[2] = {xCoord[id_potential], yCoord[id_potential] };
-          for (PetscInt v = 0; v < usedStencil; ++v) {
-            cellcenter[0] += xCoord[stencilIDs[v]];
-            cellcenter[1] += yCoord[stencilIDs[v]];
-          }
-          cellcenter[0] /= usedStencil+1;
-          cellcenter[1] /= usedStencil+1;
+        //PetscInt start = alledges[0].v1;  // first vertex of e0
+        //PetscInt prev = -1;
+        //PetscInt cur = start;
 
-          PetscScalar centertomid[dim];
-          for (PetscInt d = 0; d < dim; ++d) {
-            centertomid[d] = cellcenter[d] -  midvec[d];
-          }
+        //PetscInt orderedVerts[usedStencil+1]; // number of vertices = number of unique vertices
+        //PetscInt nVerts = 0;
+        //orderedVerts[nVerts++] = cur;  // first vertex
 
-          if (N[0]*centertomid[0] + N[1]*centertomid[1] > 0.0) {
-            N[0] = -N[0];
-            N[1] = -N[1];
-          }
+        //while (nVerts < usedStencil+1) { // number of unique vertices
+            //for (PetscInt i = 0; i < usedStencil+1; ++i) {  // loop over all edges
+                //PetscInt v0 = alledges[i].v1;
+                //PetscInt v1 = alledges[i].v2;
+                //PetscInt next = -1;
 
-          for (PetscInt d = 0; d < dim; ++d) {
-              for (PetscInt k = 0; k < 2; ++k) {
-                  PetscInt v = edge[k];
-                  if (updatedVertex[v] > 0.5 && updatedVertex[v] < 1.5) {
-                      b[d] += 0.5 * lsArray[v] * N[d];
-                  } else {
-                      a[d] += 0.5 * N[d];
-                  }
-              }
-          }
+                //if (v0 == cur && v1 != prev) next = v1;
+                //else if (v1 == cur && v0 != prev) next = v0;
 
-        }
+                //if (next != -1) {
+                    //orderedVerts[nVerts++] = next;
+                    //prev = cur;
+                    //cur = next;
+                    //break; // move to next vertex
+                //}
+            //}
+        //}
 
-        PetscInt start = alledges[0].v1;  // first vertex of e0
-        PetscInt prev = -1;
-        PetscInt cur = start;
+        //PetscScalar temp_area = 0.0;
+        //for (PetscInt i = 0; i < nVerts; ++i) {
+            //PetscInt j = (i + 1) % nVerts; // next vertex, wrap around
+            //PetscInt vi = orderedVerts[i];
+            //PetscInt vj = orderedVerts[j];
+            //temp_area += xCoord[vi] * yCoord[vj] - xCoord[vj] * yCoord[vi];
+        //}
 
-        PetscInt orderedVerts[usedStencil+1]; // number of vertices = number of unique vertices
-        PetscInt nVerts = 0;
-        orderedVerts[nVerts++] = cur;  // first vertex
+        //vol = 0.5 * PetscAbsReal(temp_area);
+		////PetscPrintf(PETSC_COMM_SELF, "voltest is %f\n", vol);	
 
-        while (nVerts < usedStencil+1) { // number of unique vertices
-            for (PetscInt i = 0; i < usedStencil+1; ++i) {  // loop over all edges
-                PetscInt v0 = alledges[i].v1;
-                PetscInt v1 = alledges[i].v2;
-                PetscInt next = -1;
+        //for (PetscInt d = 0; d < dim; ++d) {
+		   ////PetscPrintf(PETSC_COMM_SELF, "a is %f and b is %f\n", a[d], b[d]);	
+          //a[d] /= vol;
+          //b[d] /= vol;
+        //}
 
-                if (v0 == cur && v1 != prev) next = v1;
-                else if (v1 == cur && v0 != prev) next = v0;
+        //PetscReal temp_phi = *updatedLS;
+         //PetscPrintf(PETSC_COMM_SELF,"Try with %d stencils -> φ = %f\n", usedStencil, temp_phi);
+        //PetscInt temp_result = SolveQuadFormula(dim, a, b, &temp_phi);
+         //PetscPrintf(PETSC_COMM_SELF, "Try with %d stencils -> φ = %f, result=%d\n", usedStencil, temp_phi, result);
+		 //PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and tempphi is %f and result is %d\n", id_potential, temp_phi, temp_result);	
+        //if (temp_result != 1) continue;
 
-                if (next != -1) {
-                    orderedVerts[nVerts++] = next;
-                    prev = cur;
-                    cur = next;
-                    break; // move to next vertex
-                }
-            }
-        }
+        //PetscBool monotone = PETSC_TRUE;
+        ////PetscReal tol;
+		//for (PetscInt v = stencilStart; v < nStencil; ++v) { //for (PetscInt v = 0; v < usedStencil; ++v)
+			////PetscReal phi_n = lsArray[stencilIDs[v]];
+			////tol = 1e-4 * PetscMax(1.0, PetscAbsReal(phi_n));
+			//if (PetscAbsReal(temp_phi) < PetscAbsReal(lsArray[stencilIDs[v]])) { //-tol
+				//PetscPrintf(PETSC_COMM_SELF, "Rejected φ=%f because neighbor %d has |φ| smaller.\n", temp_phi, stencilIDs[v]);
+                //monotone = PETSC_FALSE;
+                //break;
+			//}
+		//}
 
-        PetscScalar temp_area = 0.0;
-        for (PetscInt i = 0; i < nVerts; ++i) {
-            PetscInt j = (i + 1) % nVerts; // next vertex, wrap around
-            PetscInt vi = orderedVerts[i];
-            PetscInt vj = orderedVerts[j];
-            temp_area += xCoord[vi] * yCoord[vj] - xCoord[vj] * yCoord[vi];
-        }
+		//if (monotone) {
+		  //accept = PETSC_TRUE;
+		  //best_phi_local = temp_phi;
+		//}
 
-        vol = 0.5 * PetscAbsReal(temp_area);
+        //if (accept && PetscAbsReal(best_phi_local) < PetscAbsReal(best_phi)) {
+          //best_phi = best_phi_local;
+          //result = temp_result;
+        //}
+         //PetscPrintf(PETSC_COMM_SELF, "bestphi is %f\n", best_phi);	
+      //} //stencil loop
 
-        for (PetscInt d = 0; d < dim; ++d) {
-          a[d] /= vol;
-          b[d] /= vol;
-        }
+		} // valid base loop
+	}
 
-        PetscReal temp_phi = *updatedLS;
-        PetscInt temp_result = SolveQuadFormula(dim, a, b, &temp_phi);
-        if (temp_result != 1) continue;
-
-        PetscBool monotone = PETSC_TRUE;
-        for (PetscInt v = 0; v < usedStencil; ++v) {
-              if (PetscAbsReal(temp_phi) < PetscAbsReal(lsArray[stencilIDs[v]])) {
-                  monotone = PETSC_FALSE;
-                  break;
-              }
-          }
-
-          if (monotone) {
-              accept = PETSC_TRUE;
-              best_phi_local = temp_phi;
-          }
-
-        if (accept && PetscAbsReal(best_phi_local) < PetscAbsReal(best_phi)) {
-          best_phi = best_phi_local;
-          result = temp_result;
-        }
-      } //stencil loop
-
-    } // valid base loop
-  }
-
-  *updatedLS = best_phi;
-  return result;
+	*updatedLS = best_phi;
+	if (rank==1) PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and ls is %.14f\n", id_potential, *updatedLS);	
+	//xexit("exit for autofunction");
+	return result;
 }
 
 // VertexBased_RBF
@@ -2903,7 +3110,8 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
                     if (updatedVertex[LOCAL][clID] < 0.5 || updatedVertex[LOCAL][clID] > 1.5) {
 						PetscPrintf(PETSC_COMM_SELF, "How can this be possible?\n");
 						MPI_Abort(PETSC_COMM_WORLD, PETSC_ERR_PLIB); // abort all ranks safely
-					}                  
+					}  
+					//if(rank==1 && vertList[id]==22976)PetscPrintf(PETSC_COMM_SELF, "neighbid is %d, ls is %.14f and vertlitst is %d\n", clID, lsArray[LOCAL][clID], vertList[id]);            
 					ave += lsArray[LOCAL][clID];
                 }
 
@@ -2931,6 +3139,8 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
 
           PetscScalar resetsign = PetscSignReal(lsArray[GLOBAL][id]);
           PetscInt result = SolveQuadFormula(dim, a, b, &lsArray[GLOBAL][id]);
+		  
+		  //if(rank==1 && vertList[id]==22976)PetscPrintf(PETSC_COMM_SELF, "vertlitst is %d and %.14f\n", id, lsArray[GLOBAL][id]);            
 
           if (result == 1.0 && updatedVertex[GLOBAL][id] == 0.0) {
             for (PetscInt v = 0; v < nVert; ++v) {
@@ -3216,8 +3426,8 @@ void Reconstruction::FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec
 			int rank;
 			MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
 			PetscPrintf(PETSC_COMM_SELF, "Vertex %d at (%+f, %+f), level %d, rank %d has not been updated\n", v, x[0], x[1], currentLevel, rank);
-			//throw std::runtime_error("A vertex has not been updated.\n");
-			MPI_Abort(PETSC_COMM_WORLD, PETSC_ERR_PLIB);
+			throw std::runtime_error("A vertex has not been updated.\n");
+			//MPI_Abort(PETSC_COMM_WORLD, PETSC_ERR_PLIB);
 		}
 	}
     VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
