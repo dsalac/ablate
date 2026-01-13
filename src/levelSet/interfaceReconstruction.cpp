@@ -159,7 +159,7 @@ Reconstruction::Reconstruction(const std::shared_ptr<ablate::domain::SubDomain> 
 //  subDomain->GetRange(nullptr, 0, vertRange);
 //  subDomain->GetCellRange(region, cellRange);   // Range of cells without boundary ghosts
 
-  // Get the point->index mapping for cells
+//  // Get the point->index mapping for cells
 //  reverseVertRange = ablate::domain::ReverseRange(vertRange);
 //  reverseCellRange = ablate::domain::ReverseRange(cellRange);
 
@@ -629,7 +629,7 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
 
   for (PetscInt v = 0; v < nTotalVert; ++v) vertMaskVecArray[v] = nLevels + 2;
 
-  if (rank==1) PetscPrintf(PETSC_COMM_SELF, "%d, %f\n", 5941, vertMaskVecArray[5941]);
+//  if (rank==1) PetscPrintf(PETSC_COMM_SELF, "%d, %f\n", 5941, vertMaskVecArray[5941]);
 
   // First find the min level for each vertex considering neighboring cell levels
   for (PetscInt v = 0; v < nLocalVert; ++v) {
@@ -639,10 +639,10 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
       DMPlexVertexGetCells(cellDM, vertex, &nCell, &cells) >> ablate::utilities::PetscUtilities::checkError;
       for (PetscInt c = 0; c < nCell; ++c) {
         const PetscInt id = reverseCellList[cells[c]];
-        if (rank==1 && v == 5941) PetscPrintf(PETSC_COMM_SELF, "%d, %f, %" PetscInt_FMT", %" PetscInt_FMT"\n", 5941, vertMaskVecArray[5941], id, cellMask[id]);
+//        if (rank==1 && v == 5941) PetscPrintf(PETSC_COMM_SELF, "%d, %f, %" PetscInt_FMT", %" PetscInt_FMT"\n", 5941, vertMaskVecArray[5941], id, cellMask[id]);
         if (cellMask[id] == 0 || cellMask[id] == -1 || id >= nTotalCell) continue;
         vertMaskVecArray[v] = PetscMin(vertMaskVecArray[v], PetscAbsReal(cellMask[id]));
-        if (rank==1 && v == 5941) PetscPrintf(PETSC_COMM_SELF, "%d, %f, %" PetscInt_FMT", %" PetscInt_FMT"\n", 5941, vertMaskVecArray[5941], id, cellMask[id]);
+//        if (rank==1 && v == 5941) PetscPrintf(PETSC_COMM_SELF, "%d, %f, %" PetscInt_FMT", %" PetscInt_FMT"\n", 5941, vertMaskVecArray[5941], id, cellMask[id]);
       }
       DMPlexCellRestoreVertices(cellDM, vertex, &nCell, &cells) >> ablate::utilities::PetscUtilities::checkError;
   }
@@ -3845,19 +3845,17 @@ PetscScalar Reconstruction::LScircle(const PetscReal* x, const PetscInt dim) {
   return ls;
 }
 
-
-
 void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field levelSetField, Vec auxVector) {
 
+  PetscLogDouble t1, t2, elapsed;
+  PetscTime(&t1);
 
   int rank, size;
   MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   MPI_Comm_size(PETSC_COMM_WORLD, &size);
 
-
-//  DMViewFromOptions(aux_dm, NULL, "-dm_view");
-//  Reconstruction_SaveDM(aux_dm, "mesh.txt");
-
+  DMViewFromOptions(aux_dm, NULL, "-dm_view");
+  Reconstruction_SaveDM(aux_dm, "mesh.txt");
 
   PetscInt vStart = -1, vEnd= -1;
   DMPlexGetDepthStratum(aux_dm, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
@@ -3910,17 +3908,12 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
   SaveData(aux_dm, global_lsArray, nLocalVert, vertList, "lstrue.txt", Nc);
   PetscFree(global_lsArray);
 
-
   PetscInt *vertMask = nullptr, *cellMask = nullptr;
   DMGetWorkArray(vertDM, nTotalVert, MPIU_INT, &vertMask) >> ablate::utilities::PetscUtilities::checkError;
   DMGetWorkArray(cellDM, nTotalCell, MPIU_INT, &cellMask) >> ablate::utilities::PetscUtilities::checkError;
 
-  PetscLogDouble t1, t2, elapsed;
-  PetscTime(&t1);
-
   SetMasks(aux_dm, auxVector, levelSetField, nLevels, cellMask, vertMask);
 
-#if 0 // I don't think the lsvec needs to have any values
   // Setting the lsVec which is a vector of level set values for vertices associated with cut-cells
   Vec lsVec[2] = {nullptr, nullptr};                 // [LOCAL, GLOBAL]
   PetscScalar *lsArr[2] =  {nullptr, nullptr};
@@ -3931,24 +3924,34 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
   VecGetArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
   VecGetArray(auxVector, &lsArray);
+
   for (PetscInt v = 0; v < nLocalVert; ++v) {
     PetscInt nv, *verts;
     DMPlexCellGetVertices(aux_dm, vertList[v], &nv, &verts);
 
     for (PetscInt i = 0; i < nv; i++) {
+
       PetscScalar *lsVal= nullptr;
       DMPlexPointLocalFieldRead(aux_dm, verts[i], lsfieldID, lsArray, &lsVal);
 
       const PetscInt id = reverseVertList[verts[i]];
-      lsArr[LOCAL][id] = *lsVal;
+      if (vertMask[id]==1) {
+        lsArr[LOCAL][id] = *lsVal;
+      }
+      else {
+        lsArr[LOCAL][id] = PETSC_MAX_REAL*PetscSignReal(*lsVal);
+      }
+
     }
     DMPlexCellRestoreVertices(aux_dm, vertList[v], &nv, &verts);
   }
+
   VecRestoreArray(auxVector, &lsArray) >> ablate::utilities::PetscUtilities::checkError;
+
   DMLocalToGlobal(vertDM, lsVec[LOCAL], INSERT_VALUES, lsVec[GLOBAL]);
   DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]);
+
   VecRestoreArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-#endif
 
   FMM(cellMask, vertMask, lsVec);
 
