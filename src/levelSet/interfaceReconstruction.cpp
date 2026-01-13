@@ -5,6 +5,7 @@
 #include "domain/fieldAccessor.hpp"
 #include "levelSetUtilities.hpp"
 #include "utilities/constants.hpp"
+#include "utilities/mpiUtilities.hpp"
 #include <petscblaslapack.h>
 
 
@@ -2080,186 +2081,6 @@ PetscInt Reconstruction::FFM_VertexBased_Solve(const PetscInt dim, const PetscIn
   return SolveQuadFormula(dim, &rhs[0], &rhs[n], updatedLS);
 }
 
-//void Reconstruction::FMM_VertexBased_V2(const PetscInt currentLevel, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2]) {
-  //PetscInt dim;
-  //DMGetDimension(vertDM, &dim);
-
-  //MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
-
-  //while (true) {
-
-    //PetscScalar *lsArray[2] = {nullptr, nullptr};
-    //VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-    //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-    //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-    //PetscScalar *lstrue[2] = {nullptr, nullptr};
-  //VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
-  //VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
-
-    //PetscInt numVertUpdated = 0;
-    //for (PetscInt v = 0; v < nLocalVert; ++v) {
-
-      //if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-
-        //PetscInt vert = vertList[v];
-
-        //PetscInt nCells, *cells;
-        //DMPlexVertexGetCells(vertDM, vert, &nCells, &cells);
-
-        //PetscReal x0[dim];
-        //DMPlexComputeCellGeometryFVM(vertDM, vert, NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
-
-        //for (PetscInt c = 0; c < nCells; ++c) {
-          //PetscInt cell = cells[c];
-
-          //if (ablate::levelSet::Utilities::ValidCell(vertDM, cell)) {
-
-            //PetscInt nVert, *cellVerts;
-            //DMPlexCellGetVertices(vertDM, cell, &nVert, &cellVerts);
-
-            //PetscInt result = FFM_VertexBased_Solve(dim, dim, x0, nVert, cellVerts, updatedVertex[LOCAL], lsArray[LOCAL], &lsArray[GLOBAL][v]);
-            //updatedVertex[GLOBAL][v] = PetscMin(updatedVertex[GLOBAL][v] + result, 1.0);
-            //numVertUpdated += (updatedVertex[GLOBAL][v] > 0.5);
-
-            //DMPlexCellRestoreVertices(vertDM, cell, &nVert, &cellVerts);
-          //}
-
-        //}
-
-        //DMPlexVertexRestoreCells(vertDM, vert, &nCells, &cells);
-
-      //}
-    //}
-    //VecRestoreArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecRestoreArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-    //DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-
-    //VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-  //int rank;
-  //MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-  //printf("Vrt2 %" PetscInt_FMT" %" PetscInt_FMT": %" PetscInt_FMT"\n", rank, currentLevel, numVertUpdated);
-
-    //MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated, 1, MPIU_INT, MPIU_SUM, vertComm);
-////xexit("%ld\n",  numVertUpdated);
-    //if (numVertUpdated==0) break;
-
-  //}
-
-  //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-  //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  //PetscInt nNOTSetVertices = 0;
-  //for (PetscInt v = 0; v < nLocalVert; ++v) {
-    //if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-      //++nNOTSetVertices;
-    //}
-  //}
-  //printf("vertexbased_v2, number of unset vertices in level %" PetscInt_FMT" is %" PetscInt_FMT"\n", currentLevel, nNOTSetVertices);
-  //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-//}
-
-//void Reconstruction::FMM_VertexBased_V1(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], FILE *animFile) {
-
-  //int rank;
-  //MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-  //PetscInt dim;
-  //DMGetDimension(vertDM, &dim);
-
-  //MPI_Comm vertComm = PetscObjectComm((PetscObject)(vertDM));
-
-  //while (true) {
-
-    //PetscScalar *lsArray[2] = {nullptr, nullptr};
-    //VecGetArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecGetArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-    //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-    //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-    //PetscScalar *lstrue[2] = {nullptr, nullptr};
-  //VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
-  //VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
-
-    //PetscInt numVertUpdated = 0;
-    //for (PetscInt v = 0; v < nLocalVert; ++v) {
-
-      //if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-
-        //PetscInt vert = vertList[v];
-
-        //PetscReal x0[dim];
-        //DMPlexComputeCellGeometryFVM(vertDM, vert, NULL, x0, NULL) >> ablate::utilities::PetscUtilities::checkError;
-
-        //PetscInt nVert, *neighborVerts;
-        //DMPlexGetNeighbors(vertDM, vert, 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts); // Return neighboring vertices of a vertex by one level and including the corner ones
-
-        //PetscInt result = FFM_VertexBased_Solve(dim, minVerts, x0, nVert, neighborVerts, updatedVertex[LOCAL], lsArray[LOCAL], &lsArray[GLOBAL][v]);
-        //updatedVertex[GLOBAL][v] = PetscMin(updatedVertex[GLOBAL][v] + result, 1.0);
-        //numVertUpdated += (updatedVertex[GLOBAL][v] > 0.5);
-
-        //PetscScalar Error =  PetscAbsScalar(lsArray[GLOBAL][v] - lstrue[GLOBAL][v]);
-    //if (Error > 1e-3) {
-      //PetscPrintf(PETSC_COMM_SELF, "level %" PetscInt_FMT", At vertexbased_v1, we have error %f\n", currentLevel, Error);
-    //}
-
-    //// Animation part
-    //if (updatedVertex[GLOBAL][v] > 0.5) {
-        //PetscReal x[dim];
-        //DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-        //fprintf(animFile, "%" PetscInt_FMT" %" PetscInt_FMT" %" PetscInt_FMT" %f %f %s\n", rank, currentLevel, v, x[0], x[1], "vertexbased_v1");
-    //}
-
-        //DMPlexRestoreNeighbors(vertDM, vert, 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVert, &neighborVerts);
-////if (currentLevel>11) {
-////  char fname[255];
-////  sprintf(fname, "mid%ld.txt", currentLevel);
-////  SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, fname, 1);
-////}
-      //}
-    //}
-    //VecRestoreArray(lsVec[LOCAL], &lsArray[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecRestoreArray(lsVec[GLOBAL], &lsArray[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-    //DMGlobalToLocal(vertDM, updatedVec[GLOBAL], INSERT_VALUES, updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-
-    //VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-    //VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-  //int rank;
-  //MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-  //printf("Vrt1 %" PetscInt_FMT" %" PetscInt_FMT": %" PetscInt_FMT"\n", rank, currentLevel, numVertUpdated);
-
-    //MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated, 1, MPIU_INT, MPIU_SUM, vertComm);
-
-    //if (numVertUpdated==0) break;
-
-  //}
-
-  //PetscScalar *updatedVertex[2] = {nullptr, nullptr};
-  //VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  //PetscInt nNOTSetVertices = 0;
-  //for (PetscInt v = 0; v < nLocalVert; ++v) {
-    //if (vertMask[v]==currentLevel && updatedVertex[LOCAL][v] < 0.5) {
-      //++nNOTSetVertices;
-    //}
-  //}
-  //printf("vertexbased_v1, number of unset vertices in level %" PetscInt_FMT" is %" PetscInt_FMT"\n", currentLevel, nNOTSetVertices);
-  //VecRestoreArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-//}
-
 // VertexBased_GeneralModifiedGreenGauss
 PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_potential, PetscInt id_base, PetscScalar *updatedVertex, PetscScalar *xCoord, PetscScalar *yCoord, const PetscInt *vertMask, const PetscInt currentLevel, PetscScalar *lsArray, PetscReal *updatedLS) {
 
@@ -2520,166 +2341,6 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
           }
       }
 
-  ////PetscPrintf(PETSC_COMM_SELF, "bestphi is %f\n", best_phi);
-  //for (PetscInt usedStencil = nStencil; usedStencil >= dim && !accept; --usedStencil) {
-        ////std::sort(stencilIDs, stencilIDs + usedStencil, [&](PetscInt a, PetscInt b){
-                    ////return PetscAbsReal(lsArray[a]) < PetscAbsReal(lsArray[b]);
-              ////});
-        //PetscInt stencilStart = nStencil - usedStencil;
-
-        //struct Edge {
-          //PetscInt v1, v2;
-        //};
-        //Edge alledges[usedStencil+1];
-        //PetscInt nallEdge = 0;
-
-        //for (PetscInt v = stencilStart; v < nStencil; ++v) { //for (PetscInt v = 0; v < usedStencil; ++v)
-            //if (stencilIDs[v] != id_base) {
-            //alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
-                //alledges[nallEdge++] = { std::min(id_base, stencilIDs[v]), std::max(id_base, stencilIDs[v]) };
-            //}
-            //if (stencilIDs[v] == id_base && usedStencil == dim) {
-            //alledges[nallEdge++] = { std::min(id_potential, stencilIDs[v]), std::max(id_potential, stencilIDs[v]) };
-            //}
-        //}
-
-        //for (PetscInt v = 0; v < usedStencil+1; ++v) {
-      //PetscPrintf(PETSC_COMM_SELF, "edge %" PetscInt_FMT" is %" PetscInt_FMT", %" PetscInt_FMT"\n", v, alledges[v].v1, alledges[v].v2);
-    //}
-
-        //PetscReal a[3] = {0.0, 0.0, 0.0}, b[3] = {0.0, 0.0, 0.0};
-        //PetscScalar N[3];
-        //PetscScalar vol = 0.0;
-        //PetscInt edge[2];
-        //for (PetscInt i = 0; i < nallEdge; ++i) {
-          //edge[0]= alledges[i].v1;
-          //edge[1] = alledges[i].v2;
-          //PetscScalar vec[dim];
-          //for (int d = 0; d < 3; d++) N[d] = 0.0;
-          //vec[0] = xCoord[edge[1]] - xCoord[edge[0]];
-          //vec[1] = yCoord[edge[1]] - yCoord[edge[0]];
-          //N[0] = vec[1];
-          //N[1] = -vec[0];
-
-          //PetscScalar midvec[2];
-          //midvec[0] = 0.5*(xCoord[edge[1]] + xCoord[edge[0]]);
-          //midvec[1] = 0.5*(yCoord[edge[1]] + yCoord[edge[0]]);
-
-          //PetscScalar cellcenter[2] = {xCoord[id_potential], yCoord[id_potential] };
-          ////for (PetscInt v = 0; v < usedStencil; ++v) {
-            ////cellcenter[0] += xCoord[stencilIDs[v]];
-            ////cellcenter[1] += yCoord[stencilIDs[v]];
-          ////}
-          ////cellcenter[0] /= usedStencil+1;
-          ////cellcenter[1] /= usedStencil+1;
-          //for (PetscInt v = stencilStart; v < nStencil; ++v) {
-      //cellcenter[0] += xCoord[stencilIDs[v]];
-      //cellcenter[1] += yCoord[stencilIDs[v]];
-      //}
-      //cellcenter[0] /= usedStencil+1;
-      //cellcenter[1] /= usedStencil+1;
-
-          //PetscScalar centertomid[dim];
-          //for (PetscInt d = 0; d < dim; ++d) {
-            //centertomid[d] = cellcenter[d] -  midvec[d];
-          //}
-
-          //if (N[0]*centertomid[0] + N[1]*centertomid[1] > 0.0) {
-            //N[0] = -N[0];
-            //N[1] = -N[1];
-          //}
-
-          //for (PetscInt d = 0; d < dim; ++d) {
-              //for (PetscInt k = 0; k < 2; ++k) {
-                  //PetscInt v = edge[k];
-                  //if (updatedVertex[v] > 0.5 && updatedVertex[v] < 1.5) {
-             //PetscPrintf(PETSC_COMM_SELF, "idwithls is %" PetscInt_FMT" and ls is %.14f\n", v, lsArray[v]);
-                      //b[d] += 0.5 * lsArray[v] * N[d];
-                  //} else {
-                      //a[d] += 0.5 * N[d];
-                  //}
-              //}
-          //}
-
-    //PetscPrintf(PETSC_COMM_SELF,"%" PetscInt_FMT" and %" PetscInt_FMT"\n", edge[0], edge[1]);
-    //PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", xCoord[edge[0]], yCoord[edge[0]]);
-    //PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", N[0], N[1]);
-
-        //}
-
-        //PetscInt start = alledges[0].v1;  // first vertex of e0
-        //PetscInt prev = -1;
-        //PetscInt cur = start;
-
-        //PetscInt orderedVerts[usedStencil+1]; // number of vertices = number of unique vertices
-        //PetscInt nVerts = 0;
-        //orderedVerts[nVerts++] = cur;  // first vertex
-
-        //while (nVerts < usedStencil+1) { // number of unique vertices
-            //for (PetscInt i = 0; i < usedStencil+1; ++i) {  // loop over all edges
-                //PetscInt v0 = alledges[i].v1;
-                //PetscInt v1 = alledges[i].v2;
-                //PetscInt next = -1;
-
-                //if (v0 == cur && v1 != prev) next = v1;
-                //else if (v1 == cur && v0 != prev) next = v0;
-
-                //if (next != -1) {
-                    //orderedVerts[nVerts++] = next;
-                    //prev = cur;
-                    //cur = next;
-                    //break; // move to next vertex
-                //}
-            //}
-        //}
-
-        //PetscScalar temp_area = 0.0;
-        //for (PetscInt i = 0; i < nVerts; ++i) {
-            //PetscInt j = (i + 1) % nVerts; // next vertex, wrap around
-            //PetscInt vi = orderedVerts[i];
-            //PetscInt vj = orderedVerts[j];
-            //temp_area += xCoord[vi] * yCoord[vj] - xCoord[vj] * yCoord[vi];
-        //}
-
-        //vol = 0.5 * PetscAbsReal(temp_area);
-    ////PetscPrintf(PETSC_COMM_SELF, "voltest is %f\n", vol);
-
-        //for (PetscInt d = 0; d < dim; ++d) {
-       ////PetscPrintf(PETSC_COMM_SELF, "a is %f and b is %f\n", a[d], b[d]);
-          //a[d] /= vol;
-          //b[d] /= vol;
-        //}
-
-        //PetscReal temp_phi = *updatedLS;
-         //PetscPrintf(PETSC_COMM_SELF,"Try with %" PetscInt_FMT" stencils -> φ = %f\n", usedStencil, temp_phi);
-        //PetscInt temp_result = SolveQuadFormula(dim, a, b, &temp_phi);
-         //PetscPrintf(PETSC_COMM_SELF, "Try with %" PetscInt_FMT" stencils -> φ = %f, result=%" PetscInt_FMT"\n", usedStencil, temp_phi, result);
-     //PetscPrintf(PETSC_COMM_SELF, "id_potential is %" PetscInt_FMT" and tempphi is %f and result is %" PetscInt_FMT"\n", id_potential, temp_phi, temp_result);
-        //if (temp_result != 1) continue;
-
-        //PetscBool monotone = PETSC_TRUE;
-        ////PetscReal tol;
-    //for (PetscInt v = stencilStart; v < nStencil; ++v) { //for (PetscInt v = 0; v < usedStencil; ++v)
-      ////PetscReal phi_n = lsArray[stencilIDs[v]];
-      ////tol = 1e-4 * PetscMax(1.0, PetscAbsReal(phi_n));
-      //if (PetscAbsReal(temp_phi) < PetscAbsReal(lsArray[stencilIDs[v]])) { //-tol
-        //PetscPrintf(PETSC_COMM_SELF, "Rejected φ=%f because neighbor %" PetscInt_FMT" has |φ| smaller.\n", temp_phi, stencilIDs[v]);
-                //monotone = PETSC_FALSE;
-                //break;
-      //}
-    //}
-
-    //if (monotone) {
-      //accept = PETSC_TRUE;
-      //best_phi_local = temp_phi;
-    //}
-
-        //if (accept && PetscAbsReal(best_phi_local) < PetscAbsReal(best_phi)) {
-          //best_phi = best_phi_local;
-          //result = temp_result;
-        //}
-         //PetscPrintf(PETSC_COMM_SELF, "bestphi is %f\n", best_phi);
-      //} //stencil loop
 
     } // valid base loop
   }
@@ -3017,7 +2678,7 @@ PetscInt Reconstruction::FFM_VertexBased_ModifiedGreenGauss(const PetscInt dim, 
 
 // modified green gauss for vertexbased
 // Hybrid FMM
-void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], Vec xVec[2], Vec yVec[2], FILE *animFile) {
+PetscErrorCode Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt minVerts, const PetscInt *cellMask, const PetscInt *vertMask, Vec updatedVec[2], Vec lsVec[2], Vec lsVecCopy[2], Vec xVec[2], Vec yVec[2], FILE *animFile) {
 
   int rank;
   MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
@@ -3040,10 +2701,6 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
     PetscScalar *updatedVertex[2] = {nullptr, nullptr};
     VecGetArray(updatedVec[LOCAL], &updatedVertex[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
     VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-    //PetscScalar *lstrue[2] = {nullptr, nullptr};
-    //VecGetArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> utilities::PetscUtilities::checkError;
-    //VecGetArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> utilities::PetscUtilities::checkError;
 
     PetscScalar *xCoord[2] = {nullptr, nullptr};
     VecGetArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
@@ -3140,7 +2797,6 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
           PetscScalar resetsign = PetscSignReal(lsArray[GLOBAL][id]);
           PetscInt result = SolveQuadFormula(dim, a, b, &lsArray[GLOBAL][id]);
 
-      //if(rank==1 && vertList[id]==22976)PetscPrintf(PETSC_COMM_SELF, "vertlitst is %" PetscInt_FMT" and %.14f\n", id, lsArray[GLOBAL][id]);
 
           if (result == 1.0 && updatedVertex[GLOBAL][id] == 0.0) {
             for (PetscInt v = 0; v < nVert; ++v) {
@@ -3174,7 +2830,7 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
     DMGlobalToLocal(vertDM, lsVec[GLOBAL], INSERT_VALUES, lsVec[LOCAL]) >> utilities::PetscUtilities::checkError;
 
     //vertexbased
-    MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_cellbased, 1, MPIU_INT, MPIU_SUM, vertComm);
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &numVertUpdated_cellbased, 1, MPIU_INT, MPIU_SUM, vertComm));
 
     numVertUpdated_vertexbased = 0;
     if (numVertUpdated_cellbased==0) {
@@ -3282,7 +2938,6 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
               fprintf(animFile, "%d %" PetscInt_FMT" %" PetscInt_FMT" %f %f %s\n", rank, currentLevel, id_potential, x[0], x[1], "vertexbased_v1");
               fflush(animFile);
           }
-
         }
       }
     }
@@ -3297,11 +2952,12 @@ void Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, const PetscInt
 
     //VecRestoreArray(lsVecCopy[LOCAL], &lstrue[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
     //VecRestoreArray(lsVecCopy[GLOBAL], &lstrue[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-    MPI_Allreduce(MPI_IN_PLACE, &numVertUpdated_vertexbased, 1, MPIU_INT, MPIU_SUM, vertComm);
+    PetscCallMPI(MPIU_Allreduce(MPI_IN_PLACE, &numVertUpdated_vertexbased, 1, MPIU_INT, MPIU_SUM, vertComm));
 
     if (numVertUpdated_cellbased==0 && numVertUpdated_vertexbased==0) break;
   }
+
+  return PETSC_SUCCESS;
 
 }
 
@@ -3416,20 +3072,20 @@ void Reconstruction::FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec
 
   for (PetscInt currentLevel = 2; currentLevel <= nLevels; ++currentLevel) {
   //FILE* animFile = nullptr; // just to avoid creation of any animation file
-    Reconstruction::FMM_PrimeHybrid(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, xVec, yVec, animFile);
+    Reconstruction::FMM_PrimeHybrid(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, xVec, yVec, animFile) >> utilities::PetscUtilities::checkError;
 
-  VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
-  for (PetscInt v = 0; v < nLocalVert; ++v) {
-    if (vertMask[v]==currentLevel && updatedVertex[GLOBAL][v]<0.5) {
-      PetscReal x[3];
-      DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
-      int rank;
-      MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-      PetscPrintf(PETSC_COMM_SELF, "Vertex %" PetscInt_FMT" at (%+f, %+f), level %" PetscInt_FMT", rank %d has not been updated\n", v, x[0], x[1], currentLevel, rank);
-      throw std::runtime_error("A vertex has not been updated.\n");
-      //MPI_Abort(PETSC_COMM_WORLD, PETSC_ERR_PLIB);
+    VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
+    for (PetscInt v = 0; v < nLocalVert; ++v) {
+      if (vertMask[v]==currentLevel && updatedVertex[GLOBAL][v]<0.5) {
+        PetscReal x[3];
+        DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+        int rank;
+        MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+        PetscPrintf(PETSC_COMM_SELF, "Vertex %" PetscInt_FMT" at (%+f, %+f), level %" PetscInt_FMT", rank %d has not been updated\n", v, x[0], x[1], currentLevel, rank);
+        throw std::runtime_error("A vertex has not been updated.\n");
+        //MPI_Abort(PETSC_COMM_WORLD, PETSC_ERR_PLIB);
+      }
     }
-  }
     VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
   }
 
@@ -3960,7 +3616,7 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
   PetscPrintf(PETSC_COMM_WORLD,"Elapsed time: %g seconds\n",elapsed);
 
   PetscPrintf(PETSC_COMM_WORLD, "FMM is done\n");
-  MPI_Abort(PETSC_COMM_WORLD, 0);
+  PetscFinalize();
 
 
   //PetscReal *closestPoint;
@@ -3975,402 +3631,3 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
 
   //FMM(cellMask, vertMask, lsVec);
 }
-
-
-//void Reconstruction::ToLevelSet(DM vofDM, Vec vofVec, const ablate::domain::Field vofField) {
-
-//int rank, size;
-//MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-//MPI_Comm_size(PETSC_COMM_WORLD, &size);
-
-//DMViewFromOptions(vofDM, NULL, "-dm_view");
-//Reconstruction_SaveDM(vofDM, "mesh.txt");
-
-
-  //PetscReal         h = 0.0;
-
-  //// Only needed if this is defined over a sub-region of the DM
-  //IS subpointIS;
-  //const PetscInt* subpointIndices = nullptr;
-  //if (subDomain->GetSubAuxDM()!=subDomain->GetAuxDM()) {
-    //DMPlexGetSubpointIS(subDomain->GetSubAuxDM(), &subpointIS) >> utilities::PetscUtilities::checkError;
-    //ISGetIndices(subpointIS, &subpointIndices) >> utilities::PetscUtilities::checkError;
-  //}
-
-  //DMPlexGetMinRadius(vofDM, &h) >> ablate::utilities::PetscUtilities::checkError;
-  //h *= 2.0; // Min radius returns the distance between a cell-center and a face. Double it to get the average cell size
-
-
-  //PetscInt cStart = -1, cEnd = -1;
-  //DMPlexGetHeightStratum(cellDM, 0, &cStart, &cEnd) >> ablate::utilities::PetscUtilities::checkError;
-
-  //PetscInt vStart = -1, vEnd = -1;
-  //DMPlexGetDepthStratum(vertDM, 0, &vStart, &vEnd) >> ablate::utilities::PetscUtilities::checkError;
-
-///**************** Determine the cut-cells and the initial cell-normal  *************************************/
-  //Vec vofGradVec[2] = {nullptr, nullptr};
-  //DMGetLocalVector(cellGradDM, &vofGradVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  //DMGetGlobalVector(cellGradDM, &vofGradVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-  //PetscInt *vertMask = nullptr, *cellMask = nullptr;
-  //DMGetWorkArray(vertDM, nTotalVert, MPIU_INT, &vertMask) >> ablate::utilities::PetscUtilities::checkError;
-  //DMGetWorkArray(cellDM, nTotalCell, MPIU_INT, &cellMask) >> ablate::utilities::PetscUtilities::checkError;
-
-
-  //SetMasks(vofDM, vofVec, vofField, nLevels, cellMask, vertMask);
-
-//SaveData(cellDM, cellMask, nLocalVert, cellList, "cellMask.txt", 1);
-//SaveData(vertDM, vertMask, nLocalVert, vertList, "vertMask.txt", 1);
-
-
-  //const PetscInt  dim = subDomain->GetDimensions();   // VOF and LS subdomains must have the same dimension. Can't think of a reason they wouldn't.
-  //PetscReal *closestPoint;
-  //DMGetWorkArray(vertGradDM, nLocalVert*dim, MPIU_REAL, &closestPoint) >> ablate::utilities::PetscUtilities::checkError;
-  //PetscInt *cpCell;
-  //DMGetWorkArray(vertDM, nLocalVert, MPIU_INT, &cpCell) >> ablate::utilities::PetscUtilities::checkError;
-
-  //InitalizeLevelSet(vofDM, vofVec, vofField, cellMask, vertMask, lsVec, closestPoint, cpCell);
-//SaveData(vertDM, closestPoint, nLocalVert, vertList, "cp.txt", dim);
-
-//SaveData(vertDM, lsVec[LOCAL], nTotalVert, vertList, "vertLS0_L.txt", 1);
-//SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS0_G.txt", 1);
-
-  //FMM(cellMask, vertMask, lsVec);
-
-//  ReinitializeLevelSet(cellMask, vertMask, lsVec);
-
-//SaveData(vertDM, lsVec[LOCAL], nTotalVert, vertList, "vertLS1_L.txt", 1);
-//SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "vertLS1_G.txt", 1);
-//xexit("");
-
-  //Vec curv[2];
-  //DMGetLocalVector(vertDM, &curv[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  //DMGetGlobalVector(vertDM, &curv[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  //CalculateVertexCurvatures(cellMask, vertMask, lsVec, closestPoint, cpCell, curv);
-//SaveData(vertDM, curv[LOCAL], nLocalVert, vertList, "curv0.txt", 1);
-
-
-
-
-//  Smooth(cellMask, vertMask, lsVec, curv);
-//SaveData(vertDM, curv[LOCAL], nLocalVert, vertList, "curv1.txt", 1);
-
-
-  //Extension(cellMask, vertMask, lsVec, closestPoint, cpCell, curv);
-//SaveData(vertDM, curv[LOCAL], nLocalVert, vertList, "curv2.txt", 1);
-
-
-
-  //DMRestoreLocalVector(cellDM, &curv[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-  //DMRestoreGlobalVector(cellDM, &curv[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-  //DMRestoreWorkArray(vertDM, nTotalVert, MPIU_INT, &vertMask) >> ablate::utilities::PetscUtilities::checkError;
-
-
-
-
-//  DMRestoreLocalVector(cellGradDM, &cellGradVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
-//  DMRestoreGlobalVector(cellGradDM, &cellGradVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
-
-
-  //if (subpointIndices) ISRestoreIndices(subpointIS, &subpointIndices) >> utilities::PetscUtilities::checkError;
-//xexit("");
-
-// xexit("");
-
-//#ifdef saveData
-//  sprintf(fname, "ls3_%03ld.txt", saveIter);
-//  SaveVertexData(auxDM, auxVec, fname, lsField, 1, subDomain);
-//#endif
-
-//  // Calculate unit normal vector based on the updated level set values at the vertices
-//  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//    if (cellMask[c] > 0) {
-//      PetscInt cell = cellRange.GetPoint(c);
-//      PetscScalar *n = nullptr;
-//      xDMPlexPointLocalRef(auxDM, cell, cellNormalID, auxArray, &n);
-//      DMPlexCellGradFromVertex(auxDM, cell, auxVec, lsID, 0, n) >> ablate::utilities::PetscUtilities::checkError;
-//      ablate::utilities::MathUtilities::NormVector(dim, n);
-//    }
-//  }
-
-//#ifdef saveData
-//  sprintf(fname, "mask3_%03ld.txt", saveIter);
-//  SaveCellData(auxDM, workVec, fname, vofField, 1, subDomain);
-//#endif
-
-//  for (PetscInt c = cellRangeWithoutGhost.start; c < cellRangeWithoutGhost.end; ++c) {
-//    PetscInt cell = cellRangeWithoutGhost.GetPoint(c);
-//    PetscScalar *H = nullptr;
-//    xDMPlexPointLocalRef(auxDM, cell, curvID, auxArray, &H);
-
-//    PetscScalar *maskVal;
-//    xDMPlexPointLocalRef(auxDM, cell, vofID, workArray, &maskVal) >> ablate::utilities::PetscUtilities::checkError;
-
-////    if ((PetscAbsScalar(*maskVal - 1.0) < PETSC_SMALL) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
-//    if ( (*maskVal > 0.5) && (*maskVal < (nLevels-1)) && ablate::levelSet::Utilities::ValidCell(auxDM, cell)) {
-//      CurvatureViaGaussian(auxDM, c - cellRangeWithoutGhost.start, cell, auxVec, lsField, H);
-//    }
-//    else {
-//      *H = 0.0;
-//    }
-//  }
-
-//  subDomain->UpdateAuxLocalVector();
-//#ifdef saveData
-//  sprintf(fname, "curv0_%03ld.txt", saveIter);
-//  SaveCellData(auxDM, auxVec, fname, curvID, 1, subDomain);
-//#endif
-
-
-//  // Extension
-//  PetscInt vertexCurvID = lsID; // Store the vertex curvatures in the work vec at the same location as the level-set
-
-
-//  for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
-//    if (vertMask[v] > 0 && vertMask[v] < nLevels - 1) {
-//      PetscInt vert = vertRange.GetPoint(v);
-//      PetscReal *H = nullptr;
-//      xDMPlexPointLocalRef(auxDM, vert, vertexCurvID, workArray, &H) >> ablate::utilities::PetscUtilities::checkError;
-
-//      *H = 0.0;
-
-//      PetscInt nCells, *cells, nAve = 0;
-//      DMPlexVertexGetCells(auxDM, vert, &nCells, &cells);
-
-//      for (PetscInt c = 0; c < nCells; ++c) {
-
-//        const PetscInt cm = cellMask[reverseCellRange.GetIndex(cells[c])];
-
-//        if (cm > 0 ) {
-
-//          PetscScalar *cellH = nullptr;
-//          xDMPlexPointLocalRef(auxDM, cells[c], curvID, auxArray, &cellH);
-//          *H += *cellH;
-//          ++nAve;
-//        }
-//      }
-
-
-//      *H /= nAve;
-
-//      DMPlexVertexRestoreCells(auxDM, vert, &nCells, &cells);
-
-//    }
-//  }
-
-
-//  DMLocalToGlobal(auxDM, workVec, INSERT_VALUES, workVecGlobal) >> utilities::PetscUtilities::checkError;
-//  DMGlobalToLocal(auxDM, workVecGlobal, INSERT_VALUES, workVec) >> utilities::PetscUtilities::checkError;
-
-
-
-//#ifdef saveData
-//  sprintf(fname, "vertH0_%03ld.txt", saveIter);
-//  SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
-//#endif
-
-
-//  for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
-//    if (vertMask[v] > 0) {
-//      PetscInt vert = vertRange.GetPoint(v);
-
-//      PetscReal *n = nullptr;
-//      xDMPlexPointLocalRef(auxDM, vert, vertexNormalID, auxArray, &n) >> ablate::utilities::PetscUtilities::checkError;
-//      DMPlexVertexGradFromVertex(auxDM, vert, auxVec, lsID, 0, n) >> ablate::utilities::PetscUtilities::checkError;
-//      ablate::utilities::MathUtilities::NormVector(dim, n, n);
-//    }
-//  }
-//  subDomain->UpdateAuxLocalVector();
-
-//  maxDiff = PETSC_MAX_REAL;
-//  iter = 0;
-//  while ( maxDiff>5e-2 && iter<3*(nLevels+1)) {
-//    ++iter;
-
-//    // Curvature gradient at the cell-center
-//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//      if (cellMask[c] > 0) {
-//        PetscInt cell = cellRange.GetPoint(c);
-//        PetscScalar *g = nullptr;
-//        xDMPlexPointLocalRef(auxDM, cell, cellNormalID, workArray, &g) >> ablate::utilities::PetscUtilities::checkError;
-//        DMPlexCellGradFromVertex(auxDM, cell, workVec, vertexCurvID, 0, g);
-//      }
-//    }
-
-//    maxDiff = -PETSC_MAX_REAL;
-
-//    for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
-//      if (vertMask[v] > 1) {
-//        PetscInt vert = vertRange.GetPoint(v);
-//        PetscReal g[dim];
-//        const PetscReal *phi = nullptr, *n = nullptr;
-//        xDMPlexPointLocalRead(auxDM, vert, lsID, auxArray, &phi) >> ablate::utilities::PetscUtilities::checkError;
-//        xDMPlexPointLocalRead(auxDM, vert, vertexNormalID, auxArray, &n) >> ablate::utilities::PetscUtilities::checkError;
-
-//        for (PetscInt d = 0; d < dim; ++d) g[d] = n[d];
-
-//        VertexUpwindGrad(auxDM, workArray, cellNormalID, vert, PetscSignReal(*phi), g);
-
-//        PetscReal dH = 0.0;
-//        for (PetscInt d = 0; d < dim; ++d) dH += g[d]*n[d];
-
-
-//        PetscReal *H = nullptr;
-//        xDMPlexPointLocalRef(auxDM, vert, vertexCurvID, workArray, &H);
-
-//        PetscReal s = *phi/PetscSqrtReal(PetscSqr(*phi) + h*h);
-
-//        *H -= 0.5*h*s*dH;
-
-//        PetscReal *mag = nullptr;
-//        xDMPlexPointLocalRef(auxDM, vert, vertexNormalID, workArray, &mag) >> ablate::utilities::PetscUtilities::checkError;
-//        mag[0] = PetscAbsReal(dH);
-//      }
-//    }
-
-//    DMLocalToGlobal(auxDM, workVec, INSERT_VALUES, workVecGlobal) >> utilities::PetscUtilities::checkError;
-//    DMGlobalToLocal(auxDM, workVecGlobal, INSERT_VALUES, workVec) >> utilities::PetscUtilities::checkError;
-
-////     This is temporary until after the review.
-////     The norm magnitude is incorrect at the edge of processor domains. There needs to be a way to identify
-////      cell which are ghost cells as they will have incorrect answers.
-
-//    for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
-//      if (vertMask[v] > 1) {
-//        PetscInt vert = vertRange.GetPoint(v);
-//        const PetscReal *mag = nullptr;
-//        xDMPlexPointLocalRead(auxDM, vert, vertexNormalID, workArray, &mag) >> ablate::utilities::PetscUtilities::checkError;
-//        maxDiff = PetscMax(maxDiff, PetscAbsReal(mag[0]));
-//      }
-//    }
-
-//     // Get the maximum change across all processors. This also acts as a sync point
-//    MPI_Allreduce(MPI_IN_PLACE, &maxDiff, 1, MPIU_REAL, MPIU_MAX, auxCOMM);
-
-//#ifdef saveData
-//    PetscPrintf(PETSC_COMM_WORLD, "Extension %3" PetscInt_FMT": %e\n", iter, maxDiff);
-//#endif
-//  }
-
-
-//#ifdef saveData
-//  sprintf(fname, "vertH1_%03ld.txt", saveIter);
-//  SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
-//#endif
-
-
-
-//   for (PetscInt iter = 0; iter < 5; ++iter) {
-
-//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//      if (cellMask[c] > 0) {
-//        PetscInt cell = cellRange.GetPoint(c);
-//        PetscScalar *g = nullptr;
-//        xDMPlexPointLocalRef(auxDM, cell, cellNormalID, workArray, &g) >> ablate::utilities::PetscUtilities::checkError;
-//        DMPlexCellGradFromVertex(auxDM, cell, workVec, vertexCurvID, 0, g);
-
-//        const PetscScalar *n = nullptr;
-//        xDMPlexPointLocalRead(auxDM, cell, cellNormalID, auxArray, &n);
-
-//        const PetscReal dot = ablate::utilities::MathUtilities::DotVector(dim, n, g);
-
-//        for (PetscInt d = 0; d < dim; ++d) g[d] -= dot*n[d];
-
-//      }
-//    }
-//    DMLocalToGlobal(auxDM, workVec, INSERT_VALUES, workVecGlobal) >> utilities::PetscUtilities::checkError;
-//    DMGlobalToLocal(auxDM, workVecGlobal, INSERT_VALUES, workVec) >> utilities::PetscUtilities::checkError;
-
-
-//    for (PetscInt v = vertRange.start; v < vertRange.end; ++v) {
-//      if (vertMask[v] > 0) {
-//        PetscInt vert = vertRange.GetPoint(v);
-//        PetscReal div = 0.0;
-
-//        for (PetscInt d = 0; d < dim; ++d) {
-//          PetscReal g[dim];
-//          DMPlexVertexGradFromCell(auxDM, vert, workVec, cellNormalID, d, g);
-//          div += g[d];
-//        }
-
-//        PetscReal *H = nullptr;
-//        xDMPlexPointLocalRef(auxDM, vert, vertexCurvID, workArray, &H);
-
-//        *H += 0.5*h*h*div;
-
-//      }
-//    }
-//    DMLocalToGlobal(auxDM, workVec, INSERT_VALUES, workVecGlobal) >> utilities::PetscUtilities::checkError;
-//    DMGlobalToLocal(auxDM, workVecGlobal, INSERT_VALUES, workVec) >> utilities::PetscUtilities::checkError;
-//  }
-
-
-
-//#ifdef saveData
-//  sprintf(fname, "vertH2_%03ld.txt", saveIter);
-//  SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
-//#endif
-
-
-
-//  // Now set the curvature at the cell-center via averaging
-
-//  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//    if (cellMask[c] > 0) {
-//      PetscInt cell = cellRange.GetPoint(c);
-
-//      PetscScalar *cellH = nullptr;
-//      xDMPlexPointLocalRef(auxDM, cell, curvID, auxArray, &cellH) >> utilities::PetscUtilities::checkError;
-
-//      *cellH = 0.0;
-
-//      PetscInt nv, *verts;
-//      DMPlexCellGetVertices(auxDM, cell, &nv, &verts) >> ablate::utilities::PetscUtilities::checkError;
-//      for (PetscInt i = 0; i < nv; ++i) {
-//        const PetscReal *H;
-//        xDMPlexPointLocalRead(auxDM, verts[i], vertexCurvID, workArray, &H) >> utilities::PetscUtilities::checkError;
-//        *cellH += *H;
-//      }
-//      *cellH /= nv;
-
-//      DMPlexCellRestoreVertices(auxDM, cell, &nv, &verts) >> ablate::utilities::PetscUtilities::checkError;
-//    }
-//  }
-
-
-//  subDomain->UpdateAuxLocalVector();
-
-//#ifdef saveData
-//  sprintf(fname, "cellH0_%03ld.txt", saveIter);
-//  SaveVertexData(auxDM, workVec, fname, lsField, 1, subDomain);
-//  sprintf(fname, "cellNormal1_%03ld.txt", saveIter);
-//  SaveCellData(auxDM, auxVec, fname, cellNormalField, dim, subDomain);
-
-//#endif
-
-//  VecRestoreArray(workVec, &workArray);
-//  DMRestoreLocalVector(auxDM, &workVec) >> utilities::PetscUtilities::checkError;
-//  DMRestoreGlobalVector(auxDM, &workVecGlobal) >> utilities::PetscUtilities::checkError;
-
-
-
-//  // Cleanup all memory
-//  tempLS += vertRange.start;
-//  DMRestoreWorkArray(auxDM, vertRange.end - vertRange.start, MPIU_SCALAR, &tempLS) >> ablate::utilities::PetscUtilities::checkError;
-//  vertMask += vertRange.start; // Reset the offset, otherwise DMRestoreWorkArray will return unexpected results
-//  DMRestoreWorkArray(auxDM, vertRange.end - vertRange.start, MPIU_INT, &vertMask) >> ablate::utilities::PetscUtilities::checkError;
-//  cellMask += cellRange.start; // Reset the offset, otherwise DMRestoreWorkArray will return unexpected results
-//  DMRestoreWorkArray(solDM, cellRange.end - cellRange.start, MPIU_INT, &cellMask) >> ablate::utilities::PetscUtilities::checkError;
-
-//  subDomain->RestoreRange(vertRange);
-//  subDomain->RestoreRange(cellRange);
-//  flow.RestoreRange(cellRangeWithoutGhost);
-
-//  VecRestoreArray(auxVec, &auxArray) >> utilities::PetscUtilities::checkError;
-
-//}
-
-//}
-
-
