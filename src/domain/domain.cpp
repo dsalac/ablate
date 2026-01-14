@@ -171,7 +171,8 @@ std::shared_ptr<ablate::levelSet::Reconstruction> reconstruction = std::make_sha
 Vec auxVector = subDomain->GetAuxVector(); // Getting the Auxiliary Vector (contains data for all aux fields)
 DM aux_dm = subDomain->GetAuxDM(); // Getting the Auxiliary DM which has Auxiliary fields
 const ablate::domain::Field *levelSetField = &(subDomain->GetField("levelSet")); // Getting the level set field for vertices (FEM)
-reconstruction->arbit_interface(aux_dm, *levelSetField, auxVector);
+
+reconstruction->arbit_interface(aux_dm, *levelSetField, auxVector, this->name);
 
 printf("%s::%d\n", __FILE__, __LINE__);
 exit(0);

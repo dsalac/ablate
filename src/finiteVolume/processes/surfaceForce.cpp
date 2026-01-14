@@ -132,10 +132,10 @@ PetscErrorCode ablate::finiteVolume::processes::SurfaceForce::ComputeSource(cons
 //const ablate::domain::Field *vofField = &(subDomain->GetField(TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD));
 //process->reconstruction->ToLevelSet(dm, locX, *vofField);
 xexit("");
-  Vec auxVector = subDomain->GetAuxVector(); // Getting the Auxiliary Vector (contains data for all aux fields)
-  DM aux_dm = subDomain->GetAuxDM(); // Getting the Auxiliary DM which has Auxiliary fields
-  const ablate::domain::Field *levelSetField = &(subDomain->GetField("levelSet")); // Getting the level set field for vertices (FEM)
-  process->reconstruction->arbit_interface(aux_dm, *levelSetField, auxVector);
+//  Vec auxVector = subDomain->GetAuxVector(); // Getting the Auxiliary Vector (contains data for all aux fields)
+//  DM aux_dm = subDomain->GetAuxDM(); // Getting the Auxiliary DM which has Auxiliary fields
+//  const ablate::domain::Field *levelSetField = &(subDomain->GetField("levelSet")); // Getting the level set field for vertices (FEM)
+//  process->reconstruction->arbit_interface(aux_dm, *levelSetField, auxVector);
 
     const ablate::domain::Field *eulerField = &(subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD));
     DM eulerDM = subDomain->GetFieldDM(*eulerField); // Get an euler-specific DM in case it's not in the same solution vector as the VOF field
