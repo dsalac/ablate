@@ -156,12 +156,12 @@ Reconstruction::Reconstruction(const std::shared_ptr<ablate::domain::SubDomain> 
   convolution = std::make_shared<ablate::levelSet::GaussianConvolution>(subAuxDM, 3, 1.0);
 
   // Create the ranges <--- These might be deleted if they aren't actually needed
-  subDomain->GetRange(nullptr, 0, vertRange);
-  subDomain->GetCellRange(region, cellRange);   // Range of cells without boundary ghosts
+  //subDomain->GetRange(nullptr, 0, vertRange);
+  //subDomain->GetCellRange(region, cellRange);   // Range of cells without boundary ghosts
 
-  // Get the point->index mapping for cells
-  reverseVertRange = ablate::domain::ReverseRange(vertRange);
-  reverseCellRange = ablate::domain::ReverseRange(cellRange);
+  //// Get the point->index mapping for cells
+  //reverseVertRange = ablate::domain::ReverseRange(vertRange);
+  //reverseCellRange = ablate::domain::ReverseRange(cellRange);
 
 
   // Create individual DMs for vertex- and cell-based data. We need a separate DM for each Vec
@@ -2265,8 +2265,23 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
 
 	int rank;
 	MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+	PetscInt pr = 2; //printing rank
 	
-	if (rank==1) PetscPrintf(PETSC_COMM_SELF, "id_potential starts here %d\n", id_potential);	
+	if (rank==pr) PetscPrintf(PETSC_COMM_SELF, "id_potential starts here %d\n", id_potential);	
+	
+	//PetscInt nVertcheck, *neighborVertscheck;
+	//DMPlexGetNeighbors(vertDM, vertList[id_potential], 1, -1.0, -1, PETSC_TRUE, PETSC_TRUE, &nVertcheck, &neighborVertscheck); // Return neighboring vertices of a vertex by one level and including the corner ones
+	//PetscInt vertIDs_check[nVertcheck], nValidcheck = 0; // nValid is initialized as 1 to include the potential vertex to list
+	//for (PetscInt nv = 0; nv < nVertcheck; ++nv) {
+		//PetscInt index = reverseVertList[neighborVertscheck[nv]];
+		////PetscPrintf(PETSC_COMM_SELF, "index is %d\n", index);
+		//if (updatedVertex[index] > 0.5 && updatedVertex[index] < 1.5) {
+		//vertIDs_check[nValidcheck] = index;
+		////PetscPrintf(PETSC_COMM_SELF, "index is %d and nval is %d\n", vertIDs_check[nValidcheck], nValidcheck);
+		//++nValidcheck;
+		//}
+	//}
+  
 	// Do the calculations for each valid base vertex
 	PetscReal best_phi = PETSC_MAX_REAL;
 	PetscInt result = 0;
@@ -2288,8 +2303,8 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
 			baseIDs[nValidBase++] = id;
 		  }
 		}
-		
-		if (rank==1) {
+
+		if (rank==pr) {
 		for (PetscInt v = 0; v < nValidBase; ++v) {
 			PetscPrintf(PETSC_COMM_SELF, "baseid is %d and i is %d\n", baseIDs[v], v);
 		}
@@ -2336,24 +2351,23 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
 				}
 			}
       
-			if (rank==1) PetscPrintf(PETSC_COMM_SELF, "idbase %d\n", id_base);
+			if (rank==pr) PetscPrintf(PETSC_COMM_SELF, "idbase %d\n", id_base);
 			// always insert id_base
 			stencilIDs[nStencil++] = id_base;
-			if (rank==1) {
+			if (rank==pr) {
 			for (PetscInt v = 0; v < nStencil; ++v) {
 				PetscPrintf(PETSC_COMM_SELF, "idstencil is %d with x %.14f and y %.14f and ls is %.14f\n", stencilIDs[v], xCoord[stencilIDs[v]], yCoord[stencilIDs[v]], lsArray[stencilIDs[v]]);
 			}
 			}
 			if (nStencil < dim) continue;
 			
-			PetscReal best_phi_local = PETSC_MAX_REAL;
-			auto TrySubset = [&](PetscInt *inputstencils, PetscInt nStencil, PetscReal &best_phi_local, PetscReal &best_phi, PetscInt &result, PetscInt *mainstencils, PetscInt nmainStencil) {
+			auto TrySubset = [&](PetscInt *inputstencils, PetscInt nStencil, PetscReal &best_phi, PetscInt &result, PetscInt nmainstencil) {
 				
-				std::sort(inputstencils, inputstencils + nStencil, [&](PetscInt a, PetscInt b) {
-					return PetscAbsReal(lsArray[a]) < PetscAbsReal(lsArray[b]);
-				});
+				//std::sort(inputstencils, inputstencils + nStencil, [&](PetscInt a, PetscInt b) {
+					//return PetscAbsReal(lsArray[a]) < PetscAbsReal(lsArray[b]);
+				//});
 				
-				if (rank==1) {
+				if (rank==pr) {
 				for (PetscInt v = 0; v < nStencil; ++v) {
 					PetscPrintf(PETSC_COMM_SELF, "idstencil with nStencil %d is %d with x %.14f and y %.14f and ls is %.14f\n", nStencil, inputstencils[v], xCoord[inputstencils[v]], yCoord[inputstencils[v]], lsArray[inputstencils[v]]);
 				}
@@ -2424,9 +2438,9 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
 						}
 					}
 		          
-					if (rank==1) PetscPrintf(PETSC_COMM_SELF,"%d and %d\n", edge[0], edge[1]);
-					if (rank==1) PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", xCoord[edge[0]], yCoord[edge[0]]);
-					if (rank==1) PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", N[0], N[1]);
+					if (rank==pr) PetscPrintf(PETSC_COMM_SELF,"%d and %d\n", edge[0], edge[1]);
+					if (rank==pr) PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", xCoord[edge[0]], yCoord[edge[0]]);
+					if (rank==pr) PetscPrintf(PETSC_COMM_SELF,"%f and %f\n", N[0], N[1]);
 		        }
 		        
 		        PetscInt start = alledges[0].v1;  // first vertex of e0
@@ -2465,26 +2479,26 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
 		        }
 		
 		        vol = 0.5 * PetscAbsReal(temp_area);
-		        if (rank==1) PetscPrintf(PETSC_COMM_SELF, "vol is %f\n", vol);
+		        if (rank==pr) PetscPrintf(PETSC_COMM_SELF, "vol is %f\n", vol);
 		        
 				for (PetscInt d = 0; d < dim; ++d) {
-				  if (rank==1) PetscPrintf(PETSC_COMM_SELF, "a is %f and b is %f\n", a[d], b[d]);	
+				  if (rank==pr) PetscPrintf(PETSC_COMM_SELF, "a is %f and b is %f\n", a[d], b[d]);	
 		          a[d] /= vol;
 		          b[d] /= vol;
 		        }
 		        
 		        PetscBool accept = PETSC_FALSE;
 				PetscReal temp_phi = *updatedLS;		
-		        if (rank==1)PetscPrintf(PETSC_COMM_SELF,"Try with %d stencils -> φ = %f\n", nStencil, temp_phi);
+		        if (rank==pr)PetscPrintf(PETSC_COMM_SELF,"Try with %d stencils -> φ = %f\n", nStencil, temp_phi);
 		        PetscInt temp_result = SolveQuadFormula(dim, a, b, &temp_phi);
-		        if (rank==1)PetscPrintf(PETSC_COMM_SELF, "Try with %d stencils -> φ = %f, result=%d\n", nStencil, temp_phi, result);
-				if (rank==1)PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and tempphi is %f and result is %d\n", id_potential, temp_phi, temp_result);	
+		        if (rank==pr)PetscPrintf(PETSC_COMM_SELF, "Try with %d stencils -> φ = %f, result=%d\n", nStencil, temp_phi, result);
+				if (rank==pr)PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and tempphi is %f and result is %d\n", id_potential, temp_phi, temp_result);	
 		        if (temp_result != 1) return false; //no quadratic solution and return temp_result which is zero
 		
 		        PetscBool monotone = PETSC_TRUE;
-				for (PetscInt v = 0; v < nmainStencil; ++v) {
-					if (PetscAbsReal(temp_phi) < PetscAbsReal(lsArray[mainstencils[v]])) {
-						if (rank==1) PetscPrintf(PETSC_COMM_SELF, "Rejected φ=%f because neighbor %d has |φ| smaller.\n", temp_phi, mainstencils[v]);
+				for (PetscInt v = 0; v < nmainstencil; ++v) {
+					if ( PetscAbsReal(temp_phi) < PetscAbsReal(lsArray[stencilIDs[v]]) ) {
+						if (rank==pr) PetscPrintf(PETSC_COMM_SELF, "Rejected φ=%f because neighbor %d has |φ| smaller.\n", temp_phi, stencilIDs[v]);
 		                monotone = PETSC_FALSE;
 		                return false;
 					}
@@ -2492,15 +2506,10 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
 		
 				if (monotone) {
 				  accept = PETSC_TRUE;
-				  best_phi_local = temp_phi;
 				}
 		
-		        //if (accept && PetscAbsReal(best_phi_local) < PetscAbsReal(best_phi)) {
-		          //best_phi = best_phi_local;
-		          //result = temp_result;
-		        //}
 		        if (accept) {
-				    if (nStencil > best_stencil_size || (nStencil == best_stencil_size && PetscAbsReal(temp_phi) < PetscAbsReal(best_phi))) {
+				    if ( nStencil >= best_stencil_size || (nStencil == best_stencil_size && PetscAbsReal(temp_phi) < PetscAbsReal(best_phi)) ) {
 				        best_phi = temp_phi;
 				        best_stencil_size = nStencil;
 				        result = temp_result;
@@ -2510,13 +2519,13 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
 			};
 			
 			// full stencil for a base
-			TrySubset(stencilIDs, nStencil, best_phi_local, best_phi, result, stencilIDs, nStencil);
+			TrySubset(stencilIDs, nStencil, best_phi, result, nStencil);
 			
 			// all pairs
 			for (PetscInt i = 0; i < nStencil; ++i) {
 			    for (PetscInt j = i + 1; j < nStencil; ++j) {
 			        PetscInt pair[2] = { stencilIDs[i], stencilIDs[j] };
-			        TrySubset(pair, 2, best_phi_local, best_phi, result, stencilIDs, nStencil);
+			        TrySubset(pair, 2, best_phi, result, nStencil);
 			    }
 			}
 
@@ -2685,7 +2694,7 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
 	}
 
 	*updatedLS = best_phi;
-	if (rank==1) PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and ls is %.14f\n", id_potential, *updatedLS);	
+	if (rank==pr) PetscPrintf(PETSC_COMM_SELF, "id_potential is %d and ls is %.14f\n", id_potential, *updatedLS);	
 	//xexit("exit for autofunction");
 	return result;
 }

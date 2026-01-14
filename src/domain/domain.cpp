@@ -139,9 +139,11 @@ std::shared_ptr<ablate::domain::SubDomain> ablate::domain::Domain::GetSubDomain(
         return subDomains.front();
     }
 }
-
+#include "levelSet/interfaceReconstruction.hpp"
+#include "finiteVolume/finiteVolumeSolver.hpp"
 void ablate::domain::Domain::InitializeSubDomains(const std::vector<std::shared_ptr<solver::Solver>>& solvers, const std::shared_ptr<ablate::domain::Initializer>& initializations,
                                                   const std::vector<std::shared_ptr<mathFunctions::FieldFunction>>& exactSolutions) {
+
     // determine the number of fields
     for (auto& solver : solvers) {
         solver->Register(GetSubDomain(solver->GetRegion()));
@@ -158,6 +160,22 @@ void ablate::domain::Domain::InitializeSubDomains(const std::vector<std::shared_
     CreateStructures();
     for (auto& subDomain : subDomains) {
         subDomain->CreateSubDomainStructures();
+
+
+
+auto flow = std::dynamic_pointer_cast<ablate::finiteVolume::FiniteVolumeSolver>(solvers[0]);
+
+
+std::shared_ptr<ablate::levelSet::Reconstruction> reconstruction = std::make_shared<ablate::levelSet::Reconstruction>(subDomain, flow->GetRegionWithoutGhost());
+
+Vec auxVector = subDomain->GetAuxVector(); // Getting the Auxiliary Vector (contains data for all aux fields)
+DM aux_dm = subDomain->GetAuxDM(); // Getting the Auxiliary DM which has Auxiliary fields
+const ablate::domain::Field *levelSetField = &(subDomain->GetField("levelSet")); // Getting the level set field for vertices (FEM)
+reconstruction->arbit_interface(aux_dm, *levelSetField, auxVector);
+
+printf("%s::%d\n", __FILE__, __LINE__);
+exit(0);
+
     }
 
     // set all values to nan to allow for a output check

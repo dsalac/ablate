@@ -25,7 +25,7 @@ namespace ablate::levelSet {
 
     private:
 
-      const PetscInt nLevels = 2000;
+      const PetscInt nLevels = 4000;
 
       enum VecLoc { LOCAL , GLOBAL };
 
