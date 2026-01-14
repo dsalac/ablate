@@ -51,7 +51,7 @@ PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscIn
  * maxLevels - Number of neighboring cells/vertices to check
  * maxDist - Maximum distance to include
  * numberCells - The number of cells/vertices to return.
- * useSharedFace - Return cells/vertices which share a common face (PETSC_TRUE) or a shared vertex (PETSC_FALSE)
+ * useSharedFace - Return cells/vertices which share a common face (PETSC_TRUE) or a shared edge (PETSC_FALSE) 
  * returnVertices - Return vertices surrounding the center cell (PETSC_TRUE) or cells surrounding the center cell (PETSC_FALSE)
  * nCells - Number of neighboring cells/vertices
  * cells - The list of neighboring cell/vertices IDs
