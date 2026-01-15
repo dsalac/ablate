@@ -9,7 +9,7 @@
 #include <petscblaslapack.h>
 
 
-
+#define FMMDEBUG 0
 
 using namespace ablate::levelSet;
 
@@ -608,6 +608,7 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
   DMRestoreLocalVector(cellDM, &cellMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
   DMRestoreGlobalVector(cellDM, &cellMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
 
+#if FMMDEBUG
   char filename[64];
   snprintf(filename, sizeof(filename), "cellmask_rank%d.txt", rank);
   FILE *file1 = fopen(filename, "w");
@@ -618,6 +619,7 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
     PetscFPrintf(PETSC_COMM_SELF, file1, "%" PetscInt_FMT", %f, %f, %" PetscInt_FMT"\n", cellList[c], x[0], x[1], cellMask[c]);
   }
   fclose(file1);
+#endif
 
   // Set the vertex mask-----------------------------------------------------------------------------------------------------------
   PetscScalar *vertMaskVecArray = nullptr;
@@ -676,7 +678,7 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
   VecRestoreArray(vertMaskVec[LOCAL], &vertMaskVecArray) >> ablate::utilities::PetscUtilities::checkError;
   DMRestoreLocalVector(vertDM, &vertMaskVec[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
   DMRestoreGlobalVector(vertDM, &vertMaskVec[GLOBAL]) >> ablate::utilities::PetscUtilities::checkError;
-
+#if FFMDEBUG
   snprintf(filename, sizeof(filename), "vertmask_rank%d.txt", rank);
   FILE *file2 = fopen(filename, "w");
   for (PetscInt v = 0; v < nLocalVert; ++v) {
@@ -684,7 +686,7 @@ void Reconstruction::SetMasks(DM vofDM, Vec vofVec, const ablate::domain::Field 
     PetscFPrintf(PETSC_COMM_SELF, file2, "%" PetscInt_FMT", %f, %f, %" PetscInt_FMT"\n", vertList[v], x[0], x[1], vertMask[v]);
   }
   fclose(file2);
-
+#endif
 }
 
 // vofVec MUST have ghost cell information
@@ -2511,10 +2513,11 @@ PetscInt Reconstruction::FMM_VertexBased_GG_2D(const PetscInt vert, const PetscI
 
           // If the other vertex is NOT the point to be updated add it to the stencil list
           if (nonBaseVert != vert) stencil[nStencil++] = nonBaseVert;
-
+#if FMMDEBUG
           if (nStencil > 4) {
             throw std::runtime_error("Too many points in the stencil!");
           }
+#endif
         }
 
         DMPlexRestoreCommonPoints(cellDM, base, cells[c], 1, &nEdge, &edges) >> utilities::PetscUtilities::checkError;
@@ -2669,12 +2672,6 @@ PetscInt Reconstruction::FFM_VertexBased_GMGG(const PetscInt dim, PetscInt id_po
         }
         return false;
       };
-
-for (PetscInt i = 0; i < nCells; ++i) {
-  printf("%ld\n", cellIDs[i]);
-}
-
-xexit("");
 
       for (PetscInt i = 0; i < nCells; ++i) {
         PetscInt nCellVert, *cellverts;
@@ -2940,17 +2937,21 @@ PetscErrorCode Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, cons
 
                 const PetscInt clID = reverseVertList[closure[cl]];
                 if (closure[cl]==vertID) {
+#if FMMDEBUG
                   if (updatedVertex[LOCAL][clID] > 0.5 && updatedVertex[LOCAL][clID] < 1.5) {
                     PetscPrintf(PETSC_COMM_SELF, "How can this be possible?\n");
                     MPI_Abort(PETSC_COMM_WORLD, PETSC_ERR_PLIB); // abort all ranks safely
                   }
+#endif
                   ++vertCoeff;
                 }
                 else {
+#if FMMDEBUG
                   if (updatedVertex[LOCAL][clID] < 0.5 || updatedVertex[LOCAL][clID] > 1.5) {
                     PetscPrintf(PETSC_COMM_SELF, "How can this be possible?\n");
                     MPI_Abort(PETSC_COMM_WORLD, PETSC_ERR_PLIB); // abort all ranks safely
                   }
+#endif
                   ave += lsArray[LOCAL][clID];
                 }
 
@@ -2986,7 +2987,7 @@ PetscErrorCode Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, cons
 
           updatedVertex[GLOBAL][id] = PetscMin(updatedVertex[GLOBAL][id] + result, 1.0);
           numVertUpdated_cellbased += result;
-
+#if FMMDEBUG
           // Animation part
           if (updatedVertex[GLOBAL][id] > 0.5) {
               PetscReal x[dim];
@@ -2994,6 +2995,7 @@ PetscErrorCode Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, cons
               fprintf(animFile, "%d %" PetscInt_FMT" %" PetscInt_FMT" %f %f %s\n", rank, currentLevel, id, x[0], x[1], "cellbased");
               fflush(animFile);
           }
+#endif
 
         }
         DMPlexCellRestoreVertices(vertDM, cell, &nVert, &verts) >> ablate::utilities::PetscUtilities::checkError;
@@ -3056,7 +3058,7 @@ PetscErrorCode Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, cons
 
           updatedVertex[GLOBAL][updateIndex] = PetscMin(updatedVertex[GLOBAL][updateIndex] + result, 1.0);
           numVertUpdated_vertexbased  += (updatedVertex[GLOBAL][updateIndex] > 0.5);
-
+#if FMMDEBUG
           //Animation part
           if (updatedVertex[GLOBAL][updateIndex] > 0.5) {
               PetscReal x[dim];
@@ -3064,6 +3066,7 @@ PetscErrorCode Reconstruction::FMM_PrimeHybrid(const PetscInt currentLevel, cons
               fprintf(animFile, "%d %" PetscInt_FMT" %" PetscInt_FMT" %f %f %s\n", rank, currentLevel, updateIndex, x[0], x[1], "vertexbased_v1");
               fflush(animFile);
           }
+#endif
         }
         else {
           throw std::runtime_error("How can there be no valid vertex to update?");
@@ -3130,42 +3133,34 @@ void Reconstruction::FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec
   VecCopy(lsVec[LOCAL], lsVecCopy[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
   // Declaring coordinate vectors to save coordinates to avoid any issue for finding the coordinates of ghost vertices in other ranks
-  Vec xVec[2], yVec[2];
-  DMGetLocalVector(vertDM, &xVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-  DMGetGlobalVector(vertDM, &xVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
-  DMGetLocalVector(vertDM, &yVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-  DMGetGlobalVector(vertDM, &yVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+  Vec xVec[2] = {nullptr, nullptr}, yVec[2] = {nullptr, nullptr};
+//  DMGetLocalVector(vertDM, &xVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+//  DMGetGlobalVector(vertDM, &xVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
+//  DMGetLocalVector(vertDM, &yVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+//  DMGetGlobalVector(vertDM, &yVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
 
-  PetscScalar *xCoord[2] = {nullptr, nullptr}, *yCoord[2] = {nullptr, nullptr};
-  VecGetArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
-  VecGetArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
-  VecGetArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
-  VecGetArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
+//  PetscScalar *xCoord[2] = {nullptr, nullptr}, *yCoord[2] = {nullptr, nullptr};
+//  VecGetArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+//  VecGetArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
+//  VecGetArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+//  VecGetArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-  for (PetscInt v = 0; v < nLocalVert; ++v) {
-    PetscReal x[dim];
-    DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
-    xCoord[LOCAL][v] = x[0];
-    xCoord[GLOBAL][v] = x[0];
-    yCoord[LOCAL][v] = x[1];
-    yCoord[GLOBAL][v] = x[1];
-  }
+//  for (PetscInt v = 0; v < nLocalVert; ++v) {
+//    PetscReal x[dim];
+//    DMPlexComputeCellGeometryFVM(vertDM, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
+//    xCoord[LOCAL][v] = x[0];
+//    xCoord[GLOBAL][v] = x[0];
+//    yCoord[LOCAL][v] = x[1];
+//    yCoord[GLOBAL][v] = x[1];
+//  }
 
-  DMGlobalToLocal(vertDM, xVec[GLOBAL], INSERT_VALUES, xVec[LOCAL]) >> utilities::PetscUtilities::checkError;
-  DMGlobalToLocal(vertDM, yVec[GLOBAL], INSERT_VALUES, yVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+//  DMGlobalToLocal(vertDM, xVec[GLOBAL], INSERT_VALUES, xVec[LOCAL]) >> utilities::PetscUtilities::checkError;
+//  DMGlobalToLocal(vertDM, yVec[GLOBAL], INSERT_VALUES, yVec[LOCAL]) >> utilities::PetscUtilities::checkError;
 
-  //char filename[64];
-  //if (rank == 1) {
-    //snprintf(filename, sizeof(filename), "coord_rank%" PetscInt_FMT".txt", rank);
-    //FILE *file6 = fopen(filename, "w");
-    //for (PetscInt v = 0; v < nTotalVert; ++v) {
-      //PetscFPrintf(PETSC_COMM_SELF, file6, "%" PetscInt_FMT", %f, %f\n", v, xCoord[LOCAL][v], yCoord[LOCAL][v]);
-    //}
-  //}
-  VecRestoreArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
-  VecRestoreArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
-  VecRestoreArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
-  VecRestoreArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
+//  VecRestoreArray(xVec[GLOBAL], &xCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+//  VecRestoreArray(xVec[LOCAL], &xCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
+//  VecRestoreArray(yVec[GLOBAL], &yCoord[GLOBAL]) >> utilities::PetscUtilities::checkError;
+//  VecRestoreArray(yVec[LOCAL], &yCoord[LOCAL]) >> utilities::PetscUtilities::checkError;
 
   for (PetscInt v = 0; v < nLocalVert; ++v) {
     if (vertMask[v]==1) {
@@ -3192,17 +3187,20 @@ void Reconstruction::FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec
   VecRestoreArray(lsVec[GLOBAL], &lsArr[GLOBAL]) >> utilities::PetscUtilities::checkError;
   VecRestoreArray(lsVec[LOCAL], &lsArr[LOCAL]) >> utilities::PetscUtilities::checkError;
 
+  FILE *animFile = nullptr;
+#if FMMDEBUG
   char filename[64];
   snprintf(filename, sizeof(filename), "anim_rank%d.txt", rank);
-  FILE *animFile = fopen(filename, "w");
+  animFile = fopen(filename, "w");
   if (!animFile) {
     throw std::runtime_error("Could not open update log file");
   }
+#endif
 
   for (PetscInt currentLevel = 2; currentLevel <= nLevels; ++currentLevel) {
   //FILE* animFile = nullptr; // just to avoid creation of any animation file
     Reconstruction::FMM_PrimeHybrid(currentLevel, dim+1, cellMask, vertMask, updatedVec, lsVec, lsVecCopy, xVec, yVec, animFile) >> utilities::PetscUtilities::checkError;
-
+#if FMMDEBUG
     VecGetArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
     for (PetscInt v = 0; v < nLocalVert; ++v) {
       if (vertMask[v]==currentLevel && updatedVertex[GLOBAL][v]<0.5) {
@@ -3216,15 +3214,16 @@ void Reconstruction::FMM(const PetscInt *cellMask, const PetscInt *vertMask, Vec
       }
     }
     VecRestoreArray(updatedVec[GLOBAL], &updatedVertex[GLOBAL]) >> utilities::PetscUtilities::checkError;
+#endif
   }
-
+#if FMMDEBUG
   fclose(animFile);
-
   SaveData(vertDM, lsVec[GLOBAL], nLocalVert, vertList, "FMM.txt", 1);
+#endif
 
   DMRestoreLocalVector(vertDM, &updatedVec[LOCAL]) >> utilities::PetscUtilities::checkError;
   DMRestoreGlobalVector(vertDM, &updatedVec[GLOBAL]) >> utilities::PetscUtilities::checkError;
-xexit("");
+
 }
 
 PetscBool Reconstruction::CutCellfromLS(DM aux_dm, const PetscInt point, const ablate::domain::Field *levelSetField, Vec auxVector) {
@@ -3648,9 +3647,6 @@ PetscScalar LScircle(const PetscReal* x, const PetscInt dim) {
 
 void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field levelSetField, Vec auxVector, std::string shapeName) {
 
-  PetscLogDouble t1, t2, elapsed;
-  PetscTime(&t1);
-
   int rank, size;
   MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
   MPI_Comm_size(PETSC_COMM_WORLD, &size);
@@ -3683,7 +3679,8 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
   else if (shapeName == "cassini")   lsFunc = &LScassinioval;
   else throw std::runtime_error("Unknown shape");
 
-
+  PetscLogDouble t1, t2;
+  PetscTime(&t1);
   for (PetscInt v = 0; v < nLocalVert; v++) {
     PetscScalar *lsVal= nullptr;
     DMPlexPointLocalFieldRef(aux_dm, vertList[v], lsfieldID, lsArray, &lsVal); // Access to a specific field variable corresponding to the correct index in aux vector for a specific point in aux dm
@@ -3691,23 +3688,17 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
     DMPlexComputeCellGeometryFVM(aux_dm, vertList[v], NULL, x, NULL) >> utilities::PetscUtilities::checkError; // Get the coordinates of a vertex
 
     *lsVal = lsFunc(x, dim);
-
-
-    //*lsVal = LScircle(x, dim);
-    //*lsVal = LSellipse(x, dim);
-    //*lsVal = LScassinioval(x, dim);
-    //*lsVal = LSstar(x, dim);
-
-
-    //PetscFPrintf(PETSC_COMM_SELF, file, "%" PetscInt_FMT", %f, %f, %.16f\n", v, x[0], x[1], *lsVal);
   }
-  //fclose(file);
   VecRestoreArray(auxVector, &lsArray) >> ablate::utilities::PetscUtilities::checkError;
+
+  PetscTime(&t2);
+  PetscPrintf(PETSC_COMM_WORLD,"%10s: %g seconds\n", "lsTrue", t2 - t1);
 
   DMLocalToGlobal(aux_dm, auxVector, INSERT_VALUES, globalVec);
   DMGlobalToLocal(aux_dm, globalVec, INSERT_VALUES, auxVector);
   MPI_Barrier(PETSC_COMM_WORLD);
 
+#if FMMDEBUG
   PetscScalar *global_lsArray;
   PetscInt Nc = 1;
   PetscMalloc1(nLocalVert * Nc, &global_lsArray);
@@ -3721,12 +3712,16 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
   VecRestoreArray(auxVector, &vecArr);
   SaveData(aux_dm, global_lsArray, nLocalVert, vertList, "lstrue.txt", Nc);
   PetscFree(global_lsArray);
+#endif
 
   PetscInt *vertMask = nullptr, *cellMask = nullptr;
   DMGetWorkArray(vertDM, nTotalVert, MPIU_INT, &vertMask) >> ablate::utilities::PetscUtilities::checkError;
   DMGetWorkArray(cellDM, nTotalCell, MPIU_INT, &cellMask) >> ablate::utilities::PetscUtilities::checkError;
 
+  PetscTime(&t1);
   SetMasks(aux_dm, auxVector, levelSetField, nLevels, cellMask, vertMask);
+  PetscTime(&t2);
+  PetscPrintf(PETSC_COMM_WORLD,"%10s: %g seconds\n", "Masks", t2 - t1);
 
   // Setting the lsVec which is a vector of level set values for vertices associated with cut-cells
   Vec lsVec[2] = {nullptr, nullptr};                 // [LOCAL, GLOBAL]
@@ -3767,14 +3762,15 @@ void Reconstruction::arbit_interface(DM aux_dm, const ablate::domain::Field leve
 
   VecRestoreArray(lsVec[LOCAL], &lsArr[LOCAL]) >> ablate::utilities::PetscUtilities::checkError;
 
+  PetscTime(&t1);
   FMM(cellMask, vertMask, lsVec);
-
   PetscTime(&t2);
-  elapsed = t2 - t1;
-  PetscPrintf(PETSC_COMM_WORLD,"Elapsed time: %g seconds\n",elapsed);
+  PetscPrintf(PETSC_COMM_WORLD,"%10s: %g seconds\n", "lsTrue", t2 - t1);
 
   PetscPrintf(PETSC_COMM_WORLD, "FMM is done\n");
+  MPI_Barrier(PETSC_COMM_WORLD);
   PetscFinalize();
+  exit(0);
 
 
   //PetscReal *closestPoint;
