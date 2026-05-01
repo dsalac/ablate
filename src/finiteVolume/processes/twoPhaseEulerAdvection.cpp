@@ -13,8 +13,9 @@
 
 #include <signal.h>
 
-#define NOTE0EXIT(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr,                                     \
-  "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n",    \
+
+#define xexit(S, ...) {PetscFPrintf(MPI_COMM_WORLD, stderr, \
+  "\x1b[1m(%s:%d, %s)\x1b[0m\n  \x1b[1m\x1b[90mexiting:\x1b[0m " S "\n", \
   __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(0);}
 
 static inline void NormVector(PetscInt dim, const PetscReal *in, PetscReal *out) {
@@ -495,7 +496,7 @@ PetscErrorCode ablate::finiteVolume::processes::TwoPhaseEulerAdvection::Compress
   PetscFunctionBeginUser;
 //  auto flow = (ablate::finiteVolume::FiniteVolumeSolver *)ctx;
 //  auto twoPhaseEulerAdvection = (TwoPhaseEulerAdvection *)ctx;
-  NOTE0EXIT("");
+  xexit("");
 
   PetscFunctionReturn(0);
 
@@ -1054,17 +1055,16 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
       eL = internalEnergy;
       TL = (eL*rhoL - p0L)/(cvL*rhoL);
 
-      PetscReal rho0 = 998.23;
+      const PetscReal rho0L = eosLiquid->GetDensity();
 
-      if (rhoL < rho0) {
-        PetscReal p0  = (gammaL - 1.0)*rho0*eL - gammaL*p0L; // What the pressure would be if the density was higher
+      if (rhoL < 0.99*rho0L) {
+        PetscReal p0  = (gammaL - 1.0)*rho0L*eL - gammaL*p0L; // What the pressure would be if the density was higher
         PetscReal dp0 = (gammaL - 1.0)*eL;  // The slope of the pressure
-        PetscReal fac = p0 - dp0*rho0;
-        PetscReal a = dp0*PetscSqr(p0*rho0/fac);
-        PetscReal b = -dp0*PetscSqr(rho0)/fac;
+        PetscReal fac = p0 - dp0*rho0L;
+        PetscReal a = dp0*PetscSqr(p0*rho0L/fac);
+        PetscReal b = -dp0*PetscSqr(rho0L)/fac;
         PetscReal c = PetscSqr(p0)/fac;
         pL = a/(b-rhoL) + c;
-
       }
       else {
         pL = (gammaL - 1.0)*rhoL*eL - gammaL*p0L;
@@ -1083,7 +1083,6 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
       eG = cvG*TG;
 
       alphaG = 0.0;
-
     }
     else if (Yl < massFractionMin) { //All gas
       rhoG = density;

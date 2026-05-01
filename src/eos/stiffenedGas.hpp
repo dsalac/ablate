@@ -20,6 +20,7 @@ class StiffenedGas : public EOS {
         PetscReal Cp;
         PetscReal p0;
         PetscInt numberSpecies;
+        PetscReal density;
     };
     Parameters parameters;
 
@@ -105,6 +106,8 @@ class StiffenedGas : public EOS {
      * @return
      */
     PetscReal GetReferencePressure() const { return parameters.p0; }
+
+    PetscReal GetDensity() const { return parameters.density; }
 
     /**
      * Single function to produce thermodynamic function for any property based upon the available fields

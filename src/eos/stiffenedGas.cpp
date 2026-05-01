@@ -6,6 +6,7 @@ ablate::eos::StiffenedGas::StiffenedGas(std::shared_ptr<ablate::parameters::Para
     parameters.gamma = parametersIn->Get<PetscReal>("gamma", 1.932);
     parameters.Cp = parametersIn->Get<PetscReal>("Cp", 8095.08);
     parameters.p0 = parametersIn->Get<PetscReal>("p0", 1169350402.52);
+    parameters.density = parametersIn->Get<PetscReal>("density", 998.23);
     parameters.numberSpecies = species.size();
 }
 
