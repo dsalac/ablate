@@ -87,34 +87,38 @@ void ablate::finiteElement::FiniteElementSolver::UpdateAuxFields(TS ts, ablate::
 
 PetscErrorCode ablate::finiteElement::FiniteElementSolver::ComputeIFunction(PetscReal time, Vec locX, Vec locX_t, Vec locF) {
     PetscFunctionBegin;
-    DM plex;
-    IS allcellIS;
 
-    PetscCall(DMConvert(subDomain->GetDM(), DMPLEX, &plex));
-    PetscCall(DMPlexGetAllCells_Internal(plex, &allcellIS));
+    PetscPrintf(PETSC_COMM_WORLD, "Function is broken: %s::%s", __FILE__, __FUNCTION__);
+    exit(0);
 
-    IS cellIS;
-    PetscFormKey key;
-    key.label = subDomain->GetLabel();
-    key.value = 0;
-    key.field = 0;
-    key.part = 0;
-    if (!key.label) {
-        PetscCall(PetscObjectReference((PetscObject)allcellIS));
-        cellIS = allcellIS;
-    } else {
-        IS pointIS;
+//    DM plex;
+//    IS allcellIS;
 
-        key.value = 1;
-        PetscCall(DMLabelGetStratumIS(key.label, key.value, &pointIS));
-        PetscCall(ISIntersect_Caching_Internal(allcellIS, pointIS, &cellIS));
-        PetscCall(ISDestroy(&pointIS));
-    }
-    PetscCall(DMPlexComputeResidual_Internal(plex, key, cellIS, time, locX, locX_t, time, locF, nullptr));
-    PetscCall(ISDestroy(&cellIS));
+//    PetscCall(DMConvert(subDomain->GetDM(), DMPLEX, &plex));
+//    PetscCall(DMPlexGetAllCells_Internal(plex, &allcellIS));
 
-    PetscCall(ISDestroy(&allcellIS));
-    PetscCall(DMDestroy(&plex));
+//    IS cellIS;
+//    PetscFormKey key;
+//    key.label = subDomain->GetLabel();
+//    key.value = 0;
+//    key.field = 0;
+//    key.part = 0;
+//    if (!key.label) {
+//        PetscCall(PetscObjectReference((PetscObject)allcellIS));
+//        cellIS = allcellIS;
+//    } else {
+//        IS pointIS;
+
+//        key.value = 1;
+//        PetscCall(DMLabelGetStratumIS(key.label, key.value, &pointIS));
+//        PetscCall(ISIntersect_Caching_Internal(allcellIS, pointIS, &cellIS));
+//        PetscCall(ISDestroy(&pointIS));
+//    }
+//    PetscCall(DMPlexComputeResidual_Internal(plex, key, cellIS, time, locX, locX_t, time, locF, nullptr));
+//    PetscCall(ISDestroy(&cellIS));
+
+//    PetscCall(ISDestroy(&allcellIS));
+//    PetscCall(DMDestroy(&plex));
 
     PetscFunctionReturn(0);
 }
@@ -122,43 +126,46 @@ PetscErrorCode ablate::finiteElement::FiniteElementSolver::ComputeIFunction(Pets
 PetscErrorCode ablate::finiteElement::FiniteElementSolver::ComputeIJacobian(PetscReal time, Vec locX, Vec locX_t, PetscReal X_tShift, Mat Jac, Mat JacP) {
     PetscFunctionBeginUser;
 
-    DM plex;
-    IS allcellIS;
-    PetscBool hasJac, hasPrec;
+    PetscPrintf(PETSC_COMM_WORLD, "Function is broken: %s::%s", __FILE__, __FUNCTION__);
+    exit(0);
 
-    PetscCall(DMConvert(subDomain->GetDM(), DMPLEX, &plex));
-    PetscCall(DMPlexGetAllCells_Internal(plex, &allcellIS));
+//    DM plex;
+//    IS allcellIS;
+//    PetscBool hasJac, hasPrec;
 
-    PetscDS ds = subDomain->GetDiscreteSystem();
-    IS cellIS;
-    PetscFormKey key;
-    key.label = subDomain->GetLabel();
-    key.value = 0;
-    key.field = 0;
-    key.part = 0;
-    if (!key.label) {
-        PetscCall(PetscObjectReference((PetscObject)allcellIS));
-        cellIS = allcellIS;
-    } else {
-        IS pointIS;
+//    PetscCall(DMConvert(subDomain->GetDM(), DMPLEX, &plex));
+//    PetscCall(DMPlexGetAllCells_Internal(plex, &allcellIS));
 
-        key.value = 1;
-        PetscCall(DMLabelGetStratumIS(key.label, key.value, &pointIS));
-        PetscCall(ISIntersect_Caching_Internal(allcellIS, pointIS, &cellIS));
-        PetscCall(ISDestroy(&pointIS));
-    }
-    PetscCall(PetscDSHasJacobian(ds, &hasJac));
-    PetscCall(PetscDSHasJacobianPreconditioner(ds, &hasPrec));
-    if (hasJac && hasPrec) {
-        PetscCall(MatZeroEntries(Jac));
-    }
-    PetscCall(MatZeroEntries(JacP));
+//    PetscDS ds = subDomain->GetDiscreteSystem();
+//    IS cellIS;
+//    PetscFormKey key;
+//    key.label = subDomain->GetLabel();
+//    key.value = 0;
+//    key.field = 0;
+//    key.part = 0;
+//    if (!key.label) {
+//        PetscCall(PetscObjectReference((PetscObject)allcellIS));
+//        cellIS = allcellIS;
+//    } else {
+//        IS pointIS;
 
-    PetscCall(DMPlexComputeJacobian_Internal(plex, key, cellIS, time, X_tShift, locX, locX_t, Jac, JacP, nullptr));
-    PetscCall(ISDestroy(&cellIS));
+//        key.value = 1;
+//        PetscCall(DMLabelGetStratumIS(key.label, key.value, &pointIS));
+//        PetscCall(ISIntersect_Caching_Internal(allcellIS, pointIS, &cellIS));
+//        PetscCall(ISDestroy(&pointIS));
+//    }
+//    PetscCall(PetscDSHasJacobian(ds, &hasJac));
+//    PetscCall(PetscDSHasJacobianPreconditioner(ds, &hasPrec));
+//    if (hasJac && hasPrec) {
+//        PetscCall(MatZeroEntries(Jac));
+//    }
+//    PetscCall(MatZeroEntries(JacP));
 
-    PetscCall(ISDestroy(&allcellIS));
-    PetscCall(DMDestroy(&plex));
+//    PetscCall(DMPlexComputeJacobian_Internal(plex, key, cellIS, time, X_tShift, locX, locX_t, Jac, JacP, nullptr));
+//    PetscCall(ISDestroy(&cellIS));
+
+//    PetscCall(ISDestroy(&allcellIS));
+//    PetscCall(DMDestroy(&plex));
 
     PetscFunctionReturn(0);
 }

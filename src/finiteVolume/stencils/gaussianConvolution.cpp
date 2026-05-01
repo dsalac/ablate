@@ -132,7 +132,7 @@ PetscReal derivativeFactor(const PetscReal *x, const PetscReal sigmaSqr, const P
     case  11: // yz
       return (x[1]*x[2]/PetscSqr(sigmaSqr));
     default:
-      printf("%ld\n", derHash);
+      printf("%" PetscInt_FMT"\n", derHash);
       throw std::runtime_error("Unknown derivative request");
   }
 

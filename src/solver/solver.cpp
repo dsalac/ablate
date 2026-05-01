@@ -133,7 +133,7 @@ PetscErrorCode ablate::solver::Solver::DMPlexInsertBoundaryValues_Plex(DM dm, Pe
             switch (type) {
                     /* for FEM, there is no insertion to be done for non-essential boundary conditions */
                 case DM_BC_ESSENTIAL: {
-                    PetscSimplePointFunc func = (PetscSimplePointFunc)bvfunc;
+                    PetscSimplePointFn* func = (PetscSimplePointFn*)bvfunc;
 
                     if (isZero) func = zero;
                     PetscCall(DMPlexLabelAddCells(dm, label));
@@ -141,7 +141,7 @@ PetscErrorCode ablate::solver::Solver::DMPlexInsertBoundaryValues_Plex(DM dm, Pe
                     PetscCall(DMPlexLabelClearCells(dm, label));
                 } break;
                 case DM_BC_ESSENTIAL_FIELD: {
-                    PetscPointFunc func = (PetscPointFunc)bvfunc;
+                    PetscPointFn* func = (PetscPointFn*)bvfunc;
 
                     PetscCall(DMPlexLabelAddCells(dm, label));
                     PetscCall(DMPlexInsertBoundaryValuesEssentialField(dm, time, locX, field, Nc, comps, label, numids, ids, func, ctx, locX));
@@ -195,7 +195,7 @@ PetscErrorCode ablate::solver::Solver::DMPlexInsertTimeDerivativeBoundaryValues_
             switch (type) {
                     /* for FEM, there is no insertion to be done for non-essential boundary conditions */
                 case DM_BC_ESSENTIAL: {
-                    PetscSimplePointFunc func_t = (PetscSimplePointFunc)bvfunc;
+                    PetscSimplePointFn* func_t = (PetscSimplePointFn*)bvfunc;
 
                     if (isZero) func_t = zero;
                     PetscCall(DMPlexLabelAddCells(dm, label));
@@ -203,7 +203,7 @@ PetscErrorCode ablate::solver::Solver::DMPlexInsertTimeDerivativeBoundaryValues_
                     PetscCall(DMPlexLabelClearCells(dm, label));
                 } break;
                 case DM_BC_ESSENTIAL_FIELD: {
-                    PetscPointFunc func_t = (PetscPointFunc)bvfunc;
+                    PetscPointFn* func_t = (PetscPointFn*)bvfunc;
 
                     PetscCall(DMPlexLabelAddCells(dm, label));
                     PetscCall(DMPlexInsertBoundaryValuesEssentialField(dm, time, locX, field, Nc, comps, label, numids, ids, func_t, ctx, locX));

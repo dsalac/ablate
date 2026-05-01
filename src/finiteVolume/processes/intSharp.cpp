@@ -415,9 +415,9 @@ printf("%s::%d\n", __FILE__, __LINE__);
 
 if ((iter)%10==0) {
     char fname[255];
-    sprintf(fname, "vof_%05ld.txt", iter);
+    sprintf(fname, "vof_%05" PetscInt_FMT".txt", iter);
     SaveCellData(vofDM, vofVecs[LOCAL], fname, -1, 1, cellRange);
-    PetscPrintf(PETSC_COMM_WORLD, "%ld\t%e\n", iter, maxDiff);
+    PetscPrintf(PETSC_COMM_WORLD, "%" PetscInt_FMT"\t%e\n", iter, maxDiff);
 }
 
   }
