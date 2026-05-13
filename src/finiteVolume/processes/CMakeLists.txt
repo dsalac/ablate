@@ -15,10 +15,11 @@ target_sources(ablateLibrary
         radiationLoss.cpp
         thermophoreticDiffusion.cpp
         surfaceForce.cpp
+        surfaceForceNew.cpp
         soot.cpp
         compactCompressibleNSSpeciesTransport.cpp
         compactCompressibleNSSpeciesSingleProgressTransport.cpp
-        intSharp.cpp
+        intSharp-marziale.cpp
         locations.cpp
 
         PUBLIC
@@ -38,9 +39,10 @@ target_sources(ablateLibrary
         radiationLoss.hpp
         thermophoreticDiffusion.hpp
         surfaceForce.hpp
+        surfaceForceNew.hpp
         soot.hpp
         compactCompressibleNSSpeciesTransport.hpp
         compactCompressibleNSSpeciesSingleProgressTransport.hpp
-        intSharp.hpp
+        intSharp-marziale.hpp
         locations.hpp
         )

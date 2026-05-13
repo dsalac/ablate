@@ -215,7 +215,7 @@ void UpdateSolVec(ablate::domain::SubDomain& subDomain, ablate::domain::Range ce
   PetscScalar *solArray;
   VecGetArray(solVec, &solArray) >> ablate::utilities::PetscUtilities::checkError;
 
-  Vec auxVec = subDomain.GetAuxVector();
+  Vec auxVec = subDomain.GetAuxGlobalVector();
   DM auxDM = subDomain.GetAuxDM();
   const PetscScalar *auxArray;
   VecGetArrayRead(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
@@ -302,6 +302,20 @@ printf("%s::%d\n", __FILE__, __LINE__);
 
   ablate::domain::Range cellRange;
   fvSolver.GetCellRangeWithoutGhost(cellRange);
+
+FILE *f1 = fopen("pts.txt", "w");
+for(PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+  const PetscInt cell = cellRange.GetPoint(c);
+  PetscReal x[2];
+  DMPlexPointGeometricData(subDM, cell, NULL, x, NULL);
+  fprintf(f1, "%+f\t%+f\n", x[0], x[1]);
+
+}
+
+fclose(f1);
+
+printf("%s::%d\n", __FILE__, __LINE__);
+exit(0);
 
   // Get the VOF data.
   const ablate::domain::Field vofField = subDomain.GetField(ablate::finiteVolume::processes::TwoPhaseEulerAdvection::VOLUME_FRACTION_FIELD);

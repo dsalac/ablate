@@ -88,14 +88,14 @@ GaussianConvolution::GaussianConvolution(DM geomDM, const PetscReal sigmaFactor,
 GaussianConvolution::~GaussianConvolution() {
 
 
-  for (PetscInt c = rangeStart; c < rangeEnd; ++c) {
-    PetscFree3(cellList[c], cellWeights[c], cellDist[c]) >> utilities::PetscUtilities::checkError;
-  }
-  nCellList += rangeStart;
-  cellList += rangeStart;
-  cellWeights += rangeStart;
-  cellDist += rangeStart;
-  PetscFree4(nCellList, cellList, cellWeights, cellDist) >> utilities::PetscUtilities::checkError;
+//  for (PetscInt c = rangeStart; c < rangeEnd; ++c) {
+//    PetscFree3(cellList[c], cellWeights[c], cellDist[c]) >> utilities::PetscUtilities::checkError;
+//  }
+//  nCellList += rangeStart;
+//  cellList += rangeStart;
+//  cellWeights += rangeStart;
+//  cellDist += rangeStart;
+//  PetscFree4(nCellList, cellList, cellWeights, cellDist) >> utilities::PetscUtilities::checkError;
 }
 
 PetscInt derivativeHash(const PetscInt dim, const PetscInt dx[]) {

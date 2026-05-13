@@ -1083,6 +1083,7 @@ void ablate::finiteVolume::processes::TwoPhaseEulerAdvection::PerfectGasStiffene
       eG = cvG*TG;
 
       alphaG = 0.0;
+
     }
     else if (Yl < massFractionMin) { //All gas
       rhoG = density;
