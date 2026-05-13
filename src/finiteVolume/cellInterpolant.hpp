@@ -6,6 +6,7 @@
 #include "domain/range.hpp"
 #include "domain/region.hpp"
 #include "domain/subDomain.hpp"
+#include "slopeLimiter.hpp"
 namespace ablate::finiteVolume {
 
 class CellInterpolant {
@@ -51,7 +52,10 @@ class CellInterpolant {
     std::vector<DM> gradientCellDms;
 
     // Maximum value for gradients for the multi-direction flux limiter
-    const double maxLimGrad;
+    const double maxLimGrad = 1.0;
+
+    // Slope limiter for gradient computation
+    std::unique_ptr<SlopeLimiter> slopeLimiter;
 
     /**
      * Function to compute the flux source terms
@@ -123,6 +127,8 @@ class CellInterpolant {
      */
     void ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion, std::vector<CellInterpolant::PointFunctionDescription>& rhsFunctions,
                     const ablate::domain::Range& cellRange, Vec cellGeomVec);
+
+    SlopeLimiter& GetSlopeLimiter() { return *slopeLimiter; }
 };
 
 }  // namespace ablate::finiteVolume

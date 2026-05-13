@@ -212,10 +212,8 @@ PetscErrorCode ablate::finiteVolume::processes::IntSharp::PreStage(TS flowTs, ab
     Vec locFVec; PetscCall(DMGetLocalVector(dm, &locFVec));
     PetscCall(VecZeroEntries(locFVec));
 
-    const auto &eulerOffset = fvSolver.GetSubDomain().GetField(CompressibleFlowFields::EULER_FIELD).offset;
     const auto &vfOffset = fvSolver.GetSubDomain().GetField(VOLUME_FRACTION_FIELD).offset;
     const auto &rhoAlphaOffset = fvSolver.GetSubDomain().GetField(DENSITY_VF_FIELD).offset;
-    PetscInt uOff[3]; uOff[0] = vfOffset; uOff[1] = rhoAlphaOffset; uOff[2] = eulerOffset;
 
     Vec locX = solver.GetSubDomain().GetSolutionVector();
     ablate::finiteVolume::processes::IntSharp *process = this;

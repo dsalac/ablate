@@ -1,6 +1,7 @@
 #ifndef ABLATELIBRARY_FINITEVOLUMESOLVER_HPP
 #define ABLATELIBRARY_FINITEVOLUMESOLVER_HPP
 
+#include <set>
 #include <string>
 #include <vector>
 #include "boundaryConditions/boundaryCondition.hpp"
@@ -76,6 +77,8 @@ class FiniteVolumeSolver : public solver::CellSolver,
 
     //! Store a dm, vec and array for mesh characteristics specific to the fvm
     Vec meshCharacteristicsLocalVec = nullptr;
+
+    std::set<std::string> pendingSlopeLimiterFields;
 
    protected:
     double maxlimit = ablate::utilities::Constants::large;
@@ -231,6 +234,12 @@ class FiniteVolumeSolver : public solver::CellSolver,
         dm = meshCharacteristicsDm;
         vec = meshCharacteristicsLocalVec;
     }
+
+    void EnableSlopeLimiterFor(const std::string& fieldName);
+
+    [[nodiscard]] const std::set<std::string>& GetSlopeLimiterFields() const { return pendingSlopeLimiterFields; }
+
+    CellInterpolant* GetCellInterpolant() { return cellInterpolant.get(); }
 };
 }  // namespace ablate::finiteVolume
 

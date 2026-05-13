@@ -123,6 +123,19 @@ class SubDomain : public io::Serializable {
     }
 
     /**
+     * checks whether the field exists in the subdomain
+     * @param fieldName the string name of the field
+     * @return true/false
+     */
+    [[nodiscard]] inline bool HasField(const std::string& fieldName)  {
+        if (fieldsByName.count(fieldName)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
      * returns a references to the field for a given id and location
      * @param id
      * @param location
@@ -462,6 +475,11 @@ class SubDomain : public io::Serializable {
      * @return
      */
     PetscErrorCode RestoreFieldLocalVector(const Field&, IS* vecIs, Vec* vec, DM* subdm);
+
+    /**
+     * Update the local AUX vector via a local to global and then global to local call
+     */
+    void UpdateAuxLocalVector();
 
     /**
      * Serialization save

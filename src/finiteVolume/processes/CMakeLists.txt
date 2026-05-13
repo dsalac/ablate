@@ -5,6 +5,14 @@ target_sources(ablateLibrary
         speciesTransport.cpp
         evTransport.cpp
         twoPhaseEulerAdvection.cpp
+        nPhaseAllaireAdvection.cpp
+        nPhaseAllaireAdvectionOld.cpp
+        nPhaseSurfaceTension.cpp
+        nPhaseNonconservativeRHS.cpp
+        nPhaseIntSharp.cpp
+        intSharp.cpp
+        # issf.cpp
+        locations.cpp
         gravity.cpp
         pressureGradientScaling.cpp
         arbitrarySource.cpp
@@ -19,7 +27,7 @@ target_sources(ablateLibrary
         soot.cpp
         compactCompressibleNSSpeciesTransport.cpp
         compactCompressibleNSSpeciesSingleProgressTransport.cpp
-        intSharp-marziale.cpp
+        #intSharp-marziale.cpp
         locations.cpp
 
         PUBLIC
@@ -29,6 +37,14 @@ target_sources(ablateLibrary
         speciesTransport.hpp
         evTransport.hpp
         twoPhaseEulerAdvection.hpp
+        nPhaseAllaireAdvection.hpp
+        nPhaseAllaireAdvectionOld.hpp
+        nPhaseSurfaceTension.hpp
+        nPhaseNonconservativeRHS.hpp
+        nPhaseIntSharp.hpp
+        intSharp.hpp
+        # issf.hpp
+        locations.hpp
         gravity.hpp
         pressureGradientScaling.hpp
         arbitrarySource.hpp
@@ -43,6 +59,6 @@ target_sources(ablateLibrary
         soot.hpp
         compactCompressibleNSSpeciesTransport.hpp
         compactCompressibleNSSpeciesSingleProgressTransport.hpp
-        intSharp-marziale.hpp
+        #intSharp-marziale.hpp
         locations.hpp
         )

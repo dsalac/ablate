@@ -95,6 +95,157 @@ PetscReal ablate::finiteVolume::fluxCalculator::AusmpUp::P5Minus(PetscReal m, do
     }
 }
 
+bool ablate::finiteVolume::fluxCalculator::AusmpUp::ComputeFullFluxVector(void* ctx,
+                                                                      PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL,
+                                                                      PetscReal uR, PetscReal aR, PetscReal rhoR, PetscReal pR,
+                                                                      PetscInt dim,
+                                                                      const PetscReal* normal,  // Area normal of the face
+                                                                      PetscReal areaMag,        // Area of the face
+                                                                      const PetscReal* velocityL, const PetscReal* velocityR,
+                                                                      PetscReal internalEnergyL, PetscReal internalEnergyR,
+                                                                      const PetscInt   nPhase,
+                                                                      const PetscReal *alphakL,
+                                                                      const PetscReal *alphakR,
+                                                                      const PetscReal *alphakRhokL,
+                                                                      const PetscReal *alphakRhokR,
+                                                                      fluxCalculator::FullFluxVector* fluxVector) {
+
+    // Extract parameters from context
+    auto ausmUp = (ablate::finiteVolume::fluxCalculator::AusmpUp*)ctx;
+    PetscReal pgsAlpha = ausmUp->pgs ? ausmUp->pgs->GetAlpha() : 1.0;
+    PetscReal mInf = ausmUp->mInf;
+
+    //PetscPrintf(PETSC_COMM_WORLD, " alphakRhokL  alphakRhokR\n");
+    // for (size_t i = 0; i < alphakL.size(); i++) {
+        //PetscPrintf(PETSC_COMM_WORLD, "%zu %f %f\n", i, alphakRhokL[i], alphakRhokR[i]);
+    // }
+
+    // Compute the density at the interface
+    PetscReal rho12 = 0.5 * (rhoL + rhoR);
+
+    // Compute the speed of sound at a12
+    PetscReal a12 = 0.5 * (aL + aR) / pgsAlpha;
+
+    // Compute the left and right mach numbers
+    PetscReal mL = uL / a12;
+    PetscReal mR = uR / a12;
+
+    // Compute mBar2 (eq 70)
+    PetscReal mBar2 = (PetscSqr(uL) + PetscSqr(uR)) / (2.0 * a12 * a12);
+
+    // Compute mInf2 or set fa to unity
+    PetscReal fa = 1.0;
+    if (mInf > 0) {
+        PetscReal mInf2 = PetscSqr(mInf);
+        PetscReal mO2 = PetscMin(1.0, PetscMax(mBar2, mInf2));
+        PetscReal mO = PetscSqrtReal(mO2);
+        fa = mO * (2.0 - mO);
+    }
+
+    // Compute the mach number on the interface
+    PetscReal m12 = M4Plus(mL) + M4Minus(mR) - (Kp / fa) * PetscMax(1.0 - (sigma * mBar2), 0) * (pR - pL) / (rho12 * a12 * a12 * pgsAlpha * pgsAlpha);
+
+    // Compute pressure flux
+    PetscReal p5Plus = P5Plus(mL, fa);
+    PetscReal p5Minus = P5Minus(mR, fa);
+    PetscReal p12 = (p5Plus * pL + p5Minus * pR - Ku * p5Plus * p5Minus * rho12 * fa * a12 * a12 * pgsAlpha * pgsAlpha * (mR - mL)) / (pgsAlpha * pgsAlpha);
+
+    // Compute the Riemann velocity
+    PetscReal vRiem = a12 * m12;
+
+
+#if 0
+
+    if (vRiem > 0) {
+
+      // Set the basic flux components
+      fluxVector->massFlux = vRiem * rhoL * areaMag;
+      fluxVector->pressureFlux = p12 * areaMag;
+
+      // Compute momentum flux components
+      for (PetscInt d = 0; d < dim; d++) {
+          // Compute momentum flux using split velocities and full velocity vectors
+          fluxVector->momentumFlux[d] = rhoL * vRiem * velocityL[d] * areaMag + p12 * normal[d];
+      }
+
+      // Compute total energy (internal + kinetic + pressure)
+      PetscReal E = internalEnergyL;
+      for (PetscInt d = 0; d < dim; d++) E += 0.5 * velocityL[d] * velocityL[d];
+      fluxVector->energyFlux = (rhoL * E + p12) * vRiem * areaMag;
+
+      // Compute phase-specific fluxes, and loop through the number of phases
+      for (PetscInt k = 0; k < nPhase; k++) {
+          fluxVector->alphakRhokFlux[k] = vRiem * alphakRhokL[k] * areaMag;
+          fluxVector->alphakFlux[k]     = vRiem * alphakL[k] * areaMag;
+      }
+
+    }
+    else {
+      // Set the basic flux components
+      fluxVector->massFlux = vRiem * rhoR * areaMag;
+      fluxVector->pressureFlux = p12 * areaMag;
+
+      // Compute momentum flux components
+      for (PetscInt d = 0; d < dim; d++) {
+          // Compute momentum flux using split velocities and full velocity vectors
+          fluxVector->momentumFlux[d] = rhoR * vRiem * velocityR[d] * areaMag + p12 * normal[d];
+      }
+
+      // Compute total energy (internal + kinetic + pressure)
+      PetscReal E = internalEnergyR;
+      for (PetscInt d = 0; d < dim; d++) E += 0.5 * velocityR[d] * velocityR[d];
+      fluxVector->energyFlux = (rhoR * E + p12) * vRiem * areaMag;
+
+      // Compute phase-specific fluxes, and loop through the number of phases
+      for (PetscInt k = 0; k < nPhase; k++) {
+          fluxVector->alphakRhokFlux[k] = vRiem * alphakRhokR[k] * areaMag;
+          fluxVector->alphakFlux[k]     = vRiem * alphakR[k] * areaMag;
+      }
+    }
+
+#else
+
+
+    // Split the velocity
+    PetscReal lPlus = 0.5 * (vRiem + PetscAbs(vRiem));
+    PetscReal lMinus = 0.5 * (vRiem - PetscAbs(vRiem));
+
+
+    /* In the flux calculation all values of u \dot n are replaced by vRiem * areaMag
+        as vRiem is the "normal" velocity of the face*/
+
+    // Set the basic flux components
+    fluxVector->massFlux = (lPlus * rhoL + lMinus * rhoR) * areaMag;
+    fluxVector->pressureFlux = p12 * areaMag;
+
+    // Compute momentum flux components
+    for (PetscInt d = 0; d < dim; d++) {
+        // Compute momentum flux using split velocities and full velocity vectors
+        fluxVector->momentumFlux[d] = (rhoL * lPlus * velocityL[d] + rhoR * lMinus * velocityR[d]) * areaMag + p12 * normal[d];
+    }
+
+    // Compute total energy (internal + kinetic + pressure)
+    PetscReal EL = internalEnergyL;
+    PetscReal ER = internalEnergyR;
+    for (PetscInt d = 0; d < dim; d++) {
+        EL += 0.5 * velocityL[d] * velocityL[d];
+        ER += 0.5 * velocityR[d] * velocityR[d];
+    }
+    fluxVector->energyFlux = (rhoL * lPlus * EL + rhoR * lMinus * ER + p12 * vRiem) * areaMag;
+
+    // Compute phase-specific fluxes, and loop through the number of phases
+    for (PetscInt k = 0; k < nPhase; k++) {
+        fluxVector->alphakRhokFlux[k] = (lPlus * alphakRhokL[k] + lMinus * alphakRhokR[k]) * areaMag;
+        fluxVector->alphakFlux[k] = (lPlus * alphakL[k] + lMinus * alphakR[k]) * areaMag;
+    }
+
+    fluxVector->vriem = vRiem;
+
+#endif
+
+    return true;
+}
+
 #include "registrar.hpp"
 REGISTER(ablate::finiteVolume::fluxCalculator::FluxCalculator, ablate::finiteVolume::fluxCalculator::AusmpUp, "A sequel to AUSM, Part II: AUSM+-up for all speeds, Meng-Sing Liou, Pages 137-170, 2006",
          OPT(double, "mInf", "the reference mach number"),
