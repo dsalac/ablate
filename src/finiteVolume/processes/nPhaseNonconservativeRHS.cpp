@@ -26,6 +26,14 @@ void ablate::finiteVolume::processes::NPhaseNonconservativeRHS::Setup(ablate::fi
     PetscFE fe_coords;
     PetscInt k = 1;
 
+
+
+    if ( flow.FindProcess<ablate::finiteVolume::processes::NPhaseAllaireAdvection>() ) {
+      throw std::runtime_error("NPhaseNonconservativeRHS process is no longer required for NPhaseAllaireAdvection");
+    }
+
+
+
     DMClone(dm, &vertexDM) >> utilities::PetscUtilities::checkError;
     PetscFECreateLagrange(PETSC_COMM_SELF, dim, dim, PETSC_TRUE, k, PETSC_DETERMINE, &fe_coords) >> utilities::PetscUtilities::checkError;
     DMSetField(vertexDM, 0, nullptr, (PetscObject)fe_coords) >> utilities::PetscUtilities::checkError;
