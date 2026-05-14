@@ -94,7 +94,7 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::MultiphaseFlowPost
     // Cell range without ghosts
     ablate::domain::Range cellRange;
     solver.GetCellRangeWithoutGhost(cellRange);
-
+printf("%s::%d\n", __FILE__, __LINE__);exit(0);
     const PetscInt nPhases = alphaAccessor.GetField().numberComponents;
     const PetscInt dim = solver.GetSubDomain().GetDimensions();
 
@@ -545,7 +545,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
     printf("dafasdfa\n");
     exit(0);
   }
-  exit(0);
+
 
   std::size_t offset = 0;
   for (std::size_t k = 0; k < nPhases; k++) flux[offset++] = (lPlus * alphakL[k] + lMinus * alphakR[k]) * areaMag;
@@ -624,7 +624,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
     part, with -div(u) being calculated in NPhaseFlowComputeNPhaseFlux. Note that all
     discontinuousFluxFunction-type calls return -div( stuff ).
 
-  Final note: According to "Generic five-equation model for compressible multi-material flows and its corresponding
+  Note #1: According to "Generic five-equation model for compressible multi-material flows and its corresponding
     high-fidelity numerical algorithms" by He, Liu, and Li, the advection equation should be:
     d(alphaK)/dt + u.grad(alphaK) = alphaK*(lambdaK - 1)*div(u), where lambdaK accounts for different
     compressibility factors. This results in the following:
@@ -633,6 +633,11 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
     d(alphaK)/dt + div(alphaK * u) = alphaK * lambdaK * div(u)
 
     lambdaK = 1 assumes all materials have the same compressibility factor and this returns to the base Allaire model.
+
+  Note #2: In the FVM the LHS is \int_cell dQ/dt. Assuming that dQ/dt is constant over a cell this results in
+    V_{cell} dQ/dt. Thus, the RHS of the conservative form will be divided by V_{cell}, which is why the
+    flux terms, when applied in cellInterpolant are divided by the cell volume and why the RHS contribution
+    from this function do not need to be multiplied by the cell volume.
 */
 PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFlowComputeAlphakCorrection(PetscInt dim, const PetscReal time,
                                                                                                       const PetscFVCellGeom *cg,
@@ -755,8 +760,6 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::NStiffDecoder::Dec
         gammak[k] = eosk[k]->GetSpecificHeatRatio();
         pik[k]    = eosk[k]->GetReferencePressure();
         alphak[k] = conservedValues[uOff[ALPHAK_OFFSET] + k];
-
-
 
         if (alphak[k] > NPhaseFlowFields::ALPHAK_FLOOR) rhok[k] = conservedValues[uOff[ALPHAKRHOK_OFFSET] + k] / alphak[k];  // rho_k = (alpha_k*rho_k)/alpha_k
         else rhok[k] = 0.0;
