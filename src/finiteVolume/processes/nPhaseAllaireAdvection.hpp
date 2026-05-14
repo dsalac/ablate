@@ -28,9 +28,10 @@ namespace ablate::finiteVolume::processes {
 class NPhaseAllaireAdvection : public Process {
    public:
 
-    inline const static std::string ALPHAK = eos::NPhase::ALPHAK;
-    inline const static std::string ALPHAKRHOK = eos::NPhase::ALPHAKRHOK;
-    inline const static std::string ALLAIRE = NPhaseFlowFields::ALLAIRE_FIELD;
+    inline const static std::string ALPHAK_FIELD = NPhaseFlowFields::ALPHAK;
+    inline const static std::string ALPHAKRHOK_FIELD = NPhaseFlowFields::ALPHAKRHOK;
+    inline const static std::string ALLAIRE_FIELD = NPhaseFlowFields::ALLAIRE;
+    inline const static std::string VELDIV_FIELD = NPhaseFlowFields::VELDIV;
 
     /**
      * General two phase decoder interface
@@ -54,10 +55,11 @@ class NPhaseAllaireAdvection : public Process {
    private:
 
     // This just ensures the proper offset information from uOff is used.
-    const std::vector<std::string> conservedFields = {ALPHAK, ALPHAKRHOK, ALLAIRE};
-    static const int ALPHAK_FIELD = 0;
-    static const int ALPHAKRHOK_FIELD = 1;
-    static const int ALLAIRE_FIELD = 2;
+    const std::vector<std::string> solFieldList = {ALPHAK_FIELD, ALPHAKRHOK_FIELD, ALLAIRE_FIELD, VELDIV_FIELD};
+    static const int ALPHAK_OFFSET = 0;
+    static const int ALPHAKRHOK_OFFSET = 1;
+    static const int ALLAIRE_OFFSET = 2;
+    static const int VELDIV_OFFSET = 3;
 
 
     DM subDM;
@@ -138,22 +140,12 @@ class NPhaseAllaireAdvection : public Process {
     static PetscErrorCode NPhaseFlowComputeNPhaseFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[],
                                                            const PetscInt aOff[], const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
 
-//    static PetscErrorCode NPhaseFlowComputeAllaireFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[],
-//                                                           const PetscInt aOff[], const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
-//    static PetscErrorCode NPhaseFlowComputeAlphakRhokFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscInt aOff[],
-//                                                        const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
-//    static PetscErrorCode NPhaseFlowComputeAlphakFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscInt aOff[],
-//                                                        const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
+    static PetscErrorCode NPhaseFlowComputeAlphakCorrection(PetscInt dim, const PetscReal time, const PetscFVCellGeom *cg, const PetscInt *uOff, const PetscScalar *u, const PetscInt *aOff, const PetscScalar *a, PetscScalar *flux, void *ctx);
 
     // Zalesak test source term
     static PetscErrorCode ZalesakTestSourceTerm(PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx);
 
-    //this will be necessary later
-    // static PetscErrorCode NPhaseFlowComputeAlphakFlux(PetscInt dim, const PetscFVFaceGeom *fg, const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscInt aOff[],
-    //                                                     const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
 
-    // Compute the Euler and density-volume fraction fluxes
-    static PetscErrorCode NPhaseFlowCompleteFlux(const ablate::finiteVolume::FiniteVolumeSolver &flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx);
 
    public:
     /**

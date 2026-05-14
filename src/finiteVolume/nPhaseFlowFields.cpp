@@ -5,14 +5,14 @@
 #include "utilities/vectorUtilities.hpp"
 #include "eos/nPhase.hpp"
 
-ablate::finiteVolume::NPhaseFlowFields::NPhaseFlowFields(std::shared_ptr<eos::EOS> eos, 
+ablate::finiteVolume::NPhaseFlowFields::NPhaseFlowFields(std::shared_ptr<eos::EOS> eos,
     std::shared_ptr<domain::Region> region,
-                                                                     
+
     std::shared_ptr<parameters::Parameters> conservedFieldParameters,
     PetscInt dimensions)
-    : eos(std::move(eos)), 
-    region(std::move(region)), 
-    conservedFieldOptions(std::move(conservedFieldParameters)), 
+    : eos(std::move(eos)),
+    region(std::move(region)),
+    conservedFieldOptions(std::move(conservedFieldParameters)),
     dim(dimensions) {  }
 
 std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVolume::NPhaseFlowFields::GetFields() {
@@ -43,13 +43,13 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
 
     std::vector<std::shared_ptr<ablate::domain::FieldDescription>> flowFields{
         std::make_shared<domain::FieldDescription>(
-            ALLAIRE_FIELD, ALLAIRE_FIELD,
+            ALLAIRE, ALLAIRE,
             std::vector<std::string>{"rhoe", "rhovel" + domain::FieldDescription::DIMENSION},
             domain::FieldLocation::SOL,
             domain::FieldType::FVM,
             region,
             ablate::parameters::MapParameters::Create({
-        {"petscfv_type", "leastsquares"}, 
+        {"petscfv_type", "leastsquares"},
         {"petsclimiter_type", "none"},
         {"petscfv_compute_gradients", "false"} //TRUE
     })),
@@ -79,21 +79,33 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
         {"petscfv_compute_gradients", "true"}
     })),
 
+      std::make_shared<domain::FieldDescription>(
+            VELDIV, VELDIV,
+            domain::FieldDescription::ONECOMPONENT,
+            domain::FieldLocation::SOL,
+            domain::FieldType::FVM,
+            region,
+            ablate::parameters::MapParameters::Create({
+        {"petscfv_type", "leastsquares"},
+        {"petsclimiter_type", "none"},
+        {"petscfv_compute_gradients", "false"}
+    })),
+
         //do tk, p, rho, rhok, e, ek
         // std::make_shared<domain::FieldDescription>(
-        //     TK, TK, 
+        //     TK, TK,
         //     std::vector<std::string>{"tk"}, // N phases ?
-        //     domain::FieldLocation::AUX, 
-        //     domain::FieldType::FVM, 
-        //     region, 
+        //     domain::FieldLocation::AUX,
+        //     domain::FieldType::FVM,
+        //     region,
         //     conservedFieldOptions),
 
         std::make_shared<domain::FieldDescription>(
-            UI, UI, 
-            std::vector<std::string>{"vel" + domain::FieldDescription::DIMENSION}, 
-            domain::FieldLocation::AUX, 
-            domain::FieldType::FVM, 
-            region, 
+            UI, UI,
+            std::vector<std::string>{"vel" + domain::FieldDescription::DIMENSION},
+            domain::FieldLocation::AUX,
+            domain::FieldType::FVM,
+            region,
             auxFieldOptions),
 
         std::make_shared<domain::FieldDescription>(
@@ -139,7 +151,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
         //     auxFieldOptions),
 
         // std::make_shared<domain::FieldDescription>(
-        //     "sfmom", "sfmom", 
+        //     "sfmom", "sfmom",
         //     [&](){
         //         std::vector<std::string> sfmomComponents;
         //         for (PetscInt d = 0; d < 2; d++){
@@ -147,9 +159,9 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
         //         }
         //         return sfmomComponents;
         //     }(),
-        //     domain::FieldLocation::AUX, 
-        //     domain::FieldType::FVM, 
-        //     region, 
+        //     domain::FieldLocation::AUX,
+        //     domain::FieldType::FVM,
+        //     region,
         //     auxFieldOptions),
 
         // std::make_shared<domain::FieldDescription>(
@@ -189,7 +201,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
 
         };
 
-    
+
         // // check the eos/chemModel for any additional required fields
         for (auto& fieldDescriptor : eos->GetAdditionalFields()) {
             for (auto& field : fieldDescriptor->GetFields()) {
@@ -210,6 +222,6 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
 
 #include "registrar.hpp"
 REGISTER(ablate::domain::FieldDescriptor, ablate::finiteVolume::NPhaseFlowFields, "fields needed for nPhase flow",
-         ARG(ablate::eos::EOS, "eos", "the equation of state to be used for the flow (use stiffened gas?)"), 
+         ARG(ablate::eos::EOS, "eos", "the equation of state to be used for the flow (use stiffened gas?)"),
          OPT(ablate::domain::Region, "region", "the region for the flow (defaults to entire domain)"),
          OPT(ablate::parameters::Parameters, "conservedFieldOptions", "petsc options used for the conserved fields.  Common options would be petscfv_type and petsclimiter_type"));

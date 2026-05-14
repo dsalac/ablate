@@ -11,7 +11,7 @@
 #include "utilities/petscSupport.hpp"
 #include "compressibleFlowFields.hpp"
 #include "nPhaseFlowFields.hpp"
-
+#include <signal.h>
 
 ablate::finiteVolume::FiniteVolumeSolver::FiniteVolumeSolver(std::string solverId, std::shared_ptr<domain::Region> region, std::shared_ptr<parameters::Parameters> options,
                                                              std::vector<std::shared_ptr<processes::Process>> processes,
@@ -89,8 +89,8 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
                 if (field == eulerField.id) fieldId = eulerField.id;
               }
 
-              if (fieldId == -1 && subDomain->HasField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD)) {
-                auto allaireField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD);
+              if (fieldId == -1 && subDomain->HasField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE)) {
+                auto allaireField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
                 if (field == allaireField.id) fieldId = allaireField.id;
               }
 
@@ -282,6 +282,16 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
 //    PetscReal x[2];
 //    DMPlexComputeCellGeometryFVM(subDomain->GetDM(), cell, NULL, x, NULL);
 //    fprintf(f1, "%+e\t%+e\t", x[0], x[1]);
+
+//    /*
+//       rho*energy: 3
+//            rho*u: 4
+//            rho*v: 5
+//           alphaA: 6
+//           alphaW: 7
+//        alphaRhoA: 8
+//        alphaRhoW: 9
+//    */
 
 //    const PetscScalar *vals;
 //    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, aField.id, array, &vals);

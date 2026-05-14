@@ -533,6 +533,7 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
 
         // March over each source function
         for (std::size_t fun = 0; fun < rhsFunctions.size(); fun++) {
+
             PetscInt fluxOffset = 0;  // Flux offset for the function ( Currently calculated by just adding the number of components of the previous fields)
             PetscArrayzero(flux, totDim) >> utilities::PetscUtilities::checkError;
             const auto& rhsFluxFunctionDescription = rhsFunctions[fun];
@@ -562,6 +563,7 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
                     if (fL) fL[d] -= flux[fluxOffset + d] / cgL->volume;
                     if (fR) fR[d] += flux[fluxOffset + d] / cgR->volume;
                 }
+
                 fluxOffset += fluxComponentSize[fun][updateFieldIdx];
             }
         }

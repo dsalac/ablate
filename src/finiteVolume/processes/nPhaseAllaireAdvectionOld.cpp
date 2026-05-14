@@ -604,6 +604,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvectionOld::NPhas
     fluxCalculator::FullFluxVector fluxVec(nPhaseAllaireAdvection->eosk.size());
     if (nPhaseAllaireAdvection->fluxCalculatorNStiff->ComputeFullFluxVector(
             nPhaseAllaireAdvection->fluxCalculatorNStiff->GetFluxCalculatorContext(),
+            fg,
             normalVelocityL, aL, densityL, pL,
             normalVelocityR, aR, densityR, pR,
             dim, fg->normal, areaMag,
@@ -612,6 +613,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvectionOld::NPhas
             nPhaseAllaireAdvection->eosk.size(),
             alphak_L.data(), alphak_R.data(),
             alphakRhok_L.data(), alphakRhok_R.data(),
+            NULL, NULL,
             &fluxVec)) {
 
 //fprintf(f2, "%+e\t%+e\t%+e\t", fluxVec.energyFlux, fluxVec.momentumFlux[0], fluxVec.momentumFlux[1]);
@@ -759,6 +761,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvectionOld::NPhas
     fluxCalculator::FullFluxVector fluxVec(nPhaseAllaireAdvection->eosk.size());
     if (nPhaseAllaireAdvection->fluxCalculatorNStiff->ComputeFullFluxVector(
             nPhaseAllaireAdvection->fluxCalculatorNStiff->GetFluxCalculatorContext(),
+            fg,
             normalVelocityL, aL, densityL, pL,
             normalVelocityR, aR, densityR, pR,
             dim, fg->normal, areaMag,
@@ -767,6 +770,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvectionOld::NPhas
             nPhaseAllaireAdvection->eosk.size(),
             alphak_L.data(), alphak_R.data(),
             alphakRhok_L.data(), alphakRhok_R.data(),
+            NULL, NULL,
             &fluxVec)) {
 
 //fprintf(f2, "%+e\t%+e\t", fluxVec.alphakFlux[0], fluxVec.alphakFlux[1]);
@@ -866,6 +870,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvectionOld::NPhas
     fluxCalculator::FullFluxVector fluxVec(nPhaseAllaireAdvection->eosk.size());
     if (nPhaseAllaireAdvection->fluxCalculatorNStiff->ComputeFullFluxVector(
             nPhaseAllaireAdvection->fluxCalculatorNStiff->GetFluxCalculatorContext(),
+            fg,
             normalVelocityL, aL, densityL, pL,
             normalVelocityR, aR, densityR, pR,
             dim, fg->normal, areaMag,
@@ -874,6 +879,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvectionOld::NPhas
             nPhaseAllaireAdvection->eosk.size(),
             alphak_L.data(), alphak_R.data(),
             alphakRhok_L.data(), alphakRhok_R.data(),
+            NULL, NULL,
             &fluxVec)) {
 
 //fprintf(f2, "%+e\t%+e\n", fluxVec.alphakRhokFlux[0], fluxVec.alphakRhokFlux[1]);

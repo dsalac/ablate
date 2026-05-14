@@ -16,9 +16,9 @@ void ablate::eos::KthStiffenedGas::View(std::ostream& stream) const {
 
 PetscErrorCode ablate::eos::KthStiffenedGas::ComputeTotalDensity(const PetscReal conserved[], const std::vector<domain::Field>& fields, PetscReal* density) {
     PetscFunctionBeginUser;
-    
+
     // Get the alphakrhok field
-    auto alphakrhokField = std::find_if(fields.begin(), fields.end(), [](const auto& field) { 
+    auto alphakrhokField = std::find_if(fields.begin(), fields.end(), [](const auto& field) {
         return field.name == ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK;
     });
     if (alphakrhokField == fields.end()) {
@@ -35,9 +35,9 @@ PetscErrorCode ablate::eos::KthStiffenedGas::ComputeTotalDensity(const PetscReal
 
 ablate::eos::ThermodynamicFunction ablate::eos::KthStiffenedGas::GetThermodynamicFunction(ablate::eos::ThermodynamicProperty property, const std::vector<domain::Field>& fields) const {
     // Look for the allaire field
-    auto allaireField = std::find_if(fields.begin(), fields.end(), [](const auto& field) { return field.name == ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD; });
+    auto allaireField = std::find_if(fields.begin(), fields.end(), [](const auto& field) { return field.name == ablate::finiteVolume::NPhaseFlowFields::ALLAIRE; });
     if (allaireField == fields.end()) {
-        throw std::invalid_argument("The ablate::eos::KthStiffenedGas requires the ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD Field");
+        throw std::invalid_argument("The ablate::eos::KthStiffenedGas requires the ablate::finiteVolume::NPhaseFlowFields::ALLAIRE Field");
     }
 
     return ThermodynamicFunction{
@@ -49,9 +49,9 @@ ablate::eos::ThermodynamicFunction ablate::eos::KthStiffenedGas::GetThermodynami
 ablate::eos::ThermodynamicTemperatureFunction ablate::eos::KthStiffenedGas::GetThermodynamicTemperatureFunction(ablate::eos::ThermodynamicProperty property,
                                                                                                                const std::vector<domain::Field>& fields) const {
     // Look for the allaire field
-    auto allaireField = std::find_if(fields.begin(), fields.end(), [](const auto& field) { return field.name == ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD; });
+    auto allaireField = std::find_if(fields.begin(), fields.end(), [](const auto& field) { return field.name == ablate::finiteVolume::NPhaseFlowFields::ALLAIRE; });
     if (allaireField == fields.end()) {
-        throw std::invalid_argument("The ablate::eos::KthStiffenedGas requires the ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD Field");
+        throw std::invalid_argument("The ablate::eos::KthStiffenedGas requires the ablate::finiteVolume::NPhaseFlowFields::ALLAIRE Field");
     }
 
     return ThermodynamicTemperatureFunction{
@@ -62,7 +62,7 @@ ablate::eos::ThermodynamicTemperatureFunction ablate::eos::KthStiffenedGas::GetT
 
 ablate::eos::EOSFunction ablate::eos::KthStiffenedGas::GetFieldFunctionFunction(const std::string& field, ablate::eos::ThermodynamicProperty property1, ablate::eos::ThermodynamicProperty property2,
                                                                               std::vector<std::string> otherProperties) const {
-    if (ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD == field) {
+    if (ablate::finiteVolume::NPhaseFlowFields::ALLAIRE == field) {
         if ((property1 == ThermodynamicProperty::Temperature && property2 == ThermodynamicProperty::Pressure) ||
             (property1 == ThermodynamicProperty::Pressure && property2 == ThermodynamicProperty::Temperature)) {
             auto tp = [this](PetscReal temperature, PetscReal pressure, PetscInt dim, const PetscReal velocity[], const PetscReal yi[], PetscReal conserved[]) {
@@ -397,6 +397,6 @@ PetscErrorCode ablate::eos::KthStiffenedGas::SpeciesSensibleEnthalpyTemperatureF
     PetscFunctionReturn(0);
 }
 
-REGISTER(ablate::eos::EOS, ablate::eos::KthStiffenedGas, "kth stiffened gas eos", 
+REGISTER(ablate::eos::EOS, ablate::eos::KthStiffenedGas, "kth stiffened gas eos",
     ARG(ablate::parameters::Parameters, "parameters", "parameters for the kth stiffened gas eos"),
-    OPT(std::vector<std::string>, "species", "species to track.  Note: species mass fractions do not change eos")); 
+    OPT(std::vector<std::string>, "species", "species to track.  Note: species mass fractions do not change eos"));

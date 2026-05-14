@@ -116,8 +116,9 @@ class CellInterpolant {
      * @param locFVec
      */
     void ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion,
-                    std::vector<CellInterpolant::DiscontinuousFluxFunctionDescription>& rhsFunctions, const ablate::domain::Range& faceRange, const ablate::domain::Range& cellRange, Vec cellGeomVec,
-                    Vec faceGeomVec);
+                    std::vector<CellInterpolant::DiscontinuousFluxFunctionDescription>& rhsFunctions,
+                    const ablate::domain::Range& faceRange, const ablate::domain::Range& cellRange,
+                    Vec cellGeomVec, Vec faceGeomVec);
 
     /**
      * Adds in contributions for face based rhs point cell functions
@@ -125,8 +126,10 @@ class CellInterpolant {
      * @param locXVec
      * @param locFVec
      */
-    void ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion, std::vector<CellInterpolant::PointFunctionDescription>& rhsFunctions,
-                    const ablate::domain::Range& cellRange, Vec cellGeomVec);
+    void ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion,
+                    std::vector<CellInterpolant::PointFunctionDescription>& rhsFunctions,
+                    const ablate::domain::Range& cellRange,
+                    Vec cellGeomVec);
 
     SlopeLimiter& GetSlopeLimiter() { return *slopeLimiter; }
 };

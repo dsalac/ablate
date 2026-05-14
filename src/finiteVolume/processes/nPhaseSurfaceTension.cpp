@@ -28,7 +28,7 @@ void NPhaseSurfaceTension::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow)
     PetscFEDestroy(&fe_coords) >> utilities::PetscUtilities::checkError;
     DMCreateDS(vertexDM) >> utilities::PetscUtilities::checkError;
 
-    ablate::domain::Range cellRange; 
+    ablate::domain::Range cellRange;
     auto fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver*>(&flow);
 
     if (!fvSolver) {
@@ -87,13 +87,13 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::ComputeSou
 
     auto *process = (ablate::finiteVolume::processes::NPhaseSurfaceTension *)ctx;
     std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
-    
+
     const auto &aijField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::AIJ);
     auto dim = solver.GetSubDomain().GetDimensions();
 
     PetscPrintf(MPI_COMM_WORLD, "dim = %d\n", dim);
 
-    const auto &allaireField = solver.GetSubDomain().GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD);
+    const auto &allaireField = solver.GetSubDomain().GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
 
     const auto &gradAijField = subDomain->GetField("gradAij");
     const auto &nAijField = subDomain->GetField("nAij");
@@ -111,7 +111,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::ComputeSou
     PetscInt cStart, cEnd; DMPlexGetHeightStratum(auxDM, 0, &cStart, &cEnd);
 
     // PetscPrintf(MPI_COMM_WORLD, "auxVec = %p\n", auxVec);
-    Vec vertexVec; 
+    Vec vertexVec;
     DMGetLocalVector(process->vertexDM, &vertexVec);
     // PetscPrintf(MPI_COMM_WORLD, "vertexVec = %p\n", vertexVec);
     const PetscScalar *solArray;
@@ -153,7 +153,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::ComputeSou
 
     PetscInt nPairs = (phases*phases - phases) / 2;
 
-    
+
 
     PetscPrintf(MPI_COMM_WORLD, "phases = %lu, pairs = %d\n", phases, nPairs);
     PetscReal h;
@@ -161,20 +161,20 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::ComputeSou
     h *= 4.0;
 
     // if (process->sigmaij.size() != nPairs) {
-    //     PetscPrintf(MPI_COMM_WORLD, "ERROR: Expected %d surface tension coefficients, got %zu\n", 
+    //     PetscPrintf(MPI_COMM_WORLD, "ERROR: Expected %d surface tension coefficients, got %zu\n",
     //                 nPairs, process->sigmaij.size());
     //     return 1;
     // }
 
     //populate gradAij
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
-        
+
         const PetscScalar *Aij;
         xDMPlexPointLocalRead(auxDM, cell, aijField.id, auxArray, &Aij);
 
         PetscScalar *gradAijArray;
         xDMPlexPointLocalRef(auxDM, cell, gradAijField.id, auxArray, &gradAijArray);
-        
+
 
             for (PetscInt ij = 0; ij < nPairs; ++ij){
                 std::vector<PetscScalar> gradAij(dim);
@@ -230,7 +230,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::ComputeSou
             }
         }
     }
-    
+
     for (PetscInt cell = cStart; cell < cEnd; ++cell){
         const PetscScalar *allaire = nullptr;
         PetscScalar *allaireSource = nullptr;
@@ -299,12 +299,12 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::ComputeSou
 }  // namespace ablate::finiteVolume::processes
 
 // #include "registrar.hpp"
-// REGISTER_WITHOUT_ARGUMENTS(ablate::finiteVolume::processes::Process, 
-//     ablate::finiteVolume::processes::NPhaseSurfaceTension, 
+// REGISTER_WITHOUT_ARGUMENTS(ablate::finiteVolume::processes::Process,
+//     ablate::finiteVolume::processes::NPhaseSurfaceTension,
 //     "N-phase surface tension (connectivity setup only)");
 
     #include "registrar.hpp"
-    REGISTER(ablate::finiteVolume::processes::Process, 
-        ablate::finiteVolume::processes::NPhaseSurfaceTension, 
+    REGISTER(ablate::finiteVolume::processes::Process,
+        ablate::finiteVolume::processes::NPhaseSurfaceTension,
         "N-phase surface tension with user-defined coefficients",
         ARG(std::vector<PetscReal>, "surfaceTensionCoeffs", "Surface tension coefficients for each phase pair (must match number of phase pairs)"));

@@ -1,9 +1,12 @@
 #include "ausmpUp.hpp"
+#include "finiteVolume/nPhaseFlowFields.hpp"
 
 ablate::finiteVolume::fluxCalculator::AusmpUp::AusmpUp(double mInf, std::shared_ptr<ablate::finiteVolume::processes::PressureGradientScaling> pgs) : pgs(pgs), mInf(mInf) {}
 
-ablate::finiteVolume::fluxCalculator::Direction ablate::finiteVolume::fluxCalculator::AusmpUp::AusmpUpFunction(void* ctx, PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL, PetscReal uR,
-                                                                                                               PetscReal aR, PetscReal rhoR, PetscReal pR, PetscReal* massFlux, PetscReal* p12) {
+void ablate::finiteVolume::fluxCalculator::AusmpUp::AusmpUpInterfaceValues(void* ctx,
+                                                                              PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL,
+                                                                              PetscReal uR, PetscReal aR, PetscReal rhoR, PetscReal pR,
+                                                                              PetscReal* a12, PetscReal* m12, PetscReal* p12) {
     // extract pgs/minf if provided
     auto ausmUp = (ablate::finiteVolume::fluxCalculator::AusmpUp*)ctx;
     PetscReal pgsAlpha = ausmUp->pgs ? ausmUp->pgs->GetAlpha() : 1.0;
@@ -13,14 +16,14 @@ ablate::finiteVolume::fluxCalculator::Direction ablate::finiteVolume::fluxCalcul
     PetscReal rho12 = (0.5) * (rhoL + rhoR);
 
     // compute the speed of sound at a12
-    PetscReal a12 = 0.5 * (aL + aR) / pgsAlpha;  // Simple average of aL and aR.  This can be replaced with eq. 30;
+    PetscReal a12i = 0.5 * (aL + aR) / pgsAlpha;  // Simple average of aL and aR.  This can be replaced with eq. 30;
 
     // Compute the left and right mach numbers
-    PetscReal mL = uL / a12;
-    PetscReal mR = uR / a12;
+    PetscReal mL = uL / a12i;
+    PetscReal mR = uR / a12i;
 
     // Compute mBar2 (eq 70)
-    PetscReal mBar2 = (PetscSqr(uL) + PetscSqr(uR)) / (2.0 * a12 * a12);
+    PetscReal mBar2 = (PetscSqr(uL) + PetscSqr(uR)) / (2.0 * a12i * a12i);
 
     // compute mInf2 or set fa to unity
     PetscReal fa = 1.0;
@@ -31,8 +34,29 @@ ablate::finiteVolume::fluxCalculator::Direction ablate::finiteVolume::fluxCalcul
         PetscReal mO = PetscSqrtReal(mO2);
         fa = mO * (2.0 - mO);
     }
+
+    if (a12) *a12 = a12i;
+
     // compute the mach number on the interface
-    PetscReal m12 = M4Plus(mL) + M4Minus(mR) - (Kp / fa) * PetscMax(1.0 - (sigma * mBar2), 0) * (pR - pL) / (rho12 * a12 * a12 * pgsAlpha * pgsAlpha);
+    if (m12) *m12 = M4Plus(mL) + M4Minus(mR) - (Kp / fa) * PetscMax(1.0 - (sigma * mBar2), 0) * (pR - pL) / (rho12 * a12i * a12i * pgsAlpha * pgsAlpha);
+
+    // Pressure
+    if (p12) {
+        double p5Plus = P5Plus(mL, fa);
+        double p5Minus = P5Minus(mR, fa);
+
+        *p12 = p5Plus * pL + p5Minus * pR - Ku * p5Plus * p5Minus * rho12 * fa * a12i * a12i * pgsAlpha * pgsAlpha * (mR - mL);
+        *p12 /= PetscSqr(pgsAlpha);
+    }
+}
+
+ablate::finiteVolume::fluxCalculator::Direction ablate::finiteVolume::fluxCalculator::AusmpUp::AusmpUpFunction(void* ctx, PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL, PetscReal uR,
+                                                                                                               PetscReal aR, PetscReal rhoR, PetscReal pR, PetscReal* massFlux, PetscReal* p12) {
+
+    PetscReal a12, m12;
+   auto ausmUp = (ablate::finiteVolume::fluxCalculator::AusmpUp*)ctx;
+
+    ausmUp->AusmpUpInterfaceValues(ctx, uL, aL, rhoL, pL, uR, aR, rhoR, pR, &a12, &m12, p12);
 
     // store the mass flux;
     Direction direction;
@@ -44,14 +68,6 @@ ablate::finiteVolume::fluxCalculator::Direction ablate::finiteVolume::fluxCalcul
         *massFlux = a12 * m12 * rhoR;
     }
 
-    // Pressure
-    if (p12) {
-        double p5Plus = P5Plus(mL, fa);
-        double p5Minus = P5Minus(mR, fa);
-
-        *p12 = p5Plus * pL + p5Minus * pR - Ku * p5Plus * p5Minus * rho12 * fa * a12 * a12 * pgsAlpha * pgsAlpha * (mR - mL);
-        *p12 /= PetscSqr(pgsAlpha);
-    }
     return direction;
 }
 
@@ -94,117 +110,27 @@ PetscReal ablate::finiteVolume::fluxCalculator::AusmpUp::P5Minus(PetscReal m, do
         return (M2Minus(m) * ((-2.0 - m) + 16. * alpha * m * M2Plus(m)));
     }
 }
+#if 0
+static FILE *f1 = fopen("energyFlux.txt", "w");
 
 bool ablate::finiteVolume::fluxCalculator::AusmpUp::ComputeFullFluxVector(void* ctx,
+                                                                      const PetscFVFaceGeom *fg,
                                                                       PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL,
                                                                       PetscReal uR, PetscReal aR, PetscReal rhoR, PetscReal pR,
-                                                                      PetscInt dim,
+                                                                      const PetscInt dim,
                                                                       const PetscReal* normal,  // Area normal of the face
                                                                       PetscReal areaMag,        // Area of the face
-                                                                      const PetscReal* velocityL, const PetscReal* velocityR,
-                                                                      PetscReal internalEnergyL, PetscReal internalEnergyR,
-                                                                      const PetscInt   nPhase,
-                                                                      const PetscReal *alphakL,
-                                                                      const PetscReal *alphakR,
-                                                                      const PetscReal *alphakRhokL,
-                                                                      const PetscReal *alphakRhokR,
+                                                                      const PetscInt nPhase,
+                                                                      const PetscReal *alphakL,     const PetscReal *alphakR,
+                                                                      const PetscReal *alphakRhokL, const PetscReal *alphakRhokR,
+                                                                      const PetscReal *allaireL, const PetscReal *allaireR,
                                                                       fluxCalculator::FullFluxVector* fluxVector) {
 
-    // Extract parameters from context
-    auto ausmUp = (ablate::finiteVolume::fluxCalculator::AusmpUp*)ctx;
-    PetscReal pgsAlpha = ausmUp->pgs ? ausmUp->pgs->GetAlpha() : 1.0;
-    PetscReal mInf = ausmUp->mInf;
-
-    //PetscPrintf(PETSC_COMM_WORLD, " alphakRhokL  alphakRhokR\n");
-    // for (size_t i = 0; i < alphakL.size(); i++) {
-        //PetscPrintf(PETSC_COMM_WORLD, "%zu %f %f\n", i, alphakRhokL[i], alphakRhokR[i]);
-    // }
-
-    // Compute the density at the interface
-    PetscReal rho12 = 0.5 * (rhoL + rhoR);
-
-    // Compute the speed of sound at a12
-    PetscReal a12 = 0.5 * (aL + aR) / pgsAlpha;
-
-    // Compute the left and right mach numbers
-    PetscReal mL = uL / a12;
-    PetscReal mR = uR / a12;
-
-    // Compute mBar2 (eq 70)
-    PetscReal mBar2 = (PetscSqr(uL) + PetscSqr(uR)) / (2.0 * a12 * a12);
-
-    // Compute mInf2 or set fa to unity
-    PetscReal fa = 1.0;
-    if (mInf > 0) {
-        PetscReal mInf2 = PetscSqr(mInf);
-        PetscReal mO2 = PetscMin(1.0, PetscMax(mBar2, mInf2));
-        PetscReal mO = PetscSqrtReal(mO2);
-        fa = mO * (2.0 - mO);
-    }
-
-    // Compute the mach number on the interface
-    PetscReal m12 = M4Plus(mL) + M4Minus(mR) - (Kp / fa) * PetscMax(1.0 - (sigma * mBar2), 0) * (pR - pL) / (rho12 * a12 * a12 * pgsAlpha * pgsAlpha);
-
-    // Compute pressure flux
-    PetscReal p5Plus = P5Plus(mL, fa);
-    PetscReal p5Minus = P5Minus(mR, fa);
-    PetscReal p12 = (p5Plus * pL + p5Minus * pR - Ku * p5Plus * p5Minus * rho12 * fa * a12 * a12 * pgsAlpha * pgsAlpha * (mR - mL)) / (pgsAlpha * pgsAlpha);
+    PetscReal a12, m12, p12;
+    AusmpUpInterfaceValues(ctx, uL, aL, rhoL, pL, uR, aR, rhoR, pR, &a12, &m12, &p12);
 
     // Compute the Riemann velocity
     PetscReal vRiem = a12 * m12;
-
-
-#if 0
-
-    if (vRiem > 0) {
-
-      // Set the basic flux components
-      fluxVector->massFlux = vRiem * rhoL * areaMag;
-      fluxVector->pressureFlux = p12 * areaMag;
-
-      // Compute momentum flux components
-      for (PetscInt d = 0; d < dim; d++) {
-          // Compute momentum flux using split velocities and full velocity vectors
-          fluxVector->momentumFlux[d] = rhoL * vRiem * velocityL[d] * areaMag + p12 * normal[d];
-      }
-
-      // Compute total energy (internal + kinetic + pressure)
-      PetscReal E = internalEnergyL;
-      for (PetscInt d = 0; d < dim; d++) E += 0.5 * velocityL[d] * velocityL[d];
-      fluxVector->energyFlux = (rhoL * E + p12) * vRiem * areaMag;
-
-      // Compute phase-specific fluxes, and loop through the number of phases
-      for (PetscInt k = 0; k < nPhase; k++) {
-          fluxVector->alphakRhokFlux[k] = vRiem * alphakRhokL[k] * areaMag;
-          fluxVector->alphakFlux[k]     = vRiem * alphakL[k] * areaMag;
-      }
-
-    }
-    else {
-      // Set the basic flux components
-      fluxVector->massFlux = vRiem * rhoR * areaMag;
-      fluxVector->pressureFlux = p12 * areaMag;
-
-      // Compute momentum flux components
-      for (PetscInt d = 0; d < dim; d++) {
-          // Compute momentum flux using split velocities and full velocity vectors
-          fluxVector->momentumFlux[d] = rhoR * vRiem * velocityR[d] * areaMag + p12 * normal[d];
-      }
-
-      // Compute total energy (internal + kinetic + pressure)
-      PetscReal E = internalEnergyR;
-      for (PetscInt d = 0; d < dim; d++) E += 0.5 * velocityR[d] * velocityR[d];
-      fluxVector->energyFlux = (rhoR * E + p12) * vRiem * areaMag;
-
-      // Compute phase-specific fluxes, and loop through the number of phases
-      for (PetscInt k = 0; k < nPhase; k++) {
-          fluxVector->alphakRhokFlux[k] = vRiem * alphakRhokR[k] * areaMag;
-          fluxVector->alphakFlux[k]     = vRiem * alphakR[k] * areaMag;
-      }
-    }
-
-#else
-
 
     // Split the velocity
     PetscReal lPlus = 0.5 * (vRiem + PetscAbs(vRiem));
@@ -214,24 +140,14 @@ bool ablate::finiteVolume::fluxCalculator::AusmpUp::ComputeFullFluxVector(void* 
     /* In the flux calculation all values of u \dot n are replaced by vRiem * areaMag
         as vRiem is the "normal" velocity of the face*/
 
-    // Set the basic flux components
-    fluxVector->massFlux = (lPlus * rhoL + lMinus * rhoR) * areaMag;
-    fluxVector->pressureFlux = p12 * areaMag;
-
     // Compute momentum flux components
     for (PetscInt d = 0; d < dim; d++) {
         // Compute momentum flux using split velocities and full velocity vectors
-        fluxVector->momentumFlux[d] = (rhoL * lPlus * velocityL[d] + rhoR * lMinus * velocityR[d]) * areaMag + p12 * normal[d];
+        fluxVector->momentumFlux[d] = (lPlus * allaireL[NPhaseFlowFields::RHOU + d] + lMinus * allaireR[NPhaseFlowFields::RHOU + d]) * areaMag + p12 * normal[d];
     }
 
     // Compute total energy (internal + kinetic + pressure)
-    PetscReal EL = internalEnergyL;
-    PetscReal ER = internalEnergyR;
-    for (PetscInt d = 0; d < dim; d++) {
-        EL += 0.5 * velocityL[d] * velocityL[d];
-        ER += 0.5 * velocityR[d] * velocityR[d];
-    }
-    fluxVector->energyFlux = (rhoL * lPlus * EL + rhoR * lMinus * ER + p12 * vRiem) * areaMag;
+    fluxVector->energyFlux = (lPlus * allaireL[NPhaseFlowFields::RHOE] + lMinus * allaireR[NPhaseFlowFields::RHOE] + p12 * vRiem) * areaMag;
 
     // Compute phase-specific fluxes, and loop through the number of phases
     for (PetscInt k = 0; k < nPhase; k++) {
@@ -239,13 +155,12 @@ bool ablate::finiteVolume::fluxCalculator::AusmpUp::ComputeFullFluxVector(void* 
         fluxVector->alphakFlux[k] = (lPlus * alphakL[k] + lMinus * alphakR[k]) * areaMag;
     }
 
-    fluxVector->vriem = vRiem;
+//    fluxVector->vriem = vRiem;
 
-#endif
-
+fprintf(f1, "%+e\t%+e\t%+e\n", fg->centroid[0], fg->centroid[1], fluxVector->energyFlux);
     return true;
 }
-
+#endif
 #include "registrar.hpp"
 REGISTER(ablate::finiteVolume::fluxCalculator::FluxCalculator, ablate::finiteVolume::fluxCalculator::AusmpUp, "A sequel to AUSM, Part II: AUSM+-up for all speeds, Meng-Sing Liou, Pages 137-170, 2006",
          OPT(double, "mInf", "the reference mach number"),

@@ -17,13 +17,16 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     typedef enum {RHOE, RHOU, RHOV, RHOW} AllaireComponents;
 
     //! the primary field containing the AllaireComponents
-    inline const static std::string ALLAIRE_FIELD = "allaire";
+    inline const static std::string ALLAIRE = "allaire";
 
     //! The conserved prefix used for fields that have a conserved and non conserved form
     // inline const static std::string CONSERVED = "density";
 
     inline const static std::string ALPHAKRHOK = "alphakrhok";
     inline const static std::string ALPHAK = "alphak";
+
+    // Needed for the compressibility/alphak correction
+    inline const static std::string VELDIV = "velDiv";
 
     // alpha_k rho_k for each phase; this might actually belong in nPhaseEulerAdvection ?
     // inline static std::string ALPHAKRHOK(PetscInt phase){

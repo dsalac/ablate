@@ -114,10 +114,10 @@ ablate::eos::ThermodynamicFunction ablate::eos::NPhase::GetThermodynamicFunction
     const std::vector<domain::Field> &fields) const {
 
     auto allaireField = std::find_if(fields.begin(), fields.end(), [](const auto &field) {
-        return field.name == ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD;
+        return field.name == ablate::finiteVolume::NPhaseFlowFields::ALLAIRE;
     });
     if (allaireField == fields.end()) {
-        throw std::invalid_argument("The ablate::eos::NPhase requires the ablate::finiteVolume::NPhaseFlowFields::ALLAIRE_FIELD Field");
+        throw std::invalid_argument("The ablate::eos::NPhase requires the ablate::finiteVolume::NPhaseFlowFields::ALLAIRE Field");
     }
 
     auto alphakrhokField = std::find_if(fields.begin(), fields.end(), [](const auto &field) {
