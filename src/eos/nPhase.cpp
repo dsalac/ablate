@@ -416,5 +416,3 @@ PetscErrorCode ablate::eos::NPhase::DensityFunction(const PetscReal *conserved, 
 #include "registrar.hpp"
 REGISTER(ablate::eos::EOS, ablate::eos::NPhase, "N phase eos",
     ARG(std::vector<ablate::eos::EOS>, "eosk", "vector of EOSs for each phase"));
-    // ARG(ablate::eos::EOS, "eos1", "eos for fluid 1, must be prefect or stiffened gas."),
-    //      ARG(ablate::eos::EOS, "eos2", "eos for fluid 2, must be perfect or stiffened gas."));

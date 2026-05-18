@@ -17,38 +17,21 @@ namespace ablate::finiteVolume::processes {
 
 class NPhaseIntSharp : public Process {
 
-   public:
-    enum class Form { PARAMESWARAN_MANDAL, CHIU_LIN };
-
    private:
-    //mesh for vertex information
-    DM vertexDM{};
-    DM fluxDM{};
-    std::shared_ptr<ablate::domain::SubDomain> subDomain;
+    inline const static std::string FSHARPK_FIELD = "fsharpk";
+
     std::vector<PetscReal> Gammak;
     std::vector<PetscReal> epsilonk;
     std::vector<PetscInt> flipPhiTildek;
-    Form form;
+    const bool isPostStep;
 
-    PetscReal boundingBox[6];  // [xmin, xmax, ymin, ymax, zmin, zmax]
-    PetscReal minRadius;
-    PetscReal boundaryLayerThickness;
-    PetscReal boundaryLayerMultiplier;
-    std::map<PetscInt, PetscReal> cellBoundaryDistances;
-    std::map<PetscInt, PetscReal> cellBoundaryWeights;
+    std::shared_ptr<ablate::domain::SubDomain> subDomain;
 
-    void ComputeBoundaryInformation(DM dm);
-
-    void EnsureFluxDM(DM dm, PetscInt phases);
-
-    /**
-     * Get boundary weight for a cell (1.0 for interior, 0.0 for boundary, smooth transition in between)
-     * @param cell The cell index
-     * @return Boundary weight between 0.0 and 1.0
-     */
-    PetscReal GetBoundaryWeight(PetscInt cell) const;
-
-    static Form ParseForm(const std::string &s);
+    // Only necessary for post-step processes
+    IS subIS = nullptr;
+    Vec subGlobVec = nullptr, subLocVec = nullptr;
+    DM subDM = nullptr;
+    VecScatter subScatter = nullptr;
 
    public:
 
@@ -56,12 +39,16 @@ class NPhaseIntSharp : public Process {
         const std::vector<PetscReal>& Gammak,
         const std::vector<PetscReal>& epsilonk,
         const std::vector<PetscInt>& flipPhiTildek,
-        PetscReal boundaryLayerMultiplier = 3.0,
-        std::string form = "parameswaran_mandal");
+        const bool isPostStep = false);
 
     ~NPhaseIntSharp() override;
 
-    PetscErrorCode PreStage(TS flowTs, ablate::solver::Solver &solver, PetscReal stagetime);
+    static PetscErrorCode NPhaseIntSharpPostStep(TS flowTs, ablate::solver::Solver &solver, ablate::finiteVolume::processes::NPhaseIntSharp* process);
+
+    static PetscErrorCode NPhaseIntSharpPreStage(TS ts, ablate::solver::Solver &solver, PetscReal stagetime, ablate::finiteVolume::processes::NPhaseIntSharp* process);
+
+    static PetscErrorCode NPhaseIntSharpPointSource(PetscInt dim, const PetscReal time, const PetscFVCellGeom *cg, const PetscInt *uOff, const PetscScalar *u, const PetscInt *aOff, const PetscScalar *a, PetscScalar *flux, void *ctx);
+
 
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
     void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;

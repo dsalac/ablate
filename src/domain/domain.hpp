@@ -61,6 +61,9 @@ class Domain : private utilities::Loggable<Domain>, private ablate::utilities::N
     //! The global solution vector defined over the entire dm. This is the canonical source of information
     Vec solGlobalField;
 
+    //! The local solution vector defined over the entire dm.
+    Vec solLocalField = nullptr;
+
     void CreateStructures();
 
     // keep a list of functions that modify the dm
@@ -79,6 +82,19 @@ class Domain : private utilities::Loggable<Domain>, private ablate::utilities::N
      * @return
      */
     inline Vec GetSolutionVector() { return solGlobalField; }
+
+    /**
+     * Updates and creates (if necessary) the local solution field
+     * @return
+     */
+    void UpdateSolutionLocalVector();
+
+    /**
+     * Returns access to a local solution field. UpdateSolutionVector must be called first to make sure
+        the local vector has been created/updated
+     * @return
+     */
+    inline Vec GetSolutionLocalVector() { return solLocalField; }
 
     /**
      * Register the field with the dm

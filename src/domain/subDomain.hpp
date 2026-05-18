@@ -123,19 +123,6 @@ class SubDomain : public io::Serializable {
     }
 
     /**
-     * checks whether the field exists in the subdomain
-     * @param fieldName the string name of the field
-     * @return true/false
-     */
-    [[nodiscard]] inline bool HasField(const std::string& fieldName)  {
-        if (fieldsByName.count(fieldName)) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    /**
      * returns a references to the field for a given id and location
      * @param id
      * @param location
@@ -362,6 +349,24 @@ class SubDomain : public io::Serializable {
      * @return
      */
     [[nodiscard]] inline Vec GetSolutionVector() const noexcept { return domain.GetSolutionVector(); }
+
+    /**
+     * Returns the local solution vector
+     * @return
+     */
+    [[nodiscard]] inline Vec GetSolutionLocalVector() const noexcept { return domain.GetSolutionLocalVector(); }
+
+    /**
+     * Updates the local solution vector
+     * @return
+     */
+    inline void UpdateSolutionLocalVector() const noexcept { domain.UpdateSolutionLocalVector(); }
+
+    /**
+     * Restores a global solution vector
+     * @return
+     */
+    Vec RestoreSolutionLocalVector();
 
     /**
      * Returns the local aux vector

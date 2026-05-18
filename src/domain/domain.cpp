@@ -63,6 +63,11 @@ ablate::domain::Domain::~Domain() {
     if (solGlobalField) {
         VecDestroy(&solGlobalField) >> utilities::PetscUtilities::checkError;
     }
+
+    if (solLocalField) {
+        VecDestroy(&solLocalField) >> utilities::PetscUtilities::checkError;
+    }
+
     if (petscOptions) {
         ablate::utilities::PetscUtilities::PetscOptionsDestroyAndCheck("ablate::domain::Domain", &petscOptions);
     }
@@ -409,4 +414,9 @@ bool ablate::domain::Domain::CheckFieldValues(Vec globSourceVector) {
     }
 
     return (bool)globalFailedPoints;
+}
+
+void ablate::domain::Domain::UpdateSolutionLocalVector() {
+  if (!solLocalField) DMCreateLocalVector(dm, &(solLocalField)) >> utilities::PetscUtilities::checkError;
+  DMGlobalToLocal(dm, solGlobalField, INSERT_VALUES, solLocalField) >> utilities::PetscUtilities::checkError;
 }
