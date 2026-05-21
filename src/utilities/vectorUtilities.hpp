@@ -151,6 +151,25 @@ class VectorUtilities {
     }
 
     /**
+     * Finds the first item in list that is of type S and returns the location
+     * @tparam S the type of item to find
+     * @tparam T
+     * @param list
+     * @return the first location of S
+     */
+    template <class S, class T>
+    static inline int FindLocation(const std::vector<std::shared_ptr<T>>& list) {
+        int l = 0;
+        for (auto& item : list) {
+            if (auto itemAsS = std::dynamic_pointer_cast<S>(item)) {
+                return l;
+            }
+            ++l;
+        }
+        return -1;
+    }
+
+    /**
      * Filters all item in list not of type S
      * @tparam S the type of item to find
      * @tparam T

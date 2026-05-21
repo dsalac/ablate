@@ -55,12 +55,10 @@ PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const F
 
       PetscScalar *x;
       xDMPlexPointLocalRef(auxDM, cell, cellLocs->id, auxArray, &x) >> ablate::utilities::PetscUtilities::checkError;
-      DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+      DMPlexPointGeometricData(dm, cell, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
 //      PetscFVCellGeom* cg;
 //      DMPlexPointLocalRead(dmCell, cell, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
 //      for (PetscInt d = 0; d < dim; ++d) x[d] = cg->centroid[d];
-
-
 
       xDMPlexPointLocalRef(auxDM, cell, rankLocs->id, auxArray, &x) >> ablate::utilities::PetscUtilities::checkError;
       *x = rank;
@@ -76,7 +74,7 @@ PetscErrorCode ablate::finiteVolume::processes::locations::ComputeSource(const F
       PetscScalar *x;
       xDMPlexPointLocalRef(auxDM, vert, vertLocs->id, auxArray, &x) >> ablate::utilities::PetscUtilities::checkError;
 
-      DMPlexComputeCellGeometryFVM(dm, vert, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
+      DMPlexPointGeometricData(dm, vert, NULL, x, NULL) >> ablate::utilities::PetscUtilities::checkError;
     }
 
 

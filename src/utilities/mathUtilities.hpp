@@ -48,6 +48,19 @@ class MathUtilities {
     }
 
     template <class I, class T>
+    static inline void NormVector(I dim, const T* in, T* out, T* norm) {
+        T mag = 0.0;
+        for (I d = 0; d < dim; d++) {
+            mag += in[d] * in[d];
+        }
+        mag = PetscSqrtReal(mag);
+        for (I d = 0; d < dim; d++) {
+            out[d] = in[d] / mag;
+        }
+        *norm = mag;
+    }
+
+    template <class I, class T>
     static inline T MagVector(I dim, const T* in) {
         T mag = 0.0;
         for (I d = 0; d < dim; d++) {

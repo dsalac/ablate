@@ -107,9 +107,9 @@
     }
     else if(nPoints>2) {
       PetscReal x[dim];
-      PetscCall(DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL));
+      PetscCall(DMPlexPointGeometricData(dm, cell, NULL, x, NULL));
       printf("plot(%f,%f,'r*'); %% Cell\n", x[0], x[1]);
-//      PetscCall(DMPlexComputeCellGeometryFVM(dm, sharedFace, NULL, x, NULL));
+//      PetscCall(DMPlexPointGeometricData(dm, sharedFace, NULL, x, NULL));
 //      printf("plot(%f,%f,'r*'); %% Shared Face\n", x[0], x[1]);
       SETERRQ(PetscObjectComm((PetscObject)dm), PETSC_ERR_PLIB, "DMPlexGetForwardCell detected that a face is shared between %" PetscInt_FMT" cells.", nPoints);
     }
@@ -355,7 +355,7 @@ static PetscErrorCode DMPlexGetNeighborCells_Internal(DM dm, PetscReal x0[3], Pe
 
             for (st = 0; st < nStar * 2; st += 2) {
                 if (star[st] >= cStart && star[st] < cEnd) {                               // If the point is a cell add it.
-                    PetscCall(DMPlexComputeCellGeometryFVM(dm, star[st], NULL, x, NULL));  // Center of the candidate cell.
+                    PetscCall(DMPlexPointGeometricData(dm, star[st], NULL, x, NULL));  // Center of the candidate cell.
                     dist = 0.0;
                     for (i = 0; i < dim; ++i) {  // Compute the distance so that we can check if it's within the required distance.
                         dist += PetscSqr(x0[i] - x[i]);
@@ -496,7 +496,7 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
         type = 2;
     }
 
-    PetscCall(DMPlexComputeCellGeometryFVM(dm, p, NULL, x0, NULL));  // Center of the cell-of-interest
+    PetscCall(DMPlexPointGeometricData(dm, p, NULL, x0, NULL));  // Center of the cell-of-interest
 
     // Declare the internal function pointer
     PetscErrorCode (*neighborFunc)(DM, PetscReal[3], PetscInt, PetscReal, PetscBool, PetscInt *, PetscInt **);
@@ -587,7 +587,7 @@ PetscErrorCode DMPlexGetNeighbors(DM dm, PetscInt p, PetscInt maxLevels, PetscRe
         PetscCall(DMGetDimension(dm, &dim));  // The dimension of the grid
         PetscCall(PetscMalloc1(n, &dist));
         for (i = 0; i < n; ++i) {
-            PetscCall(DMPlexComputeCellGeometryFVM(dm, list[i], NULL, x, NULL));  // Center of the cell-of-interest
+            PetscCall(DMPlexPointGeometricData(dm, list[i], NULL, x, NULL));  // Center of the cell-of-interest
             dist[i] = 0.0;
             for (j = 0; j < dim; ++j) {  // Compute the distance so that we can check if it's within the required distance.
                 dist[i] += PetscSqr(x0[j] - x[j]);
@@ -969,11 +969,11 @@ PetscErrorCode DMPlexFaceCentroidOutwardAreaNormal(DM dm, PetscInt cell, PetscIn
 
     // Get the cell center
     PetscReal x0[3];
-    PetscCall(DMPlexComputeCellGeometryFVM(dm, cell, NULL, x0, NULL));
+    PetscCall(DMPlexPointGeometricData(dm, cell, NULL, x0, NULL));
 
     // Centroid and normal for face/edge
     PetscReal faceArea, faceCenter[3], normal[3];
-    PetscCall(DMPlexComputeCellGeometryFVM(dm, face, &faceArea, faceCenter, normal));
+    PetscCall(DMPlexPointGeometricData(dm, face, &faceArea, faceCenter, normal));
 
     PetscInt dim;
     PetscCall(DMGetDimension(dm, &dim));
@@ -1030,7 +1030,7 @@ static PetscErrorCode DMPlexSurfaceAreaNormal2D_Internal(DM dm, const PetscReal 
     for (PetscInt c = 0; c < nObj; ++c) {
         PetscReal objCenter[dim];  // Center of the object
         PetscReal pObj[dim];       // Vector connecting center of the object and the location pCenter
-        PetscCall(DMPlexComputeCellGeometryFVM(dm, objs[c], NULL, objCenter, NULL));
+        PetscCall(DMPlexPointGeometricData(dm, objs[c], NULL, objCenter, NULL));
 
         // Vector from the edge center to the cell center
         for (PetscInt d = 0; d < dim; ++d) {
@@ -1073,7 +1073,7 @@ static PetscErrorCode DMPlexSurfaceAreaNormal3D_Internal(DM dm, const PetscInt t
         const PetscInt *cells;
         PetscReal faceCenter[dim];
 
-        PetscCall(DMPlexComputeCellGeometryFVM(dm, faces[f], NULL, faceCenter, NULL));
+        PetscCall(DMPlexPointGeometricData(dm, faces[f], NULL, faceCenter, NULL));
 
         PetscCall(DMPlexGetSupportSize(dm, faces[f], &nCells));
         PetscCall(DMPlexGetSupport(dm, faces[f], &cells));
@@ -1084,7 +1084,7 @@ static PetscErrorCode DMPlexSurfaceAreaNormal3D_Internal(DM dm, const PetscInt t
                 PetscReal cellFace[dim];  // Vector from cell center to face center
                 PetscReal n[dim];         // Surface area normal. Needs to be corrected to align with the vector from the vertex to the edgeCenter
 
-                PetscCall(DMPlexComputeCellGeometryFVM(dm, cells[c], NULL, cellCenter, NULL));
+                PetscCall(DMPlexPointGeometricData(dm, cells[c], NULL, cellCenter, NULL));
 
                 for (PetscInt d = 0; d < dim; ++d) {
                     cellEdge[d] = edgeCenter[d] - cellCenter[d];
@@ -1121,8 +1121,8 @@ static PetscErrorCode DMPlexEdgeSurfaceAreaNormal(DM dm, const PetscInt v, const
 
     PetscCall(DMGetDimension(dm, &dim));
 
-    PetscCall(DMPlexComputeCellGeometryFVM(dm, v, NULL, vCoords, NULL));
-    PetscCall(DMPlexComputeCellGeometryFVM(dm, e, NULL, edgeCenter, NULL));
+    PetscCall(DMPlexPointGeometricData(dm, v, NULL, vCoords, NULL));
+    PetscCall(DMPlexPointGeometricData(dm, e, NULL, edgeCenter, NULL));
 
     // Get all of the cells(2D) or faces(3D) associated with this edge
     PetscCall(DMPlexGetSupportSize(dm, e, &nFace));
@@ -1326,7 +1326,7 @@ PetscErrorCode DMPlexCornerSurfaceAreaNormal(DM dm, const PetscInt v, const Pets
 
     PetscCall(DMGetDimension(dm, &dim));
 
-    PetscCall(DMPlexComputeCellGeometryFVM(dm, v, NULL, vCoords, NULL));
+    PetscCall(DMPlexPointGeometricData(dm, v, NULL, vCoords, NULL));
 
     // Get all edges in the cell that use the vertex
     PetscCall(DMPlexGetCommonPoints(dm, v, c, 1, &nEdges, &edges));
@@ -1336,7 +1336,7 @@ PetscErrorCode DMPlexCornerSurfaceAreaNormal(DM dm, const PetscInt v, const Pets
     for (PetscInt e = 0; e < nEdges; ++e) {
         PetscReal edgeCenter[3] = {0.0, 0.0, 0.0}, n[3] = {0.0, 0.0, 0.0};
 
-        PetscCall(DMPlexComputeCellGeometryFVM(dm, edges[e], NULL, edgeCenter, NULL));
+        PetscCall(DMPlexPointGeometricData(dm, edges[e], NULL, edgeCenter, NULL));
 
         switch (dim) {
             case 1: {
@@ -1385,7 +1385,7 @@ PetscErrorCode DMPlexVertexControlVolume(DM dm, const PetscInt v, PetscReal *vol
             PetscReal cellVol;
             PetscInt nCorners;
 
-            PetscCall(DMPlexComputeCellGeometryFVM(dm, star[st], &cellVol, NULL, NULL));
+            PetscCall(DMPlexPointGeometricData(dm, star[st], &cellVol, NULL, NULL));
 
             // The number of corners a cell can be divided into equals the number of vertices associated with that cell
             PetscCall(DMPlexCellGetNumVertices(dm, star[st], &nCorners));
@@ -1574,7 +1574,7 @@ PetscErrorCode DMPlexCellGradFromVertex(DM dm, const PetscInt c, Vec data, Petsc
     PetscCall(VecRestoreArrayRead(data, &dataArray));
 
     PetscReal vol;
-    PetscCall(DMPlexComputeCellGeometryFVM(dm, c, &vol, NULL, NULL));
+    PetscCall(DMPlexPointGeometricData(dm, c, &vol, NULL, NULL));
     for (PetscInt d = 0; d < dim; ++d) {
         g[d] /= vol;
     }
@@ -1622,7 +1622,7 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
             PetscInt sc = sharedCells[j];
 
             PetscReal x[dim];
-            PetscCall(DMPlexComputeCellGeometryFVM(dm, sc, NULL, x, NULL));  // Center of the candidate cell.
+            PetscCall(DMPlexPointGeometricData(dm, sc, NULL, x, NULL));  // Center of the candidate cell.
 
             PetscReal dist = 0.0;
             for (PetscInt d = 0; d < dim; ++d) dist += PetscSqr(x[d] - centroid[d]);
@@ -1640,7 +1640,7 @@ PetscErrorCode DMPlexCellGradFromCell(DM dm, const PetscInt c, Vec data, PetscIn
 
     // Center of the cell
     PetscReal cellVolume;
-    PetscCall(DMPlexComputeCellGeometryFVM(dm, c, &cellVolume, NULL, NULL));
+    PetscCall(DMPlexPointGeometricData(dm, c, &cellVolume, NULL, NULL));
     for (PetscInt d = 0; d < dim; ++d) g[d] /= cellVolume;
 
     PetscFunctionReturn(PETSC_SUCCESS);
