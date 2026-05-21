@@ -49,9 +49,9 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             domain::FieldType::FVM,
             region,
             ablate::parameters::MapParameters::Create({
-        {"petscfv_type", "leastsquares"},
-        {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "false"} //TRUE
+        {"petscfv_type", "upwind"},
+        {"petsclimiter_type", "vanleer"},
+        {"petscfv_compute_gradients", "true"} //TRUE
     })),
 
         //register alphak FIRST, then alphakrhok
@@ -63,7 +63,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             region,
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"},
-        {"petsclimiter_type", "none"},
+        {"petsclimiter_type", "vanleer"},
         {"petscfv_compute_gradients", "true"}
     })),
 
@@ -74,8 +74,8 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             domain::FieldType::FVM,
             region,
             ablate::parameters::MapParameters::Create({
-        {"petscfv_type", "leastsquares"},
-        {"petsclimiter_type", "none"},
+        {"petscfv_type", "upwind"},
+        {"petsclimiter_type", "vanleer"},
         {"petscfv_compute_gradients", "true"}
     })),
 
@@ -108,19 +108,19 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             region,
             auxFieldOptions),
 
-        std::make_shared<domain::FieldDescription>(
-            FSHARPK, FSHARPK,
-            [&](){
-                std::vector<std::string> fsharpkComponents;
-                for (std::size_t k = 0; k < phases; k++){
-                    fsharpkComponents.push_back("fsharpk" + std::to_string(k));
-                }
-                return fsharpkComponents;
-            }(),
-            domain::FieldLocation::AUX,
-            domain::FieldType::FVM,
-            region,
-            auxFieldOptions),
+//        std::make_shared<domain::FieldDescription>(
+//            FSHARPK, FSHARPK,
+//            [&](){
+//                std::vector<std::string> fsharpkComponents;
+//                for (std::size_t k = 0; k < phases; k++){
+//                    fsharpkComponents.push_back("fsharpk" + std::to_string(k));
+//                }
+//                return fsharpkComponents;
+//            }(),
+//            domain::FieldLocation::AUX,
+//            domain::FieldType::FVM,
+//            region,
+//            auxFieldOptions),
 
         // Aij interface indicator per unique pair (i<j)
         // std::make_shared<domain::FieldDescription>(

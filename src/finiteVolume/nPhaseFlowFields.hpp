@@ -16,37 +16,12 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
    //unchanging conserved components
     typedef enum {RHOE, RHOU, RHOV, RHOW} AllaireComponents;
 
-    //! the primary field containing the AllaireComponents
     inline const static std::string ALLAIRE = "allaire";
-
-    //! The conserved prefix used for fields that have a conserved and non conserved form
-    // inline const static std::string CONSERVED = "density";
-
     inline const static std::string ALPHAKRHOK = "alphakrhok";
     inline const static std::string ALPHAK = "alphak";
-
-    // Needed for the compressibility/alphak correction
     inline const static std::string VELDIV = "velDiv";
 
-    // alpha_k rho_k for each phase; this might actually belong in nPhaseEulerAdvection ?
-    // inline static std::string ALPHAKRHOK(PetscInt phase){
-    //     return "alpharho" + std::to_string(phase);
-    // }
-    // inline static std::string ALPHAK(PetscInt phase){
-    //     return "alpha" + std::to_string(phase);
-    // }
 
-    // inline static std::string RHOK(PetscInt phase){
-    //     return "rho" + std::to_string(phase);
-    // }
-
-    // inline static std::string TK(PetscInt phase){
-    //     return "t" + std::to_string(phase);
-    // }
-
-    // inline static std::string EPSK(PetscInt phase){
-    //     return "eps" + std::to_string(phase);
-    // }
 
     //! some common aux fields
     inline const static std::string UI = "ui";
@@ -71,7 +46,7 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     const std::shared_ptr<parameters::Parameters> auxFieldOptions = ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"},
         {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "false"}
+        {"petscfv_compute_gradients", "true"}
     });
     const PetscInt dim;
 

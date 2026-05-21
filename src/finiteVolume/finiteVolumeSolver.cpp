@@ -84,12 +84,12 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
             if (type == DM_BC_NATURAL_RIEMANN) {
               PetscInt fieldId = -1;
 
-              if (subDomain->HasField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD)) {
+              if (subDomain->ContainsField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD)) {
                 auto eulerField = subDomain->GetField(ablate::finiteVolume::CompressibleFlowFields::EULER_FIELD);
                 if (field == eulerField.id) fieldId = eulerField.id;
               }
 
-              if (fieldId == -1 && subDomain->HasField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE)) {
+              if (fieldId == -1 && subDomain->ContainsField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE)) {
                 auto allaireField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
                 if (field == allaireField.id) fieldId = allaireField.id;
               }
@@ -211,6 +211,7 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
     UpdateAuxFields(NAN, locXVec, subDomain->GetAuxVector());
     DMRestoreLocalVector(subDomain->GetDM(), &locXVec) >> utilities::PetscUtilities::checkError;
 }
+
 //static PetscInt cnt = 0;
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(PetscReal time, Vec locXVec, Vec locFVec) {
     PetscFunctionBeginUser;
@@ -224,9 +225,9 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         if (!discontinuousFluxFunctionDescriptions.empty()) {
             if (cellInterpolant == nullptr) {
                 cellInterpolant = std::make_unique<CellInterpolant>(subDomain, GetRegion(), faceGeomVec, cellGeomVec, maxlimit);
-                for (const auto& fieldName : pendingSlopeLimiterFields) {
-                    cellInterpolant->GetSlopeLimiter().EnableForField(fieldName);
-                }
+//                for (const auto& fieldName : pendingSlopeLimiterFields) {
+//                    cellInterpolant->GetSlopeLimiter().EnableForField(fieldName);
+//                }
             }
             cellInterpolant->ComputeRHS(time, locXVec, subDomain->GetAuxVector(), locFVec, GetRegion(), discontinuousFluxFunctionDescriptions, faceRange, cellRange, cellGeomVec, faceGeomVec);
         }
@@ -240,9 +241,9 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         if (!pointFunctionDescriptions.empty()) {
             if (cellInterpolant == nullptr) {
                 cellInterpolant = std::make_unique<CellInterpolant>(subDomain, GetRegion(), faceGeomVec, cellGeomVec, maxlimit);
-                for (const auto& fieldName : pendingSlopeLimiterFields) {
-                    cellInterpolant->GetSlopeLimiter().EnableForField(fieldName);
-                }
+//                for (const auto& fieldName : pendingSlopeLimiterFields) {
+//                    cellInterpolant->GetSlopeLimiter().EnableForField(fieldName);
+//                }
             }
 
             cellInterpolant->ComputeRHS(time, locXVec, subDomain->GetAuxVector(), locFVec, GetRegion(), pointFunctionDescriptions, cellRange, cellGeomVec);
@@ -266,7 +267,18 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         SETERRQ(PETSC_COMM_SELF, PETSC_ERR_LIB, "Error in FaceInterpolant continuousFluxFunctionDescriptions: %s", exception.what());
     }
 
-//if (subDomain->HasField("allaire")) {
+    RestoreRange(faceRange);
+    RestoreRange(cellRange);
+
+    // iterate over any arbitrary RHS functions
+    StartEvent("FiniteVolumeSolver::ComputeRHSFunction::rhsArbitraryFunctions");
+    for (const auto& rhsFunction : rhsArbitraryFunctions) {
+        PetscCall(rhsFunction.first(*this, subDomain->GetDM(), time, locXVec, locFVec, rhsFunction.second));
+    }
+
+
+
+//if (subDomain->ContainsField("allaire")) {
 //++cnt;
 //  char fname[255];
 //  sprintf(fname, "rhs%d.txt", cnt);
@@ -305,17 +317,10 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
 //  }
 
 //  printf("%s::%d\n", __FILE__, __LINE__);
-////  exit(0);
+//  exit(0);
 //}
 
-    RestoreRange(faceRange);
-    RestoreRange(cellRange);
 
-    // iterate over any arbitrary RHS functions
-    StartEvent("FiniteVolumeSolver::ComputeRHSFunction::rhsArbitraryFunctions");
-    for (const auto& rhsFunction : rhsArbitraryFunctions) {
-        PetscCall(rhsFunction.first(*this, subDomain->GetDM(), time, locXVec, locFVec, rhsFunction.second));
-    }
     EndEvent();
 
 
@@ -517,12 +522,12 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::PreRHSFunction(TS ts, P
     PetscFunctionReturn(0);
 }
 
-void ablate::finiteVolume::FiniteVolumeSolver::EnableSlopeLimiterFor(const std::string& fieldName) {
-    pendingSlopeLimiterFields.insert(fieldName);
-    if (cellInterpolant) {
-        cellInterpolant->GetSlopeLimiter().EnableForField(fieldName);
-    }
-}
+//void ablate::finiteVolume::FiniteVolumeSolver::EnableSlopeLimiterFor(const std::string& fieldName) {
+//    pendingSlopeLimiterFields.insert(fieldName);
+//    if (cellInterpolant) {
+//        cellInterpolant->GetSlopeLimiter().EnableForField(fieldName);
+//    }
+//}
 
 #include "registrar.hpp"
 REGISTER(ablate::solver::Solver, ablate::finiteVolume::FiniteVolumeSolver, "finite volume solver", ARG(std::string, "id", "the name of the flow field"),

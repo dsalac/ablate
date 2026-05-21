@@ -17,9 +17,11 @@ class KthStiffenedGas : public EOS {
     // the stiffened gas does not allow species
     const std::vector<std::string> species;
     struct Parameters {
-        PetscReal gamma;
-        PetscReal Cp;
-        PetscReal p0;
+        PetscReal gamma; // Specific heat ratio
+        PetscReal Cp;    // Specific heat at constant pressure, J/(kg K)
+        PetscReal p0;    // Reference pressure, Pa
+        PetscReal rho0;  // Characteristic density, kg/(m^3)
+        PetscReal mu;    // Viscosity, kg/(ms)
         PetscInt numberSpecies;
     };
     Parameters parameters;
@@ -112,6 +114,18 @@ class KthStiffenedGas : public EOS {
     PetscReal GetReferencePressure() const { return parameters.p0; }
 
     /**
+     * Get reference density a stiffened gas
+     * @return
+     */
+    PetscReal GetReferenceDensity() const { return parameters.rho0; }
+
+    /**
+     * Get reference density a stiffened gas
+     * @return
+     */
+    PetscReal GetViscosity() const { return parameters.mu; }
+
+    /**
      * Single function to produce thermodynamic function for any property based upon the available fields
      * @param property
      * @param fields
@@ -150,4 +164,4 @@ class KthStiffenedGas : public EOS {
 
 }  // namespace ablate::eos
 
-#endif  // ABLATELIBRARY_KTHSTIFFENEDGAS_HPP 
+#endif  // ABLATELIBRARY_KTHSTIFFENEDGAS_HPP

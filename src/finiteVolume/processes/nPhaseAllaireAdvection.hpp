@@ -60,6 +60,7 @@ class NPhaseAllaireAdvection : public Process {
     static const int ALPHAKRHOK_OFFSET = 1;
     static const int ALLAIRE_OFFSET = 2;
     static const int VELDIV_OFFSET = 3;
+    std::vector<PetscReal> mu = {}; // Viscosity
 
 
     DM subDM;
@@ -123,6 +124,8 @@ class NPhaseAllaireAdvection : public Process {
 
    public:
 
+    std::vector<std::shared_ptr<eos::EOS>> GetEOS() { return eosk; }
+
     static PetscErrorCode UpdateAuxFieldsNPhase(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[], const PetscScalar *conservedValues, const PetscInt aOff[],
                                                      PetscScalar *auxField, void *ctx);
 
@@ -141,6 +144,14 @@ class NPhaseAllaireAdvection : public Process {
                                                            const PetscInt aOff[], const PetscScalar auxL[], const PetscScalar auxR[], PetscScalar *flux, void *ctx);
 
     static PetscErrorCode NPhaseFlowComputeAlphakCorrection(PetscInt dim, const PetscReal time, const PetscFVCellGeom *cg, const PetscInt *uOff, const PetscScalar *u, const PetscInt *aOff, const PetscScalar *a, PetscScalar *flux, void *ctx);
+
+    static PetscErrorCode NPhaseFlowAlphakCorrection(const FiniteVolumeSolver& flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx);
+
+
+    static PetscErrorCode DiffusionFlux(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[],
+                                                                                     const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[],
+                                                                                     const PetscScalar gradAux[], PetscScalar flux[], void* ctx);
+    static PetscErrorCode ComputeStressTensor(PetscInt dim, PetscReal mu, const PetscReal* gradVel, PetscReal* tau);
 
     // Zalesak test source term
     static PetscErrorCode ZalesakTestSourceTerm(PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx);

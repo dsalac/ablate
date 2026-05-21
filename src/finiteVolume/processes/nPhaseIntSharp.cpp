@@ -14,376 +14,203 @@
 
 namespace ablate::finiteVolume::processes {
 
-    // Every time the mesh changes
-    void ablate::finiteVolume::processes::NPhaseIntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {
+  // Every time the mesh changes.
+  void ablate::finiteVolume::processes::NPhaseIntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {}
 
 
-      // Create any required structures. This must be done AFTER Setup() as the vectors haven't been created when Setup() is called
-      if (isPostStep) {
+  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
 
-        // Create a DM just for the alphaK data
-        auto field = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
-        auto entireDm = subDomain->GetFieldDM(field);
-        auto entireVec = subDomain->GetSolutionVector();
+  ablate::finiteVolume::processes::NPhaseIntSharp::~NPhaseIntSharp() {}
 
-        if (subIS) ISDestroy(&subIS) >> utilities::PetscUtilities::checkError;
-        if (subDM) DMDestroy(&subDM) >> utilities::PetscUtilities::checkError;
-
-        DMCreateSubDM(entireDm, 1, &field.id, &subIS, &subDM) >> utilities::PetscUtilities::checkError;
-
-        if (subGlobVec) VecDestroy(&subGlobVec) >> utilities::PetscUtilities::checkError;
-        DMCreateGlobalVector(subDM, &subGlobVec) >> utilities::PetscUtilities::checkError;
-
-        if (subLocVec) VecDestroy(&subLocVec) >> utilities::PetscUtilities::checkError;
-        DMCreateLocalVector(subDM, &subLocVec) >> utilities::PetscUtilities::checkError;
-
-        // Now create the scatter to pull the data. Relevent portions copied from VecGetSubVectorThroughVecScatter_Private
-        if (subScatter) VecScatterDestroy(&subScatter) >> utilities::PetscUtilities::checkError;
-        VecScatterCreate(entireVec, subIS, subGlobVec, NULL, &subScatter) >> utilities::PetscUtilities::checkError;
-      }
-
-
-    }
-
-
-    ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(const std::vector<PetscReal>& Gammak, const std::vector<PetscReal>& epsilonk, const std::vector<PetscInt>& flipPhiTildek, const bool isPostStep) : Gammak(Gammak), epsilonk(epsilonk), flipPhiTildek(flipPhiTildek), isPostStep(isPostStep){}
-
-    ablate::finiteVolume::processes::NPhaseIntSharp::~NPhaseIntSharp() {
-      if (subIS) ISDestroy(&subIS) >> utilities::PetscUtilities::checkError;
-      if (subDM) DMDestroy(&subDM) >> utilities::PetscUtilities::checkError;
-      if (subGlobVec) VecDestroy(&subGlobVec) >> utilities::PetscUtilities::checkError;
-      if (subLocVec) VecDestroy(&subLocVec) >> utilities::PetscUtilities::checkError;
-      if (subScatter) VecScatterDestroy(&subScatter) >> utilities::PetscUtilities::checkError;
-
-    }
-
-
-    // Run once per simulation
-    void ablate::finiteVolume::processes::NPhaseIntSharp::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
+  // Run once per simulation
+  void ablate::finiteVolume::processes::NPhaseIntSharp::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
 
 //        flow.EnableSlopeLimiterFor(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
 //        flow.EnableSlopeLimiterFor(ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK);
 
-        subDomain = flow.GetSubDomainPtr();
+    subDomain = flow.GetSubDomainPtr();
 
-        // Check for the required fields
-        std::vector<std::string> requiredFieldList;
-        std::vector<ablate::domain::FieldLocation> requiredLocationList;
+    // Check for the required fields
+    std::vector<std::string> requiredFieldList;
+    std::vector<ablate::domain::FieldLocation> requiredLocationList;
 
-        requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
-        requiredLocationList.push_back(ablate::domain::FieldLocation::SOL);
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::SOL);
 
-        if (isPostStep) {
-          requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK);
-          requiredLocationList.push_back(ablate::domain::FieldLocation::SOL);
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::SOL);
 
-          requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
-          requiredLocationList.push_back(ablate::domain::FieldLocation::SOL);
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::SOL);
 
-          requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::UI);
-          requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::UI);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
 
-          requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::RHO);
-          requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::EPSILONK);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
 
-          requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::RHOK);
-          requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::PRESSURE);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
 
-          requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::EPSILONK);
-          requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
-        }
-        else {
-          requiredFieldList.push_back(FSHARPK_FIELD);
-          requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
-        }
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::RHOK);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
 
 
-        std::size_t k = 0;
-        for (auto fieldName : requiredFieldList) {
-          if (!(subDomain->ContainsField(fieldName))) {
-            throw std::runtime_error("ablate::finiteVolume::processes::IntSharp expects a "+ fieldName +" field to be defined.");
-          }
-          const ablate::domain::Field field = subDomain->GetField(fieldName);
-          if (field.location != requiredLocationList[k++]) {
-            throw std::runtime_error("ablate::finiteVolume::processes::IntSharp: "+ fieldName +" is in the incorrect location.");
-          }
-        }
-
-
-        // Now register all of the pre/post stage functions
-        if (isPostStep) {
-          auto postStep = [this](TS ts, ablate::solver::Solver &solver) { this->NPhaseIntSharpPostStep(ts, solver, this); };
-          flow.RegisterPreStep(postStep);
-
-        }
-        else {
-          auto preStage = [this](TS ts, ablate::solver::Solver &solver, PetscReal stagetime) { this->NPhaseIntSharpPreStage(ts, solver, stagetime, this); };
-          flow.RegisterPreStage(preStage);
-
-          flow.RegisterRHSFunction(NPhaseIntSharpPointSource, (void*)&(subDomain->GetField(FSHARPK_FIELD).numberComponents),
-                {ablate::finiteVolume::NPhaseFlowFields::ALPHAK}, {ablate::finiteVolume::NPhaseFlowFields::ALPHAK}, {FSHARPK_FIELD});
-        }
-    }
-
-    PetscErrorCode ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPreStage(TS ts, ablate::solver::Solver &solver, PetscReal stagetime,
-        ablate::finiteVolume::processes::NPhaseIntSharp* process) {
-      PetscFunctionBegin;
-
-      std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
-      subDomain->UpdateSolutionLocalVector();
-
-      DM                     dm = subDomain->GetDM();
-      Vec                    solLocalVec = subDomain->GetSolutionLocalVector();
-      const PetscInt         fsharpID = subDomain->GetField(FSHARPK_FIELD).id;
-      const PetscInt         nPhases = subDomain->GetField(FSHARPK_FIELD).numberComponents;
-      const PetscInt         dim = subDomain->GetDimensions();
-      auto                   fsharpAccessor = subDomain->GetAuxAccessor(FSHARPK_FIELD);
-      auto                   alphaAccessor = subDomain->GetConstSolutionAccessor(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
-      std::vector<PetscReal> Gammak       = process->Gammak;
-      std::vector<PetscReal> epsilonk     = process->epsilonk;
-      std::vector<PetscInt>  flipPhiTildek = process->flipPhiTildek;
-
-      ablate::domain::Range  cellRange;
-      solver.GetCellRangeWithoutGhost(cellRange);
-
-      for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-        const PetscInt     cell = cellRange.GetPoint(c);
-        const PetscScalar *alpha = alphaAccessor[cell];
-        PetscScalar       *fsharp = fsharpAccessor[cell];
-
-        for (PetscInt k = 0; k < nPhases; ++k) {
-          fsharp[k] = 0;
-          if (alpha[k] < PETSC_SMALL || alpha[k] > 1 - PETSC_SMALL) continue;
-
-
-          const PetscReal a = flipPhiTildek[k] ? 1 - alpha[k] : alpha[k];
-
-          PetscReal g[3];
-          DMPlexCellGradFromCell(dm, cell, solLocalVec, fsharpID, k, g) >> utilities::PetscUtilities::checkError;
-
-          const PetscReal nrm = utilities::MathUtilities::MagVector(dim, g);
-          fsharp[k] = Gammak[k]*(-a*(1 - a)*(1 - 2*a) + epsilonk[k]*(1 - 2*a)*nrm);
-        }
-
-
+    std::size_t k = 0;
+    for (auto fieldName : requiredFieldList) {
+      if (!(subDomain->ContainsField(fieldName))) {
+        throw std::runtime_error("ablate::finiteVolume::processes::IntSharp expects a "+ fieldName +" field to be defined.");
       }
-
-      solver.RestoreRange(cellRange);
-//printf("%s::%d\n", __FILE__, __LINE__);
-//exit(0);
-
-      PetscFunctionReturn(PETSC_SUCCESS);
+      const ablate::domain::Field field = subDomain->GetField(fieldName);
+      if (field.location != requiredLocationList[k++]) {
+        throw std::runtime_error("ablate::finiteVolume::processes::IntSharp: "+ fieldName +" is in the incorrect location.");
+      }
     }
 
-    PetscErrorCode ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPointSource(PetscInt dim, const PetscReal time, const PetscFVCellGeom *cg,
-              const PetscInt *uOff, const PetscScalar *u,
-              const PetscInt *aOff, const PetscScalar *a,
-              PetscScalar *flux, void *ctx){
+    int advLoc = flow.FindProcessLocation<ablate::finiteVolume::processes::NPhaseAllaireAdvection>();
+    int sharpLoc = flow.FindProcessLocation<ablate::finiteVolume::processes::NPhaseIntSharp>();
 
-        PetscFunctionBegin;
+    if (advLoc < 0 || advLoc > sharpLoc) throw std::runtime_error("The process ablate::finiteVolume::processes::NPhaseAllaireAdvection must be before ablate::finiteVolume::processes::NPhaseIntSharp");
 
-        PetscInt nPhases = *(PetscInt*)ctx;
-        for (PetscInt k = 0; k < nPhases; ++k) flux[k] = a[aOff[0] + k];
+    // Pull the EOS from the advection process
+    auto baseEOS = flow.FindProcess<ablate::finiteVolume::processes::NPhaseAllaireAdvection>()->GetEOS();
+    eosNPhase.reserve(baseEOS.size());
 
-        PetscFunctionReturn(PETSC_SUCCESS);
+    for (const auto& individualEOS : baseEOS) {
+      auto stiffEOS = std::dynamic_pointer_cast<ablate::eos::KthStiffenedGas>(individualEOS);
+      if (stiffEOS) eosNPhase.push_back(stiffEOS);
+      else throw std::runtime_error("EOS must be KthStiffnedGas in nPhaseIntSharp.");
+    }
 
+    // Continuous flux function
+    flow.RegisterRHSFunction(NPhaseIntSharpPointFlux, this,
+      {ablate::finiteVolume::NPhaseFlowFields::ALPHAK, ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK, ablate::finiteVolume::NPhaseFlowFields::ALLAIRE},
+      {ablate::finiteVolume::NPhaseFlowFields::ALPHAK},
+      {ablate::finiteVolume::NPhaseFlowFields::UI, ablate::finiteVolume::NPhaseFlowFields::RHOK, ablate::finiteVolume::NPhaseFlowFields::PRESSURE, ablate::finiteVolume::NPhaseFlowFields::EPSILONK});
+
+  }
+
+  /*
+    This is based on "A conservative diffuse-interface method for compressible two-phase flows" by Jain, Mani, and Moin
+
+    Note that the formulation in the paper is on the RHS of the advection equations. Since the flux assumes
+      that it's on the LHS we must use the negative of the terms in the paper.
+
+    It is also assumed that flux is zero when this function is entered.
+
+  */
+//  static PetscInt cnt = 0;
+  PetscErrorCode ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPointFlux(
+      PetscInt dim, const PetscFVFaceGeom* fg,
+      const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[], const PetscScalar grad[],
+      const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[], const PetscScalar gradAux[],
+      PetscScalar flux[], void* ctx) {
+
+    PetscFunctionBegin;
+//++cnt;
+    auto process = (NPhaseIntSharp *)ctx;
+    std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase = process->eosNPhase;
+    const PetscReal Gamma = process->Gamma;
+    const PetscReal epsilon = process->epsilon;
+    const std::size_t nPhases = eosNPhase.size();
+
+    // Extracted variables in the order they are passed in dring the Register call
+    const PetscReal  *alpha = &field[uOff[0]]; // VOF
+    const PetscReal    *vel = &aux[aOff[0]];   // Velocity
+    const PetscReal    *rho = &aux[aOff[1]];   // Phase density
+    const PetscReal       P =  aux[aOff[2]];   // Pressure
+    const PetscReal   *eInt = &aux[aOff[3]];   // Phase internal energy
+
+    // Kinetic energy
+    const PetscReal ke = 0.5 * utilities::MathUtilities::DotVector(dim, vel, vel);
+
+    // Velocity dot area normal
+    const PetscReal u_n = utilities::MathUtilities::DotVector(dim, vel, fg->normal);
+
+    PetscReal aTotal = 0;
+
+    for (std::size_t k = 0; k < nPhases; ++k) {
+      // Volume fraction
+      if (alpha[k] < PETSC_MACHINE_EPSILON || alpha[k] > 1 - PETSC_MACHINE_EPSILON) continue;
+
+      const PetscReal *alphaGrad = &grad[uOff_x[0] + k*dim]; // Gradient of the current VOF field
+
+      PetscReal mag = utilities::MathUtilities::MagVector(dim, alphaGrad);
+
+      // grad of VOF dot area normal
+      const PetscReal gradVOF_n = utilities::MathUtilities::DotVector(dim, alphaGrad, fg->normal);
+
+      // RHS of Eq. (75)
+      const PetscReal a = Gamma * (epsilon - alpha[k] * (1 - alpha[k]) / mag);
+      aTotal += a * gradVOF_n;
+
+      // alpha_k
+      flux[k] = -a * gradVOF_n;
+
+      // rho_k * alpha_k
+//      const PetscReal rho0 = eosNPhase[k]->GetReferenceDensity();
+      const PetscReal rho0 = rho[k];
+      flux[nPhases + k] = -rho0 * flux[k];
+
+      // Energy: Note that flux[k] and flux[nPhases + k] already have the negative sign, so it's not needed here
+      const PetscReal rhoH = rho[k] * eInt[k] + P;
+      flux[2*nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOE] += flux[nPhases + k] * ke;
+      flux[2*nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOE] += rhoH * flux[k];
+
+//      const PetscReal cRatio = eosNPhase[k]->GetSpecificHeatRatio();
+//      const PetscReal P0     = eosNPhase[k]->GetReferencePressure();
+//      const PetscReal rhoH   = (aux[aOff[2]] + P0)*cRatio/(cRatio-1);
+
+
+      // Momentum
+      for (PetscInt d = 0; d < dim; ++d) flux[2*nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOU + d] -= rho0 * a * alphaGrad[d] * u_n;
+    }
+
+    if (PetscAbsReal(aTotal) > PETSC_SMALL) {
+//      printf("%d\n", cnt);
+      for (std::size_t k = 0; k < nPhases; ++k) printf("%+e\t", field[uOff[0] + k]);
+      printf("\n");
+//      printf("%+e\n", Gammak[0] - Gammak[1]);
+//      printf("%+e\n", epsilonk[0] - epsilonk[1]);
+//      printf("%+e\n", field[uOff[0] + 0] + field[uOff[0] + 1] - 1);
+//      printf("%+e\t%+e\t%+e\n", field[uOff[0]], field[uOff[0] + 1], field[uOff[0]] + field[uOff[0] + 1] - 1);
+//      printf("%+e\t%+e\n", grad[uOff_x[0] + 0*dim + 0], grad[uOff_x[0] + 0*dim + 1]);
+//      printf("%+e\t%+e\n", grad[uOff_x[0] + 1*dim + 0], grad[uOff_x[0] + 1*dim + 1]);
+//      printf("%+e\t%+e\n", utilities::MathUtilities::MagVector(dim, &grad[uOff_x[0] + 0*dim]),
+//                           utilities::MathUtilities::MagVector(dim, &grad[uOff_x[0] + 1*dim]));
+      printf("%+e\n", aTotal);
+      throw std::runtime_error("Values of a do no sum to zero.");
     }
 
 
-
-    /*
-      This basically follows "An enhanced interface-sharpening algorithm for accurate simulation of underwater explosion in compressible
-        multiphase flow on complex grids" by Jiang, Tao, Chen, and Dai (2025).
-
-        Step 1: Advect the conserved variables as-is
-        Step 2: Obtain the primative variables: rho, rhoK, internal energy, velocity
-        Step 3: Sharpen the interface
-        Step 4: Re-construct the conserved variables
-
-    */
-    PetscErrorCode ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPostStep(TS flowTs, ablate::solver::Solver &solver, ablate::finiteVolume::processes::NPhaseIntSharp* process) {
-
-        PetscFunctionBegin;
-
-        std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
-        const PetscInt               nPhases = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAK).numberComponents;
-        const PetscInt                   dim = subDomain->GetDimensions();
-        DM                             subDM = process->subDM;
-        Vec                       subGlobVec = process->subGlobVec, subLocVec = process->subLocVec;
-        Vec                           solVec = subDomain->GetSolutionVector();
-        VecScatter                subScatter = process->subScatter;
-        std::vector<PetscReal>  Gammak       = process->Gammak;
-        std::vector<PetscReal>  epsilonk     = process->epsilonk;
-        std::vector<PetscInt>  flipPhiTildek = process->flipPhiTildek;
-
-        PetscReal h;
-        DMPlexGetMinRadius(subDM, &h) >> utilities::PetscUtilities::checkError; // This is 1/2 of the smallest cell size
-
-        ablate::domain::Range  cellRange;
-        solver.GetCellRangeWithoutGhost(cellRange);
-
-        // Pull the data and update overlap cells
-        VecScatterBegin(subScatter, solVec, subGlobVec, INSERT_VALUES, SCATTER_FORWARD) >> utilities::PetscUtilities::checkError;
-        VecScatterEnd(subScatter, solVec, subGlobVec, INSERT_VALUES, SCATTER_FORWARD) >> utilities::PetscUtilities::checkError;
-
-//{
-//  FILE *f1 = fopen("Before.txt", "w");
-//  PetscScalar *array;
-//  VecGetArray(subGlobVec, &array) >> utilities::PetscUtilities::checkError;
-//  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//    const PetscInt cell = cellRange.GetPoint(c);
-//    PetscReal x[2];
-//    DMPlexPointGeometricData(subDM, cell, NULL, x, NULL);
-//    PetscScalar *alpha;
-//    DMPlexPointGlobalRef(subDM, cell, array, &alpha) >> utilities::PetscUtilities::checkError;
-//    fprintf(f1, "%+e\t%+e\t%+e\t%+e\n", x[0], x[1], alpha[0], alpha[1]);
-//  }
-//  fclose(f1);
-//  VecRestoreArray(subGlobVec, &array) >> utilities::PetscUtilities::checkError;
+//fprintf(f1, "%+e\t%+e\t", fg->centroid[0], fg->centroid[1]);
+//loc = 0;
+//for (std::size_t k = 0; k < nPhases; ++k) fprintf(f1, "%+e\t", flux[loc++]); // alpha
+//for (std::size_t k = 0; k < nPhases; ++k) fprintf(f1, "%+e\t", flux[loc++]); // alpha*rho
+//fprintf(f1, "%+e\t", flux[loc++]); // Energy
+//for (PetscInt d = 0; d < dim; ++d) fprintf(f1, "%+e\t", flux[loc++]); // momentum
+//fprintf(f1, "\n");
+//fprintf(f1, "%+e\t%+e\t", field[uOff[0]], field[uOff[0]+1]);
+//for (std::size_t k = 0; k < nPhases;++k) {
+//  for (PetscInt d = 0; d < dim; ++d) fprintf(f1, "%+e\t", grad[uOff_x[0] + k*dim + d]);
 //}
-
-        PetscInt iter = 0;
-        PetscReal maxDiff = PETSC_MAX_REAL;
-
-        PetscReal dk[nPhases], dk0[nPhases];
-        for (PetscInt k = 0; k < nPhases; ++k) dk[k] = PETSC_MAX_REAL;
-
-        while (iter < 1000 && maxDiff > 1e-3) {
-
-          ++iter;
-
-          // Update the sub-local vector
-          DMGlobalToLocal(subDM, subGlobVec, INSERT_VALUES, subLocVec) >> utilities::PetscUtilities::checkError;
-
-          PetscScalar *array;
-          VecGetArray(subGlobVec, &array) >> utilities::PetscUtilities::checkError;
+//fprintf(f1,"\n");
 
 
-          for (PetscInt k = 0; k < nPhases; ++k) {
-            dk0[k] = dk[k];
-            dk[k] = 0.0;
-          }
-
-          for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-            const PetscInt cell = cellRange.GetPoint(c);
-
-            PetscScalar *alpha;
-            DMPlexPointGlobalRef(subDM, cell, array, &alpha) >> utilities::PetscUtilities::checkError;
-
-            if (!alpha) continue; // Not owned by this rank
-
-            for (PetscInt k = 0; k < nPhases; ++k) {
-
-              if (alpha[k] < PETSC_SMALL || alpha[k] > (1 - PETSC_SMALL)) continue;
-
-              const PetscReal a = (flipPhiTildek[k] ? 1 - alpha[k] : alpha[k]);
-              PetscReal g[3];
-              DMPlexCellGradFromCell(subDM, cell, subLocVec, -1, k, g) >> utilities::PetscUtilities::checkError;
-
-              const PetscReal nrm = utilities::MathUtilities::MagVector(dim, g);
-
-              alpha[k] += h*Gammak[k]*(-a*(1 - a)*(1 - 2*a) + epsilonk[k]*(1 - 2*a)*nrm);
-
-              alpha[k] = PetscMax(0.0, PetscMin(1.0, alpha[k])); // Is this necessary?
-
-              PetscReal p = (0.5 < alpha[k] && alpha[k] < 1);
-              PetscReal n = (0.0 < alpha[k] && alpha[k] < 0.5);
-              PetscReal ak = (alpha[k] > 0 && alpha[k] < 1 ? alpha[k] : 0);
-              dk[k] += p*PetscSqr(1 - ak) + n*PetscSqr(ak);
-            }
-          }
-
-          VecRestoreArray(subGlobVec, &array) >> utilities::PetscUtilities::checkError;
 
 
-          maxDiff = -PETSC_MAX_REAL;
-          for (PetscInt k = 0; k < nPhases; ++k) {
-            if ((dk0[k] - dk[k])/dk0[k] < 0) {
-              maxDiff = -1;
-              break;
-            }
-            maxDiff = PetscMax(maxDiff, (dk0[k] - dk[k])/dk0[k]);
-          }
+    PetscFunctionReturn(PETSC_SUCCESS);
 
-        }
-//printf("%s::%d, %d\n", __FILE__, __LINE__, iter);
-
-        // Re-scale to account for any overflows and adjust the conserved variables
-        PetscScalar *subArray, *solArray;
-        VecGetArray(subGlobVec, &subArray) >> utilities::PetscUtilities::checkError;
-        VecGetArray(solVec, &solArray) >> utilities::PetscUtilities::checkError;
-
-        DM solDM = subDomain->GetDM();
-        ablate::domain::Field alphaField    = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
-        ablate::domain::Field alphaRhoField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK);
-        ablate::domain::Field allaireField  = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
-
-        for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-          const PetscInt cell = cellRange.GetPoint(c);
-
-          // Adjust the vofs
-          PetscScalar *alpha;
-          DMPlexPointGlobalRef(subDM, cell, subArray, &alpha) >> utilities::PetscUtilities::checkError;
-          if (!alpha) continue; // Not owned by this rank
+  }
 
 
-          PetscReal aSum = 0;
-          for (PetscInt k = 0; k < nPhases; ++k) aSum += alpha[k];
-          for (PetscInt k = 0; k < nPhases; ++k) alpha[k] /= aSum;
+} // ablate::finiteVolume::processes
 
-          // Adjust the solution fields
-          PetscScalar *alpha0, *alphaRho;
-          DMPlexPointGlobalFieldRef(solDM, cell, alphaField.id, solArray, &alpha0) >> utilities::PetscUtilities::checkError;
-          DMPlexPointGlobalFieldRef(solDM, cell, alphaRhoField.id, solArray, &alphaRho) >> utilities::PetscUtilities::checkError;
-
-          PetscReal rho0 = 0, rho = 0;
-          for (PetscInt k = 0; k < nPhases; ++k) {
-            rho0 += alphaRho[k];
-            if (alpha0[k] > PETSC_SMALL) alphaRho[k] *= (alpha[k]/alpha0[k]);
-            alpha0[k] = alpha[k];
-            rho += alphaRho[k];
-          }
-
-          PetscScalar *allaire;
-          DMPlexPointGlobalFieldRef(solDM, cell, allaireField.id, solArray, &allaire) >> utilities::PetscUtilities::checkError;
-
-          for (PetscInt d = 0; d < dim+1; ++d) allaire[d] *= (rho/rho0);
-
-        }
-
-//{
-//  FILE *f1 = fopen("After.txt", "w");
-//  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//    const PetscInt cell = cellRange.GetPoint(c);
-//    PetscReal x[2];
-//    DMPlexPointGeometricData(subDM, cell, NULL, x, NULL);
-//    PetscScalar *vals;
-//    DMPlexPointGlobalFieldRef(solDM, cell, alphaField.id, solArray, &vals);
-//    fprintf(f1, "%+e\t%+e\t%+e\t%+e\t", x[0], x[1], vals[0], vals[1]);
-
-//    DMPlexPointGlobalFieldRef(solDM, cell, alphaRhoField.id, solArray, &vals);
-//    fprintf(f1, "%+e\t%+e\t", vals[0], vals[1]);
-
-//    DMPlexPointGlobalFieldRef(solDM, cell, allaireField.id, solArray, &vals);
-//    fprintf(f1, "%+e\t%+e\t%+e\n", vals[0], vals[1], vals[2]);
-//  }
-//  fclose(f1);
-//  printf("%s::%d\n", __FILE__, __LINE__);exit(0);
-//}
-
-
-        //PetscPrintf(MPI_COMM_WORLD, "[NPhaseIntSharp::PreStage] PreStage completed successfully\n");
-        PetscFunctionReturn(0);
-    }
-
-}
 
 #include "registrar.hpp"
 REGISTER(ablate::finiteVolume::processes::Process,
     ablate::finiteVolume::processes::NPhaseIntSharp,
     "N-phase interface regularization term",
-    ARG(std::vector<PetscReal>, "Gammak", "Gamma, velocity scale parameter (approx. umax)"),
-    ARG(std::vector<PetscReal>, "epsilonk", "epsilon, interface thickness scale parameter (approx. h)"),
-    ARG(std::vector<PetscInt>, "flipPhiTildek", "if 1: phiTilde-->1-phiTilde, if 0: keep phiTilde (set to 1 if primary phase is phi=0 or 0 if phi=1)"),
-    OPT(bool, "isPostStep", "False: Apply as a source on the RHS. True: Apply as a post-step operation. Default = False")
+    ARG(PetscReal, "Gamma", "Gamma, velocity scale parameter (approx. umax)"),
+    ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)")
     );

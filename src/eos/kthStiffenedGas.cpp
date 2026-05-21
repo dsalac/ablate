@@ -6,12 +6,14 @@ ablate::eos::KthStiffenedGas::KthStiffenedGas(std::shared_ptr<ablate::parameters
     parameters.gamma = parametersIn->GetExpect<PetscReal>("gamma");
     parameters.Cp = parametersIn->GetExpect<PetscReal>("Cp");
     parameters.p0 = parametersIn->GetExpect<PetscReal>("p0");
+    parameters.rho0 = parametersIn->GetExpect<PetscReal>("rho0");
+    parameters.mu = parametersIn->Get<PetscReal>("mu", -1);
     parameters.numberSpecies = (PetscInt)species.size();
 }
 
 void ablate::eos::KthStiffenedGas::View(std::ostream& stream) const {
     stream << "KthStiffenedGas:"
-          << "\n\tgamma: " << parameters.gamma << "\n\tCp: " << parameters.Cp << "\n\tp0: " << parameters.p0;
+          << "\n\tgamma: " << parameters.gamma << "\n\tCp: " << parameters.Cp << "\n\tp0: " << parameters.p0 << "\n\trho0: " << parameters.rho0 << "\n\tmu: " << parameters.mu;
 }
 
 PetscErrorCode ablate::eos::KthStiffenedGas::ComputeTotalDensity(const PetscReal conserved[], const std::vector<domain::Field>& fields, PetscReal* density) {

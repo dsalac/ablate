@@ -219,6 +219,11 @@ class FiniteVolumeSolver : public solver::CellSolver,
         return utilities::VectorUtilities::Find<T>(processes);
     }
 
+    template <class T>
+    int FindProcessLocation() {
+        return utilities::VectorUtilities::FindLocation<T>(processes);
+    }
+
     /**
      * Called to update the aux variables
      * @param time

@@ -10,44 +10,33 @@
 #include "flowProcess.hpp"
 #include "process.hpp"
 #include "solver/solver.hpp"
-// #include "twoPhaseEulerAdvection.hpp"
 #include "nPhaseAllaireAdvection.hpp"
+#include "eos/kthStiffenedGas.hpp"
 
 namespace ablate::finiteVolume::processes {
 
 class NPhaseIntSharp : public Process {
 
    private:
-    inline const static std::string FSHARPK_FIELD = "fsharpk";
+    PetscReal Gamma;
+    PetscReal epsilon;
 
-    std::vector<PetscReal> Gammak;
-    std::vector<PetscReal> epsilonk;
-    std::vector<PetscInt> flipPhiTildek;
-    const bool isPostStep;
-
+    std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase;
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
-
-    // Only necessary for post-step processes
-    IS subIS = nullptr;
-    Vec subGlobVec = nullptr, subLocVec = nullptr;
-    DM subDM = nullptr;
-    VecScatter subScatter = nullptr;
 
    public:
 
     explicit NPhaseIntSharp(
-        const std::vector<PetscReal>& Gammak,
-        const std::vector<PetscReal>& epsilonk,
-        const std::vector<PetscInt>& flipPhiTildek,
-        const bool isPostStep = false);
+        const PetscReal Gamma,
+        const PetscReal epsilon
+      );
 
     ~NPhaseIntSharp() override;
 
-    static PetscErrorCode NPhaseIntSharpPostStep(TS flowTs, ablate::solver::Solver &solver, ablate::finiteVolume::processes::NPhaseIntSharp* process);
-
-    static PetscErrorCode NPhaseIntSharpPreStage(TS ts, ablate::solver::Solver &solver, PetscReal stagetime, ablate::finiteVolume::processes::NPhaseIntSharp* process);
-
-    static PetscErrorCode NPhaseIntSharpPointSource(PetscInt dim, const PetscReal time, const PetscFVCellGeom *cg, const PetscInt *uOff, const PetscScalar *u, const PetscInt *aOff, const PetscScalar *a, PetscScalar *flux, void *ctx);
+    static PetscErrorCode NPhaseIntSharpPointFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+        const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[], const PetscScalar grad[],
+        const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[], const PetscScalar gradAux[],
+        PetscScalar flux[], void* ctx);
 
 
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
