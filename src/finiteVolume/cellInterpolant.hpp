@@ -6,7 +6,6 @@
 #include "domain/range.hpp"
 #include "domain/region.hpp"
 #include "domain/subDomain.hpp"
-#include "slopeLimiter.hpp"
 namespace ablate::finiteVolume {
 
 class CellInterpolant {
@@ -52,10 +51,7 @@ class CellInterpolant {
     std::vector<DM> gradientCellDms;
 
     // Maximum value for gradients for the multi-direction flux limiter
-    const double maxLimGrad = 1.0;
-
-    // Slope limiter for gradient computation
-    std::unique_ptr<SlopeLimiter> slopeLimiter;
+    const double maxLimGrad;
 
     /**
      * Function to compute the flux source terms
@@ -116,9 +112,8 @@ class CellInterpolant {
      * @param locFVec
      */
     void ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion,
-                    std::vector<CellInterpolant::DiscontinuousFluxFunctionDescription>& rhsFunctions,
-                    const ablate::domain::Range& faceRange, const ablate::domain::Range& cellRange,
-                    Vec cellGeomVec, Vec faceGeomVec);
+                    std::vector<CellInterpolant::DiscontinuousFluxFunctionDescription>& rhsFunctions, const ablate::domain::Range& faceRange, const ablate::domain::Range& cellRange, Vec cellGeomVec,
+                    Vec faceGeomVec);
 
     /**
      * Adds in contributions for face based rhs point cell functions
@@ -126,12 +121,8 @@ class CellInterpolant {
      * @param locXVec
      * @param locFVec
      */
-    void ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion,
-                    std::vector<CellInterpolant::PointFunctionDescription>& rhsFunctions,
-                    const ablate::domain::Range& cellRange,
-                    Vec cellGeomVec);
-
-    SlopeLimiter& GetSlopeLimiter() { return *slopeLimiter; }
+    void ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion, std::vector<CellInterpolant::PointFunctionDescription>& rhsFunctions,
+                    const ablate::domain::Range& cellRange, Vec cellGeomVec);
 };
 
 }  // namespace ablate::finiteVolume
