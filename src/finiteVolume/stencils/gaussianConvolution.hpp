@@ -3,6 +3,8 @@
 
 #include "utilities/petscSupport.hpp"
 #include "utilities/petscUtilities.hpp"
+#include <petsc/private/hashmapi.h>
+
 
 // Cell-based gaussian convolution
 namespace ablate::finiteVolume::stencil {
@@ -14,10 +16,11 @@ namespace ablate::finiteVolume::stencil {
       PetscInt rangeStart;
       PetscInt rangeEnd;
 
+      PetscInt dim;
+
       void BuildList(const PetscInt p);
 
-      // The weights for each point
-      PetscReal *weights = nullptr;
+
 
       // The standard deviation distance squared
       PetscReal sigmaSqr = 1.0;
@@ -30,8 +33,26 @@ namespace ablate::finiteVolume::stencil {
       PetscInt *nCellList = nullptr;
       PetscReal **cellDist = nullptr;
 
-      // Weights of each cell
+      // (Base) Weights of each cell
       PetscReal **cellWeights = nullptr;
+
+      // Derivative weights for each cell.
+      // derWeights[k][p] gives the cell weights for the kth-derivative at point p
+      std::vector<std::vector<std::vector<PetscReal>>> derWeights;
+
+
+      const PetscInt keyFactors[3] = {100, 10, 1};
+      PetscInt derivativeKey(const PetscInt dim, const PetscInt dx[]) {
+        if (!dx) return 0; // If dx==NULL then it's the value, not a derivative
+        PetscInt key = 0;
+        for (PetscInt i = 0; i < dim; ++i) key += keyFactors[i] * dx[i];
+        return key;
+      }
+
+      // Hash of the derivative: The location of derivative (dx, dy, dz) will be the kth-location in derWeights
+      PetscHMapI derHash = nullptr;
+
+
 
       DM geomDM = nullptr;
 
@@ -45,7 +66,9 @@ namespace ablate::finiteVolume::stencil {
 
     public:
       void Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, const PetscScalar *array, PetscInt offset, const PetscInt nDof, PetscReal *vals);
-      void Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, Vec fVec, PetscInt offset, const PetscInt nDof, PetscReal *vals);
+      void Evaluate(const PetscInt p, const PetscInt dx[], DM dataDM, const PetscInt fid, Vec fVec, const PetscInt offset, const PetscInt nDof, PetscReal *vals);
+      void Gradient(const PetscInt p, DM dataDM, const PetscInt fid, const PetscScalar *array, const PetscInt offset, const PetscInt nDof, PetscReal *vals);
+
 
       PetscInt GetCellList(const PetscInt p, const PetscInt **cellListOut);
 
