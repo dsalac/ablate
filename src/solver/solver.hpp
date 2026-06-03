@@ -103,6 +103,12 @@ class Solver {
     inline void RegisterPreStep(const std::function<void(TS ts, Solver&)>& preStep) { this->preStepFunctions.push_back(preStep); }
 
     /**
+     * Adds function to be called before each flow step to the front of the list
+     * @param preStep
+     */
+    inline void RegisterPreStepFront(const std::function<void(TS ts, Solver&)>& preStep) { this->preStepFunctions.insert(this->preStepFunctions.begin(), preStep); }
+
+    /**
      * Adds function to be called before each flow stage
      * @param preStep
      */

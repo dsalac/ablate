@@ -40,7 +40,8 @@ TEST_P(lesEvSourceTestFixture, ShouldComputeCorrectFlux) {
         PetscInt aOff_x[2] = {GetParam().tkeGradOffset, GetParam().velGradOffset};  // tke, vel
 
         ablate::finiteVolume::processes::LES::LesTkeFlux(
-            dim, &faceGeom, uOff, nullptr, params.field.data(), nullptr, aOff, aOff_x, params.aux.data(), params.gradAux.data(), &computedFlux[GetParam().tkeFieldOffset], nullptr);
+            dim, &faceGeom, uOff, nullptr, nullptr, nullptr, params.field.data(), nullptr, aOff, aOff_x, nullptr, nullptr, params.aux.data(), params.gradAux.data(), &computedFlux[GetParam().tkeFieldOffset], nullptr);
+
     }
     // call the function for evs
     {
@@ -50,7 +51,7 @@ TEST_P(lesEvSourceTestFixture, ShouldComputeCorrectFlux) {
 
         PetscInt numberComponents = GetParam().numberEvComponents;
         ablate::finiteVolume::processes::LES::LesEvFlux(
-            dim, &faceGeom, uOff, nullptr, params.field.data(), nullptr, aOff, aOff_x, params.aux.data(), params.gradAux.data(), &computedFlux[GetParam().evFieldOffset], &numberComponents);
+            dim, &faceGeom, uOff, nullptr, nullptr, nullptr, params.field.data(), nullptr, aOff, aOff_x, nullptr, nullptr, params.aux.data(), params.gradAux.data(), &computedFlux[GetParam().evFieldOffset], &numberComponents);
     }
     // assert
     for (std::size_t i = 0; i < params.expectedFlux.size(); i++) {
@@ -129,7 +130,7 @@ TEST_P(LesSpeciesSourceTestFixture, ShouldComputeCorrectFlux) {
 
     // act
     ablate::finiteVolume::processes::LES::LesEvFlux(
-        (PetscInt)params.area.size(), &faceGeom, uOff, nullptr, params.field.data(), nullptr, aOff, aOff_x, params.aux.data(), params.gradAux.data(), &computedFlux[0], &numberSpecies);
+        (PetscInt)params.area.size(), &faceGeom, uOff, nullptr, nullptr, nullptr, params.field.data(), nullptr, aOff, aOff_x, nullptr, nullptr, params.aux.data(), params.gradAux.data(), &computedFlux[0], &numberSpecies);
 
     // assert
     for (std::size_t i = 0; i < params.expectedFlux.size(); i++) {

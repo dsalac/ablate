@@ -212,7 +212,7 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
     DMRestoreLocalVector(subDomain->GetDM(), &locXVec) >> utilities::PetscUtilities::checkError;
 }
 
-//static PetscInt cnt = 0;
+static PetscInt cnt = 0;
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(PetscReal time, Vec locXVec, Vec locFVec) {
     PetscFunctionBeginUser;
     // PetscPrintf(MPI_COMM_WORLD, "Starting ComputeRHSFunction at time %g\n", time);
@@ -258,6 +258,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         if (!continuousFluxFunctionDescriptions.empty()) {
             if (faceInterpolant == nullptr) {
                 faceInterpolant = std::make_unique<FaceInterpolant>(subDomain, GetRegion(), faceGeomVec, cellGeomVec);
+                faceInterpolant->SetUseGaussianConvolution(PETSC_TRUE);
             }
 
             faceInterpolant->ComputeRHS(time, locXVec, subDomain->GetAuxVector(), locFVec, GetRegion(), continuousFluxFunctionDescriptions, faceRange, cellGeomVec, faceGeomVec);
@@ -280,44 +281,63 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
 
 //if (subDomain->ContainsField("allaire")) {
 //++cnt;
-//  char fname[255];
-//  sprintf(fname, "rhs%d.txt", cnt);
-//  FILE *f1 = fopen(fname, "w");
-//  PetscReal *array;
-//  VecGetArray(locFVec, &array);
-//  const ablate::domain::Field aField = subDomain->GetField("allaire");
-//  const ablate::domain::Field alphaField = subDomain->GetField("alphak");
-//  const ablate::domain::Field alphaRhoField = subDomain->GetField("alphakrhok");
 
-//  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//    const PetscReal cell = cellRange.GetPoint(c);
-//    PetscReal x[2];
-//    DMPlexComputeCellGeometryFVM(subDomain->GetDM(), cell, NULL, x, NULL);
-//    fprintf(f1, "%+e\t%+e\t", x[0], x[1]);
+  int rank;
+  PetscCallMPI(MPI_Comm_rank(PETSC_COMM_WORLD, &rank));
 
-//    /*
-//       rho*energy: 3
-//            rho*u: 4
-//            rho*v: 5
-//           alphaA: 6
-//           alphaW: 7
-//        alphaRhoA: 8
-//        alphaRhoW: 9
-//    */
+  char fname[255];
+  sprintf(fname, "rhs%d.txt", cnt);
+  FILE *f1;
+  if (rank==0) f1 = fopen(fname, "w");
+  else         f1 = fopen(fname, "a");
 
-//    const PetscScalar *vals;
-//    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, aField.id, array, &vals);
-//    fprintf(f1, "%+e\t%+e\t%+e\t", vals[0], vals[1], vals[2]);
 
-//    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, alphaField.id, array, &vals);
-//    fprintf(f1, "%+e\t%+e\t", vals[0], vals[1]);
+  PetscReal *array, *xArray;
+  VecGetArray(locFVec, &array);
+  VecGetArray(locXVec, &xArray);
+  const ablate::domain::Field aField = subDomain->GetField("allaire");
+  const ablate::domain::Field alphaField = subDomain->GetField("alphak");
+  const ablate::domain::Field alphaRhoField = subDomain->GetField("alphakrhok");
 
-//    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, alphaRhoField.id, array, &vals);
-//    fprintf(f1, "%+e\t%+e\n", vals[0], vals[1]);
-//  }
+  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+    const PetscReal cell = cellRange.GetPoint(c);
 
-//  printf("%s::%d\n", __FILE__, __LINE__);
-//  exit(0);
+    PetscInt owned;
+    DMPlexGetPointGlobal(subDomain->GetDM(), cell, &owned, nullptr);
+
+    if (owned < 0) continue;
+
+    PetscReal x[2];
+    DMPlexComputeCellGeometryFVM(subDomain->GetDM(), cell, NULL, x, NULL);
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", x[0], x[1]);
+
+    /*
+       rho*energy: 3
+            rho*u: 4
+            rho*v: 5
+           alphaA: 6
+           alphaW: 7
+        alphaRhoA: 8
+        alphaRhoW: 9
+    */
+
+    const PetscScalar *vals;
+    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, aField.id, array, &vals);
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t%+e\t", vals[0], vals[1], vals[2]);
+
+    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, alphaField.id, array, &vals);
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+
+    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, alphaRhoField.id, array, &vals);
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\n", vals[0], vals[1]);
+  }
+  PetscCall(PetscSynchronizedFlush(PETSC_COMM_WORLD, f1));
+  fclose(f1);
+
+  MPI_Barrier(PETSC_COMM_WORLD);
+
+  PetscPrintf(PETSC_COMM_WORLD, "%s::%d\n", __FILE__, __LINE__);
+  exit(0);
 //}
 
 
@@ -492,6 +512,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeBoundary(PetscRe
     // Do any ghost cells first
     auto dm = subDomain->GetDM();
     auto ds = subDomain->GetDiscreteSystem();
+
 
     /* Handle non-essential (e.g. outflow) boundary values.  This should be done before the auxFields are updated so that boundary values can be updated */
     PetscCall(ablate::solver::Solver::DMPlexInsertBoundaryValues_Plex(dm, ds, PETSC_FALSE, locX, time, faceGeomVec, cellGeomVec, nullptr));

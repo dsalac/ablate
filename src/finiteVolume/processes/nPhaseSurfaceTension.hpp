@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ABLATELIBRARY_NPHASESURFACETENSION_HPP
+#define ABLATELIBRARY_NPHASESURFACETENSION_HPP
 
 #include <petsc.h>
 #include <memory>
@@ -10,35 +11,37 @@
 #include "flowProcess.hpp"
 #include "process.hpp"
 #include "solver/solver.hpp"
-// #include "twoPhaseEulerAdvection.hpp"
-#include "nPhaseAllaireAdvection.hpp"
+#include "finiteVolume/stencils/gaussianConvolution.hpp"
+#include "finiteVolume/nPhaseFlowFields.hpp"
 
 namespace ablate::finiteVolume::processes {
 
 class NPhaseSurfaceTension : public Process {
    private:
-    DM vertexDM{};
+
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
 
     std::vector<PetscReal> sigmaij;
+    std::size_t nPhases;
+    PetscReal h;
 
-    static PetscErrorCode ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx);
 
-    // const std::shared_ptr<eos::EOS> eosNPhase;
-    // std::vector<std::shared_ptr<eos::EOS>> eosk;
-
-    // Connectivity containers
-    std::map<PetscInt, std::vector<PetscInt>> cellNeighbors;   // multi-layer neighbors
-    std::map<PetscInt, std::vector<PetscInt>> cellNeighbors1;  // 1-layer neighbors
-    std::map<PetscInt, std::vector<PetscInt>> vertexNeighbors; // vertex -> cells
+    static PetscErrorCode PointFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+  const PetscInt uOff[], const PetscInt uOff_x[],
+  const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+  const PetscInt aOff[], const PetscInt aOff_x[],
+  const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+  PetscScalar flux[], void* ctx);
 
    public:
-    explicit NPhaseSurfaceTension(const std::vector<PetscReal>& surfaceTensionCoeffs);
+    explicit NPhaseSurfaceTension(const std::vector<PetscReal>& sigmaij);
 
     void Setup(ablate::finiteVolume::FiniteVolumeSolver& flow) override;
     void Initialize(ablate::finiteVolume::FiniteVolumeSolver& flow) override;
 };
 
 }  // namespace ablate::finiteVolume::processes
+
+#endif
 
 

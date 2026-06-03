@@ -35,7 +35,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
     std::vector<std::string> aijComponents;
     if (phases >= 2) {
         for (std::size_t i = 0; i < phases; i++) {
-            for (std::size_t j = i + 1; j < phases; j++) {
+            for (std::size_t j = 0; j < phases; j++) {
                 aijComponents.push_back("aij_" + std::to_string(i) + "_" + std::to_string(j));
             }
         }
@@ -63,9 +63,10 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             region,
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"},
-        {"petsclimiter_type", "vanleer"},
-        {"petscfv_compute_gradients", "true"}
-    })),
+        {"petsclimiter_type", "none"},
+        {"petscfv_compute_gradients", "false"}
+    }
+    )),
 
         std::make_shared<domain::FieldDescription>(
             ALPHAKRHOK, ALPHAKRHOK,
@@ -79,17 +80,6 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
         {"petscfv_compute_gradients", "true"}
     })),
 
-      std::make_shared<domain::FieldDescription>(
-            VELDIV, VELDIV,
-            domain::FieldDescription::ONECOMPONENT,
-            domain::FieldLocation::SOL,
-            domain::FieldType::FVM,
-            region,
-            ablate::parameters::MapParameters::Create({
-        {"petscfv_type", "leastsquares"},
-        {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "false"}
-    })),
 
         //do tk, p, rho, rhok, e, ek
         // std::make_shared<domain::FieldDescription>(
@@ -122,14 +112,18 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
 //            region,
 //            auxFieldOptions),
 
-        // Aij interface indicator per unique pair (i<j)
-        // std::make_shared<domain::FieldDescription>(
-        //     AIJ, AIJ,
-        //     aijComponents,
-        //     domain::FieldLocation::AUX,
-        //     domain::FieldType::FVM,
-        //     region,
-        //     auxFieldOptions),
+        // Aij interface indicator per unique pair
+         std::make_shared<domain::FieldDescription>(
+             AIJ, AIJ,
+             aijComponents,
+             domain::FieldLocation::AUX,
+             domain::FieldType::FVM,
+             region,
+             ablate::parameters::MapParameters::Create({
+                {"petscfv_type", "leastsquares"},
+                {"petsclimiter_type", "none"},
+                {"petscfv_compute_gradients", "true"}
+            })),
 
         // std::make_shared<domain::FieldDescription>(
         //     "gradAij", "gradAij",

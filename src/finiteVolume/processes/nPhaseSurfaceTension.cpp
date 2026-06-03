@@ -4,6 +4,7 @@
 #include "finiteVolume/nPhaseFlowFields.hpp"
 #include "nPhaseAllaireAdvection.hpp"
 #include "utilities/petscUtilities.hpp"
+#include "utilities/mathUtilities.hpp"
 #include <petsc/private/dmpleximpl.h>
 #include <vector>
 
@@ -16,295 +17,125 @@ void ablate::finiteVolume::processes::NPhaseSurfaceTension::Initialize(ablate::f
 }
 
 void NPhaseSurfaceTension::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) {
-    auto dim = flow.GetSubDomain().GetDimensions();
-    auto dm = flow.GetSubDomain().GetDM();
 
-    // create a domain, vertexDM, to use it in source function for storing any calculated vertex normal. Here the vertex normals will be stored on vertices, therefore k = 1
-    PetscFE fe_coords;
-    PetscInt k = 1;
-    DMClone(dm, &vertexDM) >> utilities::PetscUtilities::checkError;
-    PetscFECreateLagrange(PETSC_COMM_SELF, dim, dim, PETSC_TRUE, k, PETSC_DETERMINE, &fe_coords) >> utilities::PetscUtilities::checkError;
-    DMSetField(vertexDM, 0, nullptr, (PetscObject)fe_coords) >> utilities::PetscUtilities::checkError;
-    PetscFEDestroy(&fe_coords) >> utilities::PetscUtilities::checkError;
-    DMCreateDS(vertexDM) >> utilities::PetscUtilities::checkError;
+    subDomain = flow.GetSubDomainPtr();
 
-    ablate::domain::Range cellRange;
-    auto fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver*>(&flow);
+    DMPlexGetMinRadius(subDomain->GetDM(), &h) >> utilities::PetscUtilities::checkError;
 
-    if (!fvSolver) {
-      return;
+    // Check for the required fields
+    std::vector<std::string> requiredFieldList;
+    std::vector<ablate::domain::FieldLocation> requiredLocationList;
+
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::SOL);
+
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::SOL);
+
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::UI);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
+
+    requiredFieldList.push_back(ablate::finiteVolume::NPhaseFlowFields::AIJ);
+    requiredLocationList.push_back(ablate::domain::FieldLocation::AUX);
+
+    std::size_t k = 0;
+    for (auto fieldName : requiredFieldList) {
+      if (!(subDomain->ContainsField(fieldName))) {
+        throw std::runtime_error("ablate::finiteVolume::processes::IntSharp expects a "+ fieldName +" field to be defined.");
+      }
+      const ablate::domain::Field field = subDomain->GetField(fieldName);
+      if (field.location != requiredLocationList[k++]) {
+        throw std::runtime_error("ablate::finiteVolume::processes::IntSharp: "+ fieldName +" is in the incorrect location.");
+      }
     }
 
-    // PetscPrintf(MPI_COMM_WORLD, "fvSolver = %p\n", fvSolver);
+    int advLoc = flow.FindProcessLocation<ablate::finiteVolume::processes::NPhaseAllaireAdvection>();
+    int tensionLoc = flow.FindProcessLocation<ablate::finiteVolume::processes::NPhaseSurfaceTension>();
 
-    // fvSolver->GetCellRangeWithoutGhost(cellRange);
-    PetscInt cStart, cEnd; DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);
-    cellRange.start = cStart; cellRange.end = cEnd;
+    if (advLoc < 0 || advLoc > tensionLoc) throw std::runtime_error("The process ablate::finiteVolume::processes::NPhaseAllaireAdvection must be before ablate::finiteVolume::processes::NPhaseSurfaceTension");
 
-    // PetscPrintf(MPI_COMM_WORLD, "cellRange = %d, %d\n", cellRange.start, cellRange.end);
+    nPhases = flow.GetSubDomain().GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAK).numberComponents;
 
-    for (PetscInt i = cellRange.start; i < cellRange.end; ++i) {
-        PetscInt cell = cellRange.GetPoint(i);
-        PetscInt nNeighbors, *neighbors, nNeighbors1, *neighbors1;
-        PetscReal layers=3;
-
-        DMPlexGetNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
-        cellNeighbors[cell] = std::vector<PetscInt>(neighbors, neighbors + nNeighbors);
-        DMPlexRestoreNeighbors(dm, cell, layers, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors, &neighbors);
-
-        DMPlexGetNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors1, &neighbors1);
-        cellNeighbors1[cell] = std::vector<PetscInt>(neighbors1, neighbors1 + nNeighbors1);
-        DMPlexRestoreNeighbors(dm, cell, 1, 0, 0, PETSC_FALSE, PETSC_FALSE, &nNeighbors1, &neighbors1);
-
-        // PetscPrintf(MPI_COMM_WORLD, "cell = %d\n", cell);
-        // PetscPrintf(MPI_COMM_WORLD, "nNeighbors = %d\n", nNeighbors);
-        // PetscPrintf(MPI_COMM_WORLD, "nNeighbors1 = %d\n", nNeighbors1);
-
-        // PetscPrintf(MPI_COMM_WORLD, "neighbors = %p\n", neighbors);
-        // PetscPrintf(MPI_COMM_WORLD, "neighbors1 = %p\n", neighbors1);
-
-    }
-
-    // global vertex neighbors
-    PetscInt vStart, vEnd;
-    DMPlexGetDepthStratum(vertexDM, 0, &vStart, &vEnd);
-    for (PetscInt vertex = vStart; vertex < vEnd; ++vertex) {
-        PetscInt nvn, *vertexneighbors;
-        DMPlexVertexGetCells(vertexDM, vertex, &nvn, &vertexneighbors);
-        vertexNeighbors[vertex] = std::vector<PetscInt>(vertexneighbors, vertexneighbors + nvn);
-        DMPlexVertexRestoreCells(vertexDM, vertex, &nvn, &vertexneighbors);
-
-        // PetscPrintf(MPI_COMM_WORLD, "vertex = %d\n", vertex);
-        // PetscPrintf(MPI_COMM_WORLD, "nvn = %d\n", nvn);
-        // PetscPrintf(MPI_COMM_WORLD, "vertexneighbors = %p\n", vertexneighbors);
-    }
-
-    flow.RegisterRHSFunction(ComputeSource, this);
+    // Continuous flux function
+    flow.RegisterRHSFunction(PointFlux, this,
+      {ablate::finiteVolume::NPhaseFlowFields::ALLAIRE}, // Calculate flux for
+      {ablate::finiteVolume::NPhaseFlowFields::ALPHAK},  // Required solution fields
+      {ablate::finiteVolume::NPhaseFlowFields::UI, ablate::finiteVolume::NPhaseFlowFields::AIJ});     // Required aux fields
 }
 
-PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::ComputeSource(const FiniteVolumeSolver &solver, DM dm, PetscReal time, Vec locX, Vec locFVec, void *ctx) {
+
+
+/*
+    This is based on a combination of
+      "A conservative second order phase field model for simulation of N-phase flows" by Mirjalilia and Mani
+      and the capillary (Korteweg) stress tensor.
+
+      The capillary tensor for two-phase flow is T = sigma * (I - n n^T)| grad(c) |, where n n^T is the outer product.
+      The divergence of this results in the standard surface tension force: -sigma * H * grad(c).
+
+      Eq. (10) in Mirjalilia and Mani has the tension contribution of the i-j pair as 6 * sigma_{ij} * H_{ij} * ai * aj * grad(aij),
+      where H_{ij} is the curvature of aij = ai / (ai + aj).
+
+      Re-arranging this we get (6 * sigma_{ij} * ai * aj) * H_{ij} * grad(aij). Thus, for n-phase flow we replace this with the pairwise capillary stress tensor:
+      Tij = (6 * sigma_{ij} * ai * aj) * (I - n_{ij} n^T_{ij}) | grad(aij) |
+*/
+PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::PointFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+  const PetscInt uOff[], const PetscInt uOff_x[],
+  const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+  const PetscInt aOff[], const PetscInt aOff_x[],
+  const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+  PetscScalar flux[], void* ctx) {
+
     PetscFunctionBegin;
 
-    auto *process = (ablate::finiteVolume::processes::NPhaseSurfaceTension *)ctx;
-    std::shared_ptr<ablate::domain::SubDomain> subDomain = process->subDomain;
+    auto process = (NPhaseSurfaceTension *)ctx;
+    std::vector<PetscReal> sigmaij = process->sigmaij;
+    const std::size_t nPhases = process->nPhases;
+    const PetscReal         h = process->h;
 
-    const auto &aijField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::AIJ);
-    auto dim = solver.GetSubDomain().GetDimensions();
+    const PetscReal *alphak = &field[uOff[0]];
+    const PetscReal    *vel = &aux[aOff[0]];
+    const PetscReal   *gaij = &gradAux[aOff_x[1]];
 
-    PetscPrintf(MPI_COMM_WORLD, "dim = %d\n", dim);
+    const PetscReal u_n = utilities::MathUtilities::DotVector(dim, vel, fg->normal);
 
-    const auto &allaireField = solver.GetSubDomain().GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
+    PetscCall(PetscArrayzero(flux, dim + 1));
+    for (std::size_t i = 0; i < nPhases; ++i) {
+      for (std::size_t j = i + 1; j < nPhases; ++j) {
 
-    const auto &gradAijField = subDomain->GetField("gradAij");
-    const auto &nAijField = subDomain->GetField("nAij");
-    const auto &kappaijField = subDomain->GetField("kappaij");
-    const auto &sfmomField = subDomain->GetField("sfmom");
+        // Kernel times surface tension coefficient
+        const PetscReal f = 6 * sigmaij[i * nPhases + j] * alphak[i] * alphak[j];
 
+        // Gradient of A_{ij}
+        const PetscReal *g = &gaij[(i * nPhases + j)*dim];
 
-    PetscPrintf(MPI_COMM_WORLD, "allaireField.numberComponents = %d\n", allaireField.numberComponents);
+        // || grad(A_{ij}) || + h * h
+        const PetscReal mag = utilities::MathUtilities::MagVector(dim, g) + h * h;
 
+        // Gradient of A_{ij} dot face area normal
+        PetscReal g_n = utilities::MathUtilities::DotVector(dim, g, fg->normal);
 
-    DM auxDM = subDomain->GetAuxDM();
+        // Velocity dot gradient of A_{ij}
+        PetscReal g_u = utilities::MathUtilities::DotVector(dim, g, vel);
 
-    PetscPrintf(MPI_COMM_WORLD, "auxdm\n");
-    Vec auxVec = subDomain->GetAuxVector();
-    PetscInt cStart, cEnd; DMPlexGetHeightStratum(auxDM, 0, &cStart, &cEnd);
+        // Energy
+        flux[NPhaseFlowFields::RHOE] -= f * (mag * u_n - g_u * g_n / mag);
 
-    // PetscPrintf(MPI_COMM_WORLD, "auxVec = %p\n", auxVec);
-    Vec vertexVec;
-    DMGetLocalVector(process->vertexDM, &vertexVec);
-    // PetscPrintf(MPI_COMM_WORLD, "vertexVec = %p\n", vertexVec);
-    const PetscScalar *solArray;
-    // PetscPrintf(MPI_COMM_WORLD, "solArray = %p\n", solArray);
-    PetscScalar *auxArray;
-    // PetscPrintf(MPI_COMM_WORLD, "auxArray = %p\n", auxArray);
-    PetscScalar *vertexArray;
-    // PetscPrintf(MPI_COMM_WORLD, "vertexArray = %p\n", vertexArray);
-    PetscScalar *fArray;
+        // Momentum
+        for (PetscInt d = 0; d < dim; ++d) flux[NPhaseFlowFields::RHOU + d] -= f * (mag * fg->normal[d] - g[d] * g_n / mag);
 
-    // PetscPrintf(MPI_COMM_WORLD, "locX = %p\n", locX);
-    // PetscPrintf(MPI_COMM_WORLD, "locFVec = %p\n", locFVec);
-    // PetscPrintf(MPI_COMM_WORLD, "ctx = %p\n", ctx);
-
-    VecGetArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecGetArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecGetArray(vertexVec, &vertexArray);
-    VecGetArray(locFVec, &fArray);
-
-    // PetscPrintf(MPI_COMM_WORLD, "solArray = %p\n", solArray);
-    // PetscPrintf(MPI_COMM_WORLD, "auxVec = %p\n", auxVec);
-    // PetscPrintf(MPI_COMM_WORLD, "vertexVec = %p\n", vertexVec);
-
-    ablate::domain::Range cellRange;
-    solver.GetCellRangeWithoutGhost(cellRange);
-
-    // PetscPrintf(MPI_COMM_WORLD, "cellRange = %d, %d\n", cellRange.start, cellRange.end);
-
-    //get size of eos
-    // auto nPhaseEOS = std::dynamic_pointer_cast<eos::NPhase>(process->eosNPhase);
-    // std::size_t phases = nPhaseEOS->GetNumberOfPhases();
-
-
-    //get size of alphak field
-    const auto &alphakField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
-    std::size_t phases = alphakField.numberComponents;
-
-    // PetscPrintf(MPI_COMM_WORLD, "alphakField = %p\n", alphakField);
-
-    PetscInt nPairs = (phases*phases - phases) / 2;
-
-
-
-    PetscPrintf(MPI_COMM_WORLD, "phases = %lu, pairs = %d\n", phases, nPairs);
-    PetscReal h;
-    DMPlexGetMinRadius(auxDM, &h);
-    h *= 4.0;
-
-    // if (process->sigmaij.size() != nPairs) {
-    //     PetscPrintf(MPI_COMM_WORLD, "ERROR: Expected %d surface tension coefficients, got %zu\n",
-    //                 nPairs, process->sigmaij.size());
-    //     return 1;
-    // }
-
-    //populate gradAij
-    for (PetscInt cell = cStart; cell < cEnd; ++cell){
-
-        const PetscScalar *Aij;
-        xDMPlexPointLocalRead(auxDM, cell, aijField.id, auxArray, &Aij);
-
-        PetscScalar *gradAijArray;
-        xDMPlexPointLocalRef(auxDM, cell, gradAijField.id, auxArray, &gradAijArray);
-
-
-            for (PetscInt ij = 0; ij < nPairs; ++ij){
-                std::vector<PetscScalar> gradAij(dim);
-                DMPlexCellGradFromCell(auxDM, cell, auxVec, aijField.id, ij, gradAij.data());
-                for (PetscInt d = 0; d < dim; ++d){
-
-                    // PetscPrintf(MPI_COMM_WORLD, "1/h = %f\n", 1/h - PETSC_SMALL);
-                    if (PetscAbsReal(gradAij[d]) < 1/h - PETSC_SMALL){
-                        gradAijArray[ij*dim + d] = gradAij[d];
-                    } else {
-                        gradAijArray[ij*dim + d] = 0.0;
-                    }
-                }
-            }
+      }
     }
 
-    //populate nAij
-    for (PetscInt cell = cStart; cell < cEnd; ++cell){
-        PetscScalar *nAijArray;
-        xDMPlexPointLocalRef(auxDM, cell, nAijField.id, auxArray, &nAijArray);
-        PetscScalar *gradAijArray;
-        xDMPlexPointLocalRef(auxDM, cell, gradAijField.id, auxArray, &gradAijArray);
+    PetscFunctionReturn(PETSC_SUCCESS);
 
-        for (PetscInt ij = 0; ij < nPairs; ++ij){
-            PetscScalar normGradAij = 0.0;
-            for (PetscInt d = 0; d < dim; ++d){
-                normGradAij += gradAijArray[ij*dim + d] * gradAijArray[ij*dim + d];
-            }
-            normGradAij = PetscSqrtReal(normGradAij);
-            if (normGradAij > PETSC_SMALL) {
-                for (PetscInt d = 0; d < dim; ++d){
-                    nAijArray[ij*dim + d] = gradAijArray[ij*dim + d] / normGradAij;
-            }
-        }
-    }
+  }
+
+
 }
 
-    //populate kappaij
-    for (PetscInt cell = cStart; cell < cEnd; ++cell){
-        PetscScalar *kappaijArray;
-        xDMPlexPointLocalRef(auxDM, cell, kappaijField.id, auxArray, &kappaijArray);
-        for (PetscInt ij = 0; ij < nPairs; ++ij){
-            PetscReal kappaij = 0.0;
-            for (PetscInt d=0; d<dim; ++d){
-                std::vector<PetscScalar> gradComponent(dim);
-                DMPlexCellGradFromCell(auxDM, cell, auxVec, nAijField.id, ij*dim + d, gradComponent.data());
-                kappaij += gradComponent[d];
-            }
-            if (PetscAbsReal(kappaij) < 1/(2*h) - PETSC_SMALL){
-                kappaijArray[ij] = kappaij;
-            } else {
-                kappaijArray[ij] = 0.0;
-            }
-        }
-    }
-
-    for (PetscInt cell = cStart; cell < cEnd; ++cell){
-        const PetscScalar *allaire = nullptr;
-        PetscScalar *allaireSource = nullptr;
-        const auto &alphakrhokField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK);
-        DMPlexPointLocalFieldRef(dm, cell, allaireField.id, fArray, &allaireSource);
-        DMPlexPointLocalFieldRead(dm, cell, allaireField.id, solArray, &allaire);
-        PetscScalar *nAijArray;
-        xDMPlexPointLocalRef(auxDM, cell, nAijField.id, auxArray, &nAijArray);
-        PetscScalar *AijArray;
-        xDMPlexPointLocalRef(auxDM, cell, aijField.id, auxArray, &AijArray);
-        PetscScalar *kappaijArray;
-        xDMPlexPointLocalRef(auxDM, cell, kappaijField.id, auxArray, &kappaijArray);
-        PetscScalar *sfmomArray;
-        xDMPlexPointLocalRef(auxDM, cell, sfmomField.id, auxArray, &sfmomArray);
-        for (PetscInt d = 0; d < dim; ++d){
-            sfmomArray[d] = 0.0;
-        }
-        for (PetscInt ij = 0; ij < nPairs; ++ij){
-            for (PetscInt d = 0; d < dim; ++d){
-
-                PetscReal Sfmom = (AijArray[ij] > 0.1 && AijArray[ij] < 0.9) ? -kappaijArray[ij] * process->sigmaij[ij] * nAijArray[ij*dim + d] : 0.0;
-
-                allaireSource[ablate::finiteVolume::NPhaseFlowFields::RHOU + d] += Sfmom;
-                sfmomArray[d] += Sfmom;
-                if (Sfmom != 0.0){
-                    PetscPrintf(MPI_COMM_WORLD, "Sfmom = %f\n", Sfmom);
-                }
-
-                PetscReal u = 0;
-                PetscReal rho = 0;
-                for (size_t k=0; k<phases; ++k){
-                    rho += allaire[alphakrhokField.offset + k];
-                }
-                // PetscPrintf(MPI_COMM_WORLD, "rho = %f\n", rho);
-                u = allaire[ablate::finiteVolume::NPhaseFlowFields::RHOU + d] / rho;
-                allaireSource[ablate::finiteVolume::NPhaseFlowFields::RHOE] += Sfmom * u;
-            }
-        }
-    }
-
-    //surfacetension momentum_p = -sum_ij(kappaij * sigma_ij * gradAij_p)
-    //here we need to get the sigma_ij from the input
-
-    //surfacetension energy = momentum_p \cdot u_p
-    //here we need to get the u_p
-
-    // for (PetscInt cell = cStart; cell < cEnd; ++cell){
-    //     //
-    // }
-
-    VecRestoreArrayRead(locX, &solArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecRestoreArray(auxVec, &auxArray) >> ablate::utilities::PetscUtilities::checkError;
-    VecRestoreArray(vertexVec, &vertexArray);
-    VecRestoreArray(locFVec, &fArray);
-
-    DMRestoreLocalVector(process->vertexDM, &vertexVec) >> ablate::utilities::PetscUtilities::checkError;
-    VecDestroy(&vertexVec) >> ablate::utilities::PetscUtilities::checkError;
-    solver.RestoreRange(cellRange);
-
-
-
-
-    return 0;
-}
-
-}  // namespace ablate::finiteVolume::processes
-
-// #include "registrar.hpp"
-// REGISTER_WITHOUT_ARGUMENTS(ablate::finiteVolume::processes::Process,
-//     ablate::finiteVolume::processes::NPhaseSurfaceTension,
-//     "N-phase surface tension (connectivity setup only)");
-
-    #include "registrar.hpp"
-    REGISTER(ablate::finiteVolume::processes::Process,
-        ablate::finiteVolume::processes::NPhaseSurfaceTension,
-        "N-phase surface tension with user-defined coefficients",
-        ARG(std::vector<PetscReal>, "surfaceTensionCoeffs", "Surface tension coefficients for each phase pair (must match number of phase pairs)"));
+#include "registrar.hpp"
+REGISTER(ablate::finiteVolume::processes::Process,
+    ablate::finiteVolume::processes::NPhaseSurfaceTension,
+    "N-phase surface tension with user-defined coefficients",
+    ARG(std::vector<PetscReal>, "sigmaij", "Surface tension coefficients for each phase pair (must match number of phase pairs)"));

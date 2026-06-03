@@ -88,14 +88,18 @@ GaussianConvolution::GaussianConvolution(DM geomDM, const PetscReal sigmaFactor,
 GaussianConvolution::~GaussianConvolution() {
 
 
-//  for (PetscInt c = rangeStart; c < rangeEnd; ++c) {
-//    PetscFree3(cellList[c], cellWeights[c], cellDist[c]) >> utilities::PetscUtilities::checkError;
-//  }
-//  nCellList += rangeStart;
-//  cellList += rangeStart;
-//  cellWeights += rangeStart;
-//  cellDist += rangeStart;
-//  PetscFree4(nCellList, cellList, cellWeights, cellDist) >> utilities::PetscUtilities::checkError;
+  for (PetscInt c = rangeStart; c < rangeEnd; ++c) {
+    if (nCellList[c] < 0) continue;
+    PetscFree3(cellList[c], cellWeights[c], cellDist[c]) >> utilities::PetscUtilities::checkError;
+  }
+  nCellList += rangeStart;
+  cellList += rangeStart;
+  cellWeights += rangeStart;
+  cellDist += rangeStart;
+  PetscFree4(nCellList, cellList, cellWeights, cellDist) >> utilities::PetscUtilities::checkError;
+
+
+
 }
 
 //PetscInt derivativeKey(const PetscInt dim, const PetscInt dx[]) {
@@ -227,7 +231,7 @@ void GaussianConvolution::Gradient(const PetscInt p, DM dataDM, const PetscInt f
 }
 
 //void GaussianConvolution::CalculateDerivativeWeights(
-
+#include <signal.h>
 // p - Center cell of interest
 // dx - Derivatives in the [x, y, z]-directions
 // dataDM - DM containing the data
@@ -277,5 +281,35 @@ void GaussianConvolution::Evaluate(const PetscInt p, const PetscInt dx[], DM dat
       vals[c] += weights[i] * data[offset + c];
     }
   }
+
+
+//int rank, size;
+//MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+//MPI_Comm_size(PETSC_COMM_WORLD, &size);
+
+////const PetscInt target = (size == 1 ? 10054 : 234);
+
+//PetscReal x[2];
+//DMPlexPointGeometricData(dataDM, p, NULL, x, NULL);
+////if (PetscAbsReal(x[0] + 3.90625e-3)<1e-6 && PetscAbsReal(x[1] - 1.09375-02)<1e-6 && dx) {
+////if (p==43642 && dx) {
+//  if (p==19968 && dx && rank==1) {
+
+//  printf("Rank: %d\n", rank);
+//  for (PetscInt i = 0; i < nCellList[p]; ++i) {
+//    PetscInt cell = cellList[p][i];
+
+////    if (cell != target) continue;
+
+//    const PetscScalar *data;
+//    xDMPlexPointLocalRead(dataDM, cell, fid, array, &data);
+
+//    DMPlexPointGeometricData(dataDM, cell, NULL, x, NULL);
+//    printf("%+.16e\t%+.16e\t%+.16e\t%+.16e\t%+.16e\t%+.16e\n", x[0], x[1], cellWeights[p][i], weights[i], data[3], data[4]);
+//  }
+//  printf("%+e\t%+e\n", vals[3], vals[4]);
+//  printf("%s::%d\n", __FILE__, __LINE__);
+//  exit(0);
+//}
 
 }

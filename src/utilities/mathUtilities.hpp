@@ -78,6 +78,15 @@ class MathUtilities {
         return dot;
     }
 
+    template <class I, class T>
+    static inline T SumVector(I sz, const T* a) {
+        T sum = 0.0;
+        for (I d = 0; d < sz; d++) {
+            sum += a[d];
+        }
+        return sum;
+    }
+
     template <int dim, class T>
     static inline T DotVector(const T* a, const T* b) {
         if constexpr (dim == 3) {

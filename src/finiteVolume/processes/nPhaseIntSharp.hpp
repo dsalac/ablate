@@ -18,13 +18,45 @@ namespace ablate::finiteVolume::processes {
 class NPhaseIntSharp : public Process {
 
    private:
-    PetscReal Gamma;
-    PetscReal epsilon;
+    const PetscReal Gamma;
+    const PetscReal epsilon;
+    PetscReal h;
+
+    PetscBool preStageHasRun = PETSC_FALSE;
 
     std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase;
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
 
+    static PetscErrorCode NPhaseIntSharpPointFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+      const PetscInt uOff[], const PetscInt uOff_x[],
+      const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+      const PetscInt aOff[], const PetscInt aOff_x[],
+      const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+      PetscScalar flux[], void* ctx);
+
+    PetscErrorCode AdvectionFlux(
+      PetscInt dim, const PetscFVFaceGeom* fg,
+      const PetscInt uOff[], const PetscScalar fieldL[], const PetscScalar fieldR[],
+      const PetscInt aOff[], const PetscScalar auxL[], const PetscScalar auxR[],
+      PetscScalar flux[], void* ctx);
+
+    static PetscErrorCode SharpeningFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+      const PetscInt uOff[], const PetscInt uOff_x[],
+      const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+      const PetscInt aOff[], const PetscInt aOff_x[],
+      const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+      PetscScalar flux[], void* ctx);
+
+  static PetscErrorCode SharpeningFluxAllFields(PetscInt dim, const PetscFVFaceGeom* fg,
+      const PetscInt uOff[], const PetscInt uOff_x[],
+      const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+      const PetscInt aOff[], const PetscInt aOff_x[],
+      const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+      PetscScalar flux[], void* ctx);
+
    public:
+
+    PetscErrorCode NPhaseIntSharpPreSharp(TS flowTS, ablate::solver::Solver &solver);
 
     explicit NPhaseIntSharp(
         const PetscReal Gamma,
@@ -32,12 +64,6 @@ class NPhaseIntSharp : public Process {
       );
 
     ~NPhaseIntSharp() override;
-
-    static PetscErrorCode NPhaseIntSharpPointFlux(PetscInt dim, const PetscFVFaceGeom* fg,
-        const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[], const PetscScalar grad[],
-        const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[], const PetscScalar gradAux[],
-        PetscScalar flux[], void* ctx);
-
 
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
     void Initialize(ablate::finiteVolume::FiniteVolumeSolver &flow) override;

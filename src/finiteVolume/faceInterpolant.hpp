@@ -5,11 +5,15 @@
 #include "domain/range.hpp"
 #include "domain/subDomain.hpp"
 #include "stencils/stencil.hpp"
+#include "finiteVolume/stencils/gaussianConvolution.hpp"
 
 namespace ablate::finiteVolume {
 
 class FaceInterpolant {
    private:
+
+    PetscBool useGaussianConvolution = PETSC_FALSE;
+
     //! use the subDomain to setup the problem
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
 
@@ -55,6 +59,8 @@ class FaceInterpolant {
      */
     std::vector<stencil::Stencil> stencils;
 
+    std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> faceGaussConv;
+
     template <class I, class T>
     static inline void AddToArray(I size, const T* input, T* sum, T factor) {
         for (I d = 0; d < size; d++) {
@@ -63,6 +69,9 @@ class FaceInterpolant {
     }
 
    public:
+
+    void SetUseGaussianConvolution(PetscBool useGaussian) { useGaussianConvolution = useGaussian; }
+
     /**
      *
      * @param subDomain
@@ -75,8 +84,9 @@ class FaceInterpolant {
     /**
      * Function assumes that the left/right solution and aux variables are continuous across the interface and values are interpolated to the face
      */
-    using ContinuousFluxFunction = PetscErrorCode (*)(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[], const PetscScalar grad[],
-                                                      const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[], const PetscScalar gradAux[], PetscScalar flux[], void* ctx);
+    using ContinuousFluxFunctionOld = PetscErrorCode (*)(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[], const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[], const PetscScalar gradAux[], PetscScalar flux[], void* ctx);
+
+    using ContinuousFluxFunction = PetscErrorCode (*)(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[], PetscScalar flux[], void* ctx);
 
     /**
      * struct to describe how to compute RHS finite volume flux source terms with a continuous field

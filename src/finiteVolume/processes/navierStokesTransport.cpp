@@ -458,9 +458,12 @@ double ablate::finiteVolume::processes::NavierStokesTransport::ComputeViscousDif
     return dtMin;
 }
 
-PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::DiffusionFlux(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[],
-                                                                                     const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[],
-                                                                                     const PetscScalar gradAux[], PetscScalar flux[], void* ctx) {
+PetscErrorCode ablate::finiteVolume::processes::NavierStokesTransport::DiffusionFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+  const PetscInt uOff[], const PetscInt uOff_x[],
+  const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+  const PetscInt aOff[], const PetscInt aOff_x[],
+  const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+  PetscScalar flux[], void* ctx) {
     PetscFunctionBeginUser;
     // this order is based upon the order that they are passed into RegisterRHSFunction
     const int T = 0;

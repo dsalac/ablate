@@ -31,7 +31,6 @@ class NPhaseAllaireAdvection : public Process {
     inline const static std::string ALPHAK_FIELD = NPhaseFlowFields::ALPHAK;
     inline const static std::string ALPHAKRHOK_FIELD = NPhaseFlowFields::ALPHAKRHOK;
     inline const static std::string ALLAIRE_FIELD = NPhaseFlowFields::ALLAIRE;
-    inline const static std::string VELDIV_FIELD = NPhaseFlowFields::VELDIV;
 
     /**
      * General two phase decoder interface
@@ -55,15 +54,21 @@ class NPhaseAllaireAdvection : public Process {
    private:
 
     // This just ensures the proper offset information from uOff is used.
-    const std::vector<std::string> solFieldList = {ALPHAK_FIELD, ALPHAKRHOK_FIELD, ALLAIRE_FIELD, VELDIV_FIELD};
+    const std::vector<std::string> solFieldList = {ALPHAK_FIELD, ALPHAKRHOK_FIELD, ALLAIRE_FIELD};
     static const int ALPHAK_OFFSET = 0;
     static const int ALPHAKRHOK_OFFSET = 1;
     static const int ALLAIRE_OFFSET = 2;
-    static const int VELDIV_OFFSET = 3;
     std::vector<PetscReal> mu = {}; // Viscosity
 
 
     DM subDM;
+
+    // This is used to store the divergence of the velocity field
+    DM faceDM = nullptr;
+    Vec divVec = nullptr;
+    PetscScalar *divArray = nullptr;
+    ablate::domain::Range faceRange;
+    PetscInt faceCounter;
 
     PetscErrorCode MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
 
@@ -148,9 +153,14 @@ class NPhaseAllaireAdvection : public Process {
     static PetscErrorCode NPhaseFlowAlphakCorrection(const FiniteVolumeSolver& flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx);
 
 
-    static PetscErrorCode DiffusionFlux(PetscInt dim, const PetscFVFaceGeom* fg, const PetscInt uOff[], const PetscInt uOff_x[], const PetscScalar field[],
-                                                                                     const PetscScalar grad[], const PetscInt aOff[], const PetscInt aOff_x[], const PetscScalar aux[],
-                                                                                     const PetscScalar gradAux[], PetscScalar flux[], void* ctx);
+    PetscErrorCode NPhaseFlowComputeRHS(const FiniteVolumeSolver& flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx);
+
+    static PetscErrorCode DiffusionFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+      const PetscInt uOff[], const PetscInt uOff_x[],
+      const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+      const PetscInt aOff[], const PetscInt aOff_x[],
+      const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+      PetscScalar flux[], void* ctx);
     static PetscErrorCode ComputeStressTensor(PetscInt dim, PetscReal mu, const PetscReal* gradVel, PetscReal* tau);
 
     // Zalesak test source term

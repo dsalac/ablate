@@ -19,7 +19,6 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     inline const static std::string ALLAIRE = "allaire";
     inline const static std::string ALPHAKRHOK = "alphakrhok";
     inline const static std::string ALPHAK = "alphak";
-    inline const static std::string VELDIV = "velDiv";
 
 
 
