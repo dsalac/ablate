@@ -1,6 +1,7 @@
 #include "cellSolver.hpp"
 #include "utilities/mathUtilities.hpp"
 #include <utility>
+#include "utilities/petscSupport.hpp"
 
 ablate::solver::CellSolver::CellSolver(std::string solverId, std::shared_ptr<domain::Region> region, std::shared_ptr<parameters::Parameters> options)
     : Solver(std::move(solverId), std::move(region), std::move(options)) {}
@@ -210,7 +211,7 @@ void ablate::solver::CellSolver::UpdateSolutionFields(PetscReal time, Vec globXV
 
 void ablate::solver::CellSolver::Setup() {
     // Compute the dm geometry
-    DMPlexComputeGeometryFVM(subDomain->GetDM(), &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
+    DMPlexComputePeriodicGeometryFVM(subDomain->GetDM(), &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
 }
 
 void ablate::solver::CellSolver::Initialize() {

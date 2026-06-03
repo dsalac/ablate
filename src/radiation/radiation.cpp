@@ -180,7 +180,7 @@ void ablate::radiation::Radiation::Initialize(const ablate::domain::Range& cellR
     /** This will be added to as rays are created on each rank */
     DMSwarmSetLocalSizes(radReturn, 0, 100) >> utilities::PetscUtilities::checkError;
 
-    DMPlexComputeGeometryFVM(subDomain.GetDM(), &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;  //!< Get the geometry vectors
+    DMPlexComputePeriodicGeometryFVM(subDomain.GetDM(), &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;  //!< Get the geometry vectors
     VecGetDM(faceGeomVec, &faceDM) >> utilities::PetscUtilities::checkError;
     VecGetArrayRead(faceGeomVec, &faceGeomArray) >> utilities::PetscUtilities::checkError;
 

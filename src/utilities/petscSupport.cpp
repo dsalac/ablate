@@ -1,5 +1,6 @@
 #include "petscSupport.hpp"
 #include <petsc/private/vecimpl.h>
+#include <petsc/private/dmpleximpl.h> // For DMPlex_NormD_Internal, etc
 #include <petscdm.h>  // For DMPolytopeTypeGetNumVertices
 
 
@@ -1926,3 +1927,237 @@ PetscErrorCode ComputeGradientFVM(DM dm, DMLabel regionLabel, PetscInt regionVal
     PetscCall(PetscSectionDestroy(&sectionGrad));
     PetscFunctionReturn(0);
 }
+
+// Return the face geometry given corrected coordinates. Copied from DMPlexComputeGeometryFVM_1D_Internal and DMPlexComputeGeometryFVM_2D_Internal
+PetscErrorCode DMPlexComputeFaceGeometry(DM dm, const PetscInt face, const PetscInt cdim, const PetscInt depth, const PetscScalar coords[], PetscReal centroid[], PetscReal normal[]) {
+
+
+  PetscFunctionBegin;
+
+  switch (depth) {
+    case 1:
+      {
+        PetscInt d;
+
+        if (centroid) {
+          for (d = 0; d < cdim; ++d) centroid[d] = 0.5 * PetscRealPart(coords[d] + coords[cdim + d]);
+        }
+        if (normal) {
+          PetscReal norm;
+
+          switch (cdim) {
+          case 3:
+            normal[2] = 0.; /* fall through */
+          case 2:
+            normal[0] = -PetscRealPart(coords[1] - coords[cdim + 1]);
+            normal[1] = PetscRealPart(coords[0] - coords[cdim + 0]);
+            break;
+          case 1:
+            normal[0] = 1.0;
+            break;
+          default:
+            SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_WRONG, "Dimension %" PetscInt_FMT " not supported", cdim);
+          }
+
+          PetscReal area = 0.0;
+          for (d = 0; d < cdim; ++d) area += PetscSqr(PetscRealPart(coords[d] - coords[cdim + d]));
+          area = PetscSqrtReal(area);
+
+          norm = DMPlex_NormD_Internal(cdim, normal);
+          for (d = 0; d < cdim; ++d) normal[d] *= area/norm;
+        }
+      }
+      break;
+
+    case 2:
+      {
+        DMPolytopeType     ct;
+        PetscInt           fv[4] = {0, 1, 2, 3};
+        PetscInt           numCorners, p, d;
+        PetscReal          c[3] = {0., 0., 0.}, n[3] = {0., 0., 0.}, origin[3] = {0., 0., 0.}, norm;
+
+        PetscCall(DMPlexGetCellType(dm, face, &ct));
+        switch (ct) {
+        case DM_POLYTOPE_SEG_PRISM_TENSOR:
+          fv[2] = 3;
+          fv[3] = 2;
+          break;
+        default:
+          break;
+        }
+        PetscCall(DMPlexGetConeSize(dm, face, &numCorners));
+
+        for (d = 0; d < cdim; d++) origin[d] = PetscRealPart(coords[d]);
+        for (p = 0; p < numCorners - 2; ++p) {
+          PetscReal e0[3] = {0., 0., 0.}, e1[3] = {0., 0., 0.};
+          for (d = 0; d < cdim; d++) {
+            e0[d] = PetscRealPart(coords[cdim * fv[p + 1] + d]) - origin[d];
+            e1[d] = PetscRealPart(coords[cdim * fv[p + 2] + d]) - origin[d];
+          }
+          const PetscReal dx = e0[1] * e1[2] - e0[2] * e1[1];
+          const PetscReal dy = e0[2] * e1[0] - e0[0] * e1[2];
+          const PetscReal dz = e0[0] * e1[1] - e0[1] * e1[0];
+          const PetscReal a  = PetscSqrtReal(dx * dx + dy * dy + dz * dz);
+
+          n[0] += dx;
+          n[1] += dy;
+          n[2] += dz;
+          for (d = 0; d < cdim; d++) c[d] += a * PetscRealPart(origin[d] + coords[cdim * fv[p + 1] + d] + coords[cdim * fv[p + 2] + d]) / 3.;
+        }
+        norm = PetscSqrtReal(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        PetscReal area = 0.5 * norm;
+        // Allow zero volume cells
+        if (norm != 0) {
+          n[0] /= norm;
+          n[1] /= norm;
+          n[2] /= norm;
+          c[0] /= norm;
+          c[1] /= norm;
+          c[2] /= norm;
+        }
+        if (centroid)
+          for (d = 0; d < cdim; ++d) centroid[d] = c[d];
+        if (normal)
+          for (d = 0; d < cdim; ++d) normal[d] = area * n[d];
+
+      }
+      break;
+    default:
+      SETERRQ(PetscObjectComm((PetscObject)dm), PETSC_ERR_ARG_OUTOFRANGE, "DMPlexComputeFaceGeometry can only operate on 1D or 2D objects.");
+  };
+
+  PetscFunctionReturn(PETSC_SUCCESS);
+
+}
+
+// From dmperiodicity.c
+PetscErrorCode DMLocalizeCoordinateReal_Internal(DM dm, PetscInt dim, const PetscReal anchor[], const PetscReal in[], PetscReal out[])
+{
+  PetscInt d;
+
+  PetscFunctionBegin;
+  if (!dm->maxCell) {
+    for (d = 0; d < dim; ++d) out[d] = in[d];
+  } else {
+    for (d = 0; d < dim; ++d) {
+      if ((dm->L[d] > 0.0) && (PetscAbsReal(anchor[d] - in[d]) > dm->maxCell[d])) {
+        out[d] = anchor[d] > in[d] ? dm->L[d] + in[d] : in[d] - dm->L[d];
+      } else {
+        out[d] = in[d];
+      }
+    }
+  }
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+// Return the geometric vectors with the periodic fix for faces
+PetscErrorCode DMPlexComputePeriodicGeometryFVM(DM dm, Vec *cellGeom, Vec *faceGeom) {
+
+  DM                 dmFace, dmCell;
+  PetscInt           fStart, fEnd;
+  PetscInt           cdim, depth;
+  PetscScalar       *faceGeomArray;
+  const PetscScalar *cellGeomArray;
+  const PetscReal   *maxCell, *L;
+
+  PetscFunctionBegin;
+
+  PetscCall(DMGetPeriodicity(dm, &maxCell, NULL, &L));
+  if (!L) PetscFunctionReturn(PETSC_SUCCESS); // No periodic faces
+
+  PetscCall(DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd));
+
+  PetscCall(DMPlexComputeGeometryFVM(dm, cellGeom, faceGeom));
+
+  PetscCall(VecGetDM(*faceGeom, &dmFace));
+  PetscCall(VecGetArray(*faceGeom, &faceGeomArray));
+
+  PetscCall(VecGetDM(*cellGeom, &dmCell));
+  PetscCall(VecGetArrayRead(*cellGeom, &cellGeomArray));
+
+  PetscCall(DMGetCoordinateDim(dm, &cdim));
+
+  PetscCall(DMPlexGetPointDepth(dm, fStart, &depth));
+
+  for (PetscInt face = fStart; face < fEnd; ++face) {
+
+
+    PetscInt supportSize;
+    PetscCall(DMPlexGetSupportSize(dm, face, &supportSize));
+    if (supportSize != 2) continue; // boundary face, skip as the the normal will be correct
+
+    // Cells using this face
+    const PetscInt *support;
+    PetscCall(DMPlexGetSupport(dm, face, &support));
+
+    const PetscFVCellGeom *cgL, *cgR;
+    PetscCall(DMPlexPointLocalRead(dmCell, support[0], cellGeomArray, &cgL));
+    PetscCall(DMPlexPointLocalRead(dmCell, support[1], cellGeomArray, &cgR));
+
+    // Location of the vertices of this face
+    const PetscScalar *array;
+    PetscScalar       *coords = NULL;
+    PetscInt           numCoords, nv;
+    PetscBool          isDG;
+    PetscCall(DMPlexGetCellCoordinates(dm, face, &isDG, &numCoords, &array, &coords));
+    nv = numCoords / cdim;
+
+    // Find the coordinate closest to the center of a support cell
+    PetscInt v0 = -1;
+    PetscReal minDist = PETSC_MAX_REAL;
+    for (PetscInt v = 0; v < nv; ++v) {
+      PetscReal dist = 0;
+      for (PetscInt d = 0; d < cdim; ++d) dist += PetscSqr(cgL->centroid[0] - coords[v * cdim + d]);
+      if (dist < minDist) {
+        minDist = dist;
+        v0 = v;
+      }
+    }
+
+    // Adjust all coordinates w.r.t. the closest vertex
+    for (PetscInt d = 0; d < cdim; ++d) {
+      if (L[d] < 0) continue; // Not periodic in this direction
+      for (PetscInt v = 0; v < nv; ++v) {
+        if (v == v0) continue;
+
+        PetscReal diff = coords[v * cdim + d] - coords[v0 * cdim + d];
+
+        if (diff < -maxCell[d])     coords[v * cdim + d] += L[d];
+        else if (diff > maxCell[d]) coords[v * cdim + d] -= L[d];
+
+      }
+    }
+
+    PetscFVFaceGeom *fg;
+    PetscCall(DMPlexPointLocalRef(dmFace, face, faceGeomArray, &fg));
+
+    PetscCall(DMPlexComputeFaceGeometry(dm, face, cdim, depth, coords, fg->centroid, fg->normal));
+
+    PetscCall(DMPlexRestoreCellCoordinates(dm, face, &isDG, &numCoords, &array, &coords));
+
+
+    // Make sure the orientation matches the support ordering
+    PetscReal l[3], r[3], v[3];
+    PetscCall(DMLocalizeCoordinateReal_Internal(dm, cdim, fg->centroid, cgL->centroid, l));
+    PetscCall(DMLocalizeCoordinateReal_Internal(dm, cdim, fg->centroid, cgR->centroid, r));
+
+
+    DMPlex_WaxpyD_Internal(cdim, -1, l, r, v);
+    if (DMPlex_DotRealD_Internal(cdim, fg->normal, v) < 0) {
+      for (PetscInt d = 0; d < cdim; ++d) fg->normal[d] = -fg->normal[d];
+    }
+    if (DMPlex_DotRealD_Internal(cdim, fg->normal, v) <= 0) {
+      PetscCheck(cdim != 2, PETSC_COMM_SELF, PETSC_ERR_PLIB, "Direction for face %" PetscInt_FMT " could not be fixed, normal (%g,%g) v (%g,%g)", face, (double)fg->normal[0], (double)fg->normal[1], (double)v[0], (double)v[1]);
+      PetscCheck(cdim != 3, PETSC_COMM_SELF, PETSC_ERR_PLIB, "Direction for face %" PetscInt_FMT " could not be fixed, normal (%g,%g,%g) v (%g,%g,%g)", face, (double)fg->normal[0], (double)fg->normal[1], (double)fg->normal[2], (double)v[0], (double)v[1], (double)v[2]);
+      SETERRQ(PETSC_COMM_SELF, PETSC_ERR_PLIB, "Direction for face %" PetscInt_FMT " could not be fixed", face);
+    }
+
+  }
+
+
+  PetscCall(VecRestoreArray(*faceGeom, &faceGeomArray));
+  PetscCall(VecRestoreArrayRead(*cellGeom, &cellGeomArray));
+
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+

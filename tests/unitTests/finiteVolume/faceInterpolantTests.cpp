@@ -89,7 +89,7 @@ TEST_P(FaceInterpolantTestFixture, ShouldComputeCorrectGradientsOnBoundary) {
 
         // Get the mesh cell information
         Vec cellGeomVec, faceGeomVec;
-        DMPlexComputeGeometryFVM(mesh->GetSubDomain(domain::Region::ENTIREDOMAIN)->GetDM(), &cellGeomVec, &faceGeomVec) >> testErrorChecker;
+        DMPlexComputePeriodicGeometryFVM(mesh->GetSubDomain(domain::Region::ENTIREDOMAIN)->GetDM(), &cellGeomVec, &faceGeomVec) >> testErrorChecker;
 
         // create a test faceInterpolant
         ablate::finiteVolume::FaceInterpolant faceInterpolant(mesh->GetSubDomain(domain::Region::ENTIREDOMAIN), nullptr, faceGeomVec, cellGeomVec);

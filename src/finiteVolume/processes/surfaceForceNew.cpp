@@ -95,7 +95,7 @@ void ablate::finiteVolume::processes::SurfaceForceNew::Initialize(ablate::finite
   //  It this isn't done the code may hang when run in parallel as DMPlexComputeGeometryFVM must be run by all ranks.
   //  When using DMPlexPointGeometricData not all ranks may reach it and it will hang.
   Vec cellGeomVec, faceGeomVec;
-  DMPlexComputeGeometryFVM(subDM, &cellGeomVec, &faceGeomVec) >> ablate::utilities::PetscUtilities::checkError;
+  DMPlexComputePeriodicGeometryFVM(subDM, &cellGeomVec, &faceGeomVec) >> ablate::utilities::PetscUtilities::checkError;
   PetscObjectCompose((PetscObject)subDM, "DMPlex_cellgeom_fvm", (PetscObject)cellGeomVec) >> ablate::utilities::PetscUtilities::checkError;
   PetscObjectCompose((PetscObject)subDM, "DMPlex_facegeom_fvm", (PetscObject)faceGeomVec) >> ablate::utilities::PetscUtilities::checkError;
   VecDestroy(&cellGeomVec) >> ablate::utilities::PetscUtilities::checkError;

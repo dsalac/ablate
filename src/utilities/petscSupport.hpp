@@ -296,4 +296,4 @@ typedef enum {
 PetscErrorCode DMPlexRestoreNeighborsNew(DM dm, const PetscInt p, const PetscReal fac, const PlexNeighborType type, const PetscInt searchDepth, const PetscInt returnDepth, PetscInt *nCells, PetscInt **cells);
 PetscErrorCode DMPlexGetNeighborsNew(DM dm, const PetscInt p, const PetscReal fac, const PlexNeighborType type, const PetscInt searchDepth, const PetscInt returnDepth, PetscInt *nCells, PetscInt **cells);
 
-
+PetscErrorCode DMPlexComputePeriodicGeometryFVM(DM dm, Vec *cellGeom, Vec *faceGeom);

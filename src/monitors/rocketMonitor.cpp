@@ -56,7 +56,7 @@ PetscErrorCode ablate::monitors::RocketMonitor::OutputRocket(TS ts, PetscInt ste
 
         Vec faceGeomVec;
         Vec cellGeomVec;
-        DMPlexComputeGeometryFVM(dm, &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
+        DMPlexComputePeriodicGeometryFVM(dm, &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
         DM faceDM;
         DM cellDM;
 

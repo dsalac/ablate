@@ -1,5 +1,6 @@
 #include "petscUtilities.hpp"
 #include "environment/runEnvironment.hpp"
+#include "utilities/petscSupport.hpp"
 
 void ablate::utilities::PetscUtilities::Initialize(const char help[]) {
     PetscInitialize(ablate::environment::RunEnvironment::GetArgCount(), ablate::environment::RunEnvironment::GetArgs(), nullptr, help) >> utilities::PetscUtilities::checkError;
@@ -94,7 +95,7 @@ void ablate::utilities::PetscUtilities::CopyDM(DM dm, const PetscInt pStart, con
   /* Calling DMPlexComputeGeometryFVM() generates the value returned by DMPlexGetMinRadius() */
   Vec cellgeom = NULL;
   Vec facegeom = NULL;
-  DMPlexComputeGeometryFVM(*newDM, &cellgeom, &facegeom);
+  DMPlexComputePeriodicGeometryFVM(*newDM, &cellgeom, &facegeom);
   VecDestroy(&cellgeom);
   VecDestroy(&facegeom);
 

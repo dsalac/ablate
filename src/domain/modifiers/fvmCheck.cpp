@@ -9,6 +9,7 @@
 #include "utilities/mathUtilities.hpp"
 #include "utilities/mpiUtilities.hpp"
 #include "utilities/petscUtilities.hpp"
+#include "utilities/petscSupport.hpp"
 
 ablate::domain::modifiers::FvmCheck::FvmCheck(std::shared_ptr<domain::Region> fvmRegion, int expectedFaceCount, int expectedNodeCount)
     : region(std::move(fvmRegion)), expectedFaceCount(expectedFaceCount), expectedNodeCount(expectedNodeCount) {}
@@ -32,7 +33,7 @@ void ablate::domain::modifiers::FvmCheck::Modify(DM& dm) {
 
     // compute the dm geometry
     Vec cellGeomVec, faceGeomVec;
-    DMPlexComputeGeometryFVM(dm, &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
+    DMPlexComputePeriodicGeometryFVM(dm, &cellGeomVec, &faceGeomVec) >> utilities::PetscUtilities::checkError;
 
     // Get the dim
     PetscInt dim;
