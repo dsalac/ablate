@@ -53,13 +53,13 @@ class NPhaseAllaireAdvection : public Process {
 
    private:
 
+
     // This just ensures the proper offset information from uOff is used.
     const std::vector<std::string> solFieldList = {ALPHAK_FIELD, ALPHAKRHOK_FIELD, ALLAIRE_FIELD};
     static const int ALPHAK_OFFSET = 0;
     static const int ALPHAKRHOK_OFFSET = 1;
     static const int ALLAIRE_OFFSET = 2;
     std::vector<PetscReal> mu = {}; // Viscosity
-
 
     DM subDM;
 
@@ -69,6 +69,7 @@ class NPhaseAllaireAdvection : public Process {
     PetscScalar *divArray = nullptr;
     ablate::domain::Range faceRange;
     PetscInt faceCounter;
+
 
     PetscErrorCode MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
 
@@ -113,7 +114,7 @@ class NPhaseAllaireAdvection : public Process {
     };
 
     const std::shared_ptr<eos::EOS> eosNPhase;
-    std::vector<std::shared_ptr<eos::EOS>> eosk;
+    std::vector<std::shared_ptr<eos::KthStiffenedGas>> eosk;
     const std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorNStiff;
 
     // Zalesak test parameters
@@ -129,7 +130,7 @@ class NPhaseAllaireAdvection : public Process {
 
    public:
 
-    std::vector<std::shared_ptr<eos::EOS>> GetEOS() { return eosk; }
+    std::vector<std::shared_ptr<eos::KthStiffenedGas>> GetEOS() { return eosk; }
 
     static PetscErrorCode UpdateAuxFieldsNPhase(PetscReal time, PetscInt dim, const PetscFVCellGeom *cellGeom, const PetscInt uOff[], const PetscScalar *conservedValues, const PetscInt aOff[],
                                                      PetscScalar *auxField, void *ctx);
@@ -161,11 +162,19 @@ class NPhaseAllaireAdvection : public Process {
       const PetscInt aOff[], const PetscInt aOff_x[],
       const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
       PetscScalar flux[], void* ctx);
+
+    static PetscErrorCode NPhaseFlowComputeNPhaseContinuousFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+      const PetscInt uOff[], const PetscInt uOff_x[],
+      const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+      const PetscInt aOff[], const PetscInt aOff_x[],
+      const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+      PetscScalar flux[], void* ctx);
+
+
     static PetscErrorCode ComputeStressTensor(PetscInt dim, PetscReal mu, const PetscReal* gradVel, PetscReal* tau);
 
     // Zalesak test source term
     static PetscErrorCode ZalesakTestSourceTerm(PetscInt dim, PetscReal time, const PetscFVCellGeom* cg, const PetscInt uOff[], const PetscScalar u[], const PetscInt aOff[], const PetscScalar a[], PetscScalar f[], void* ctx);
-
 
 
    public:
@@ -175,7 +184,7 @@ class NPhaseAllaireAdvection : public Process {
      * @param eosk
      * @return
      */
-    static std::shared_ptr<NPhaseDecoder> CreateNPhaseDecoder(PetscInt dim, const std::vector<std::shared_ptr<eos::EOS>> &eosk);
+    static std::shared_ptr<NPhaseDecoder> CreateNPhaseDecoder(PetscInt dim, const std::vector<std::shared_ptr<eos::KthStiffenedGas>> &eosk);
 };
 
 }  // namespace ablate::finiteVolume::processes

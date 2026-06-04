@@ -280,7 +280,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
 
 
 //if (subDomain->ContainsField("allaire")) {
-//++cnt;
+++cnt;
 
   int rank;
   PetscCallMPI(MPI_Comm_rank(PETSC_COMM_WORLD, &rank));

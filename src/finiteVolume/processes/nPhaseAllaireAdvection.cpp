@@ -38,6 +38,8 @@ static inline PetscReal MagVector(PetscInt dim, const PetscReal *in) {
     return PetscSqrtReal(mag);
 }
 
+
+
 ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseAllaireAdvection(std::shared_ptr<eos::EOS> eosNPhase, const std::shared_ptr<parameters::Parameters> &parametersIn,
                                                                                 std::shared_ptr<fluxCalculator::FluxCalculator> fluxCalculatorNStiff)
     : eosNPhase(std::move(eosNPhase)), fluxCalculatorNStiff(std::move(fluxCalculatorNStiff)) {
@@ -99,9 +101,34 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::MultiphaseFlowPost
     // Cell range without ghosts
     ablate::domain::Range cellRange;
     solver.GetCellRangeWithoutGhost(cellRange);
-//printf("%s::%d\n", __FILE__, __LINE__);exit(0);
+
     const PetscInt nPhases = alphaAccessor.GetField().numberComponents;
     const PetscInt dim = solver.GetSubDomain().GetDimensions();
+
+
+//    auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
+//    std::shared_ptr<ablate::finiteVolume::processes::NPhaseAllaireAdvection> process = fvSolver.FindProcess<ablate::finiteVolume::processes::NPhaseAllaireAdvection>();
+//    DM dm = solver.GetSubDomain().GetDM();
+//    const PetscInt uOff[3] = {solver.GetSubDomain().GetField(ALLAIRE_FIELD).offset,
+//                              solver.GetSubDomain().GetField(ALPHAK_FIELD).offset,
+//                              solver.GetSubDomain().GetField(ALPHAKRHOK_FIELD).offset};
+//    Vec solVec = solver.GetSubDomain().GetSolutionVector();
+//    const PetscScalar *solArray;
+//    VecGetArrayRead(solVec, &solArray);
+
+
+//    PetscReal norm[3] = {0, 0, 0};
+//    PetscReal density = 0, *density_k = nullptr;
+//    PetscReal normalVelocity = 0, velocity[3] = {0, 0, 0};
+//    PetscReal internalEnergy = 0, *internalEnergy_k = nullptr;
+//    PetscReal a = 0, *a_k = nullptr, *M_k = nullptr;
+//    PetscReal p = 0, *t_k = nullptr;
+//    DMGetWorkArray(dm, nPhases, MPIU_REAL, &density_k)  >> utilities::PetscUtilities::checkError;
+//    DMGetWorkArray(dm, nPhases, MPIU_REAL, &internalEnergy_k)  >> utilities::PetscUtilities::checkError;
+//    DMGetWorkArray(dm, nPhases, MPIU_REAL, &a_k) >> utilities::PetscUtilities::checkError;
+//    DMGetWorkArray(dm, nPhases, MPIU_REAL, &M_k) >> utilities::PetscUtilities::checkError;
+//    DMGetWorkArray(dm, nPhases, MPIU_REAL, &t_k) >> utilities::PetscUtilities::checkError;
+
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
         PetscInt cell = cellRange.GetPoint(c);
@@ -113,6 +140,24 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::MultiphaseFlowPost
 
         // Only update if in the global vector
         if (alpha) {
+
+//            const PetscScalar *field;
+//            DMPlexPointGlobalRead(dm, cell, solArray, &field);
+//            process->decoder->DecodeNPhaseAllaireState(dm, {}, dim, uOff, field, norm,
+//                                                              &density, density_k,
+//                                                              &normalVelocity, velocity,
+//                                                              &internalEnergy, internalEnergy_k,
+//                                                              &a, a_k, M_k,
+//                                                              &p, t_k);
+//            for (PetscInt k = 0; k < nPhases; k++) {
+//              PetscReal gamma = process->eosk[k]->GetSpecificHeatRatio();
+//              PetscReal pi    = process->eosk[k]->GetReferencePressure();
+//              printf("%+e\n", (gamma - 1) * density_k[k] * internalEnergy_k[k] - gamma * pi);
+
+//            }
+//            printf("%s::%d\n", __FILE__, __LINE__);exit(0);
+
+
 
           PetscReal alphaSum = 0;
           for (PetscInt k = 0; k < nPhases; k++) {
@@ -130,6 +175,13 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::MultiphaseFlowPost
           for (PetscInt d = 0; d < dim; ++d) allaire[ablate::finiteVolume::NPhaseFlowFields::RHOU + d] /= alphaSum;
         }
     }
+
+
+//    DMRestoreWorkArray(dm, nPhases, MPIU_REAL, &density_k)  >> utilities::PetscUtilities::checkError;
+//    DMRestoreWorkArray(dm, nPhases, MPIU_REAL, &internalEnergy_k)  >> utilities::PetscUtilities::checkError;
+//    DMRestoreWorkArray(dm, nPhases, MPIU_REAL, &a_k)  >> utilities::PetscUtilities::checkError;
+//    DMRestoreWorkArray(dm, nPhases, MPIU_REAL, &M_k)  >> utilities::PetscUtilities::checkError;
+//    DMRestoreWorkArray(dm, nPhases, MPIU_REAL, &t_k)  >> utilities::PetscUtilities::checkError;
 
     // cleanup
     solver.RestoreRange(cellRange);
@@ -155,18 +207,12 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::Setup(ablate::fini
     flow.GetFaceRange(faceRange);
     faceCounter = faceRange.start;
 
+
     // This just re-sets the counter to faceRange.start at the beginning of each stage
     auto multiphasePreStage = std::bind(&ablate::finiteVolume::processes::NPhaseAllaireAdvection::MultiphaseFlowPreStage, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     flow.RegisterPreStage(multiphasePreStage);
 
-
-//PetscPrintf(PETSC_COMM_WORLD, "Turning off RHS in %s::%d\n", __FILE__, __LINE__);
-    flow.RegisterRHSFunction(NPhaseFlowComputeNPhaseFlux, this, solFieldList, solFieldList, {}); // Conservative advection
-    flow.RegisterRHSFunction(NPhaseFlowAlphakCorrection, this); // Remove alpha * div(u)
-
-
-
-    // Add viscous terms, if present
+    // Check whether viscosity exists
     PetscBool hasViscosity = PETSC_FALSE;
     for (const auto& phaseEOS : eosk) {
         auto kthEOS = std::dynamic_pointer_cast<eos::KthStiffenedGas>(phaseEOS);
@@ -174,9 +220,28 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::Setup(ablate::fini
         hasViscosity = hasViscosity || (mu.back() > 0);
         if (hasViscosity && mu.back() <= 0) throw std::invalid_argument("A valid viscosity must be set for all fields.");
     }
+
+
+//PetscPrintf(PETSC_COMM_WORLD, "Turning off RHS in %s::%d\n", __FILE__, __LINE__);
+    flow.RegisterRHSFunction(NPhaseFlowComputeNPhaseFlux, this, solFieldList, solFieldList, {}); // Conservative advection with discontinuous flux: cellInterpolant
+//    flow.RegisterRHSFunction(NPhaseFlowComputeNPhaseContinuousFlux, this,
+//        solFieldList,
+//        solFieldList,
+//        {ablate::finiteVolume::NPhaseFlowFields::PRESSURE, ablate::finiteVolume::NPhaseFlowFields::UI}); // Continuous advection: faceInterpolant
+    flow.RegisterRHSFunction(NPhaseFlowAlphakCorrection, this); // Remove alpha * div(u)
     if (hasViscosity) flow.RegisterRHSFunction(DiffusionFlux, this, {ALLAIRE_FIELD}, {ALPHAK_FIELD}, {ablate::finiteVolume::NPhaseFlowFields::UI});
 
+
+
     // After evaluation re-set the vof fields
+
+//    flow.RegisterPostStep([this](TS ts, ablate::solver::Solver &solver) { MultiphaseFlowPostEvaluate(ts, solver); });
+
+
+//    flow.RegisterPostEvaluate([conservedFieldName](TS ts, ablate::solver::Solver &solver) { EVTransport::BoundExtraVariablesMinusOneToOne(ts, solver, conservedFieldName); });
+
+
+
     flow.RegisterPostStep(MultiphaseFlowPostEvaluate);
 
 
@@ -423,6 +488,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::Multipha
 #endif
     PetscFunctionReturn(0);
 }
+
 double ablate::finiteVolume::processes::NPhaseAllaireAdvection::ComputeCflTimeStep(TS ts, ablate::finiteVolume::FiniteVolumeSolver &flow, void *ctx) {
     // Get the dm and current solution vector
 printf("%s::%d\n", __FILE__, __LINE__);
@@ -493,9 +559,7 @@ printf("%s::%d\n", __FILE__, __LINE__);
 }
 
 
-//FILE *f1 = fopen("intValues.txt", "w");
-//static PetscInt newCnt = 0;
-//static FILE *f2 = fopen("vel.txt", "w");
+
 PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFlowComputeNPhaseFlux(PetscInt dim, const PetscFVFaceGeom *fg,
                                                                                                       const PetscInt *uOff,
                                                                                                       const PetscScalar *fieldL, const PetscScalar *fieldR,
@@ -562,6 +626,9 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
     normalVelocityR, aR, densityR, pR,
     &a12, &m12, &p12);
 
+
+
+//p12 = 115000;
 
   PetscReal vRiem = a12 * m12;
 
@@ -661,6 +728,68 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFlowComputeNPhaseContinuousFlux(PetscInt dim, const PetscFVFaceGeom* fg,
+  const PetscInt uOff[], const PetscInt uOff_x[],
+  const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
+  const PetscInt aOff[], const PetscInt aOff_x[],
+  const PetscScalar auxL[], const PetscScalar auxR[], const PetscScalar aux[], const PetscScalar gradAux[],
+  PetscScalar flux[], void* ctx) {
+
+  PetscFunctionBegin;
+
+  auto nPhaseAllaireAdvection = (NPhaseAllaireAdvection *)ctx;
+  std::size_t nPhases = nPhaseAllaireAdvection->eosk.size();
+
+  const PetscReal p = aux[aOff[0]];
+  const PetscReal *vel = &aux[aOff[1]];
+
+  const PetscReal u_n = utilities::MathUtilities::DotVector(dim, vel, fg->normal);
+
+  const PetscScalar *alphak, *alphakRhok, *allaire;
+
+  if (u_n > 0) { // Left
+    alphak = &fieldL[uOff[ALPHAK_OFFSET]];
+    alphakRhok = &fieldL[uOff[ALPHAKRHOK_OFFSET]];
+    allaire = &fieldL[uOff[ALLAIRE_OFFSET]];
+  }
+  else { // Right
+    alphak = &fieldR[uOff[ALPHAK_OFFSET]];
+    alphakRhok = &fieldR[uOff[ALPHAKRHOK_OFFSET]];
+    allaire = &fieldR[uOff[ALLAIRE_OFFSET]];
+  }
+
+//   solFieldList = {ALPHAK_FIELD, ALPHAKRHOK_FIELD, ALLAIRE_FIELD};
+  std::size_t offset = 0;
+
+  // alpha
+  for (std::size_t k = 0; k < nPhases; k++) flux[offset++] = u_n * alphak[k];
+
+  // rho*alpha
+  for (std::size_t k = 0; k < nPhases; k++) flux[offset++] = u_n * alphakRhok[k];
+
+  // energy
+  flux[offset++] = u_n * (allaire[NPhaseFlowFields::RHOE] + p);
+
+  // momentum
+//  for (PetscInt d = 0; d < dim; d++) flux[offset++] = vRiem * allaire[NPhaseFlowFields::RHOU + d] * areaMag + 115000 * fg->normal[d];
+  for (PetscInt d = 0; d < dim; d++) flux[offset++] = u_n * allaire[NPhaseFlowFields::RHOU + d] + p * fg->normal[d];
+
+  // Divergence of the velocity
+  DM faceDM = nPhaseAllaireAdvection->faceDM;
+  PetscScalar *divArray = nPhaseAllaireAdvection->divArray;
+  const PetscInt face = nPhaseAllaireAdvection->faceRange.GetPoint(nPhaseAllaireAdvection->faceCounter);
+  PetscScalar *val;
+  DMPlexPointLocalRef(faceDM, face, divArray, &val) >> utilities::PetscUtilities::checkError;
+  *val = u_n;
+  ++(nPhaseAllaireAdvection->faceCounter);
+
+  for (std::size_t k = 0; k < offset; ++k) {
+    if (PetscIsNanReal(flux[k])) throw std::runtime_error("A flux is NaN");
+  }
+
+  PetscFunctionReturn(PETSC_SUCCESS);
+}
+
 
 /*
 
@@ -733,6 +862,13 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
   ablate::domain::Region::GetLabel(flow.GetRegion(), subDM, regionLabel, regionValue);
 
 
+//  PetscInt rhoId = flow.GetSubDomain().GetField(NPhaseFlowFields::RHOK).id;
+//  PetscInt aId = flow.GetSubDomain().GetField(NPhaseFlowFields::SOSK).id;
+//  DM auxDM = flow.GetSubDomain().GetAuxDM();
+//  Vec auxVec = flow.GetSubDomain().GetAuxVector();
+//  PetscScalar *auxArray;
+//  VecGetArray(auxVec, &auxArray) >> utilities::PetscUtilities::checkError;
+
 
   for (PetscInt f = faceRange.start; f < faceRange.end; f++) {
     PetscInt face = faceRange.GetPoint(f);
@@ -785,6 +921,23 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
         DMPlexPointLocalFieldRef(dm, faceCells[1], alphaId, fArray, &rhsR) >> utilities::PetscUtilities::checkError;
     }
 
+
+//    if (rhsL) {
+//      const PetscScalar *rho, *a;
+//      DMPlexPointLocalFieldRead(auxDM, faceCells[0], rhoId, auxArray, &rho) >> utilities::PetscUtilities::checkError;
+//      DMPlexPointLocalFieldRead(auxDM, faceCells[0], aId, auxArray, &a) >> utilities::PetscUtilities::checkError;
+//      rhsL[0] += (alphaL[0] + alphaL[0] * alphaL[1] * (rho[1] * a[1] * a[1] - rho[0] * a[0] * a[0]) / (alphaL[0] * rho[1] * a[1] * a[1] + alphaL[1] * rho[0] * a[0] * a[0])) * un[0] / cgL->volume;
+//      rhsL[1] += (alphaL[1] + alphaL[0] * alphaL[1] * (-rho[1] * a[1] * a[1] + rho[0] * a[0] * a[0]) / (alphaL[0] * rho[1] * a[1] * a[1] + alphaL[1] * rho[0] * a[0] * a[0])) * un[0] / cgL->volume;
+//    }
+
+//    if (rhsR) {
+//      const PetscScalar *rho, *a;
+//      DMPlexPointLocalFieldRead(auxDM, faceCells[1], rhoId, auxArray, &rho) >> utilities::PetscUtilities::checkError;
+//      DMPlexPointLocalFieldRead(auxDM, faceCells[1], aId, auxArray, &a) >> utilities::PetscUtilities::checkError;
+//      rhsR[0] += (alphaR[0] + alphaR[0] * alphaR[1] * (rho[1] * a[1] * a[1] - rho[0] * a[0] * a[0]) / (alphaR[0] * rho[1] * a[1] * a[1] + alphaR[1] * rho[0] * a[0] * a[0])) * un[0] / cgR->volume;
+//      rhsR[1] += (alphaR[1] + alphaR[0] * alphaR[1] * (-rho[1] * a[1] * a[1] + rho[0] * a[0] * a[0]) / (alphaR[0] * rho[1] * a[1] * a[1] + alphaR[1] * rho[0] * a[0] * a[0])) * un[0] / cgR->volume;
+//    }
+
     for (std::size_t k = 0; k < nPhases; ++k) {
         if (rhsL) rhsL[k] += alphaL[k] * un[0] / cgL->volume;
         if (rhsR) rhsR[k] -= alphaR[k] * un[0] / cgR->volume;
@@ -795,77 +948,6 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
   VecRestoreArrayRead(locXVec, &xArray) >> utilities::PetscUtilities::checkError;
 
   PetscFunctionReturn(PETSC_SUCCESS);
-
-}
-
-//PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFlowComputeRHS(const FiniteVolumeSolver& flow, DM dm, PetscReal time, Vec locXVec, Vec locFVec, void* ctx) {
-
-//  PetscFunctionBegin;
-
-//  auto process = (NPhaseAllaireAdvection *)ctx;
-
-//  std::size_t       nPhases = process->eosk.size();
-//  PetscInt            divId = flow.GetSubDomain().GetField(VELDIV_FIELD).id;
-//  PetscInt          alphaId = flow.GetSubDomain().GetField(ALPHAK_FIELD).id;
-//  PetscScalar       *fArray = nullptr;
-//  const PetscScalar *xArray = nullptr;
-
-//  ablate::domain::Range cellRange;
-
-//  flow.GetCellRangeWithoutGhost(cellRange);
-
-//  VecGetArray(locFVec, &fArray)  >> utilities::PetscUtilities::checkError;
-//  VecGetArrayRead(locXVec, &xArray)  >> utilities::PetscUtilities::checkError;
-////FILE *f2 = fopen("div.txt", "w");
-//  for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
-//    const PetscInt cell = cellRange.GetPoint(c);
-//    const PetscScalar *div, *alpha;
-//    PetscScalar *rhs;
-
-//    DMPlexPointLocalFieldRead(dm, cell, divId, fArray, &div) >> utilities::PetscUtilities::checkError;
-//    DMPlexPointLocalFieldRef(dm, cell, alphaId, fArray, &rhs) >> utilities::PetscUtilities::checkError;
-//    DMPlexPointLocalFieldRead(dm, cell, alphaId, xArray, &alpha) >> utilities::PetscUtilities::checkError;
-
-////PetscReal x[3];
-////DMPlexComputeCellGeometryFVM(dm, cell, NULL, x, NULL);
-////fprintf(f2, "%+e\t%+e\t%+e\t%+e\t%+e\n", x[0], x[1], div[0], alpha[0], alpha[1]);
-
-//    for (std::size_t k = 0; k < nPhases; ++k) rhs[k] += alpha[k] * div[0];
-//  }
-
-////fclose(f2);
-////printf("%s::%d\n", __FILE__, __LINE__);
-////exit(0);
-
-//  VecRestoreArray(locFVec, &fArray) >> utilities::PetscUtilities::checkError;
-//  VecRestoreArrayRead(locXVec, &xArray) >> utilities::PetscUtilities::checkError;
-//  flow.RestoreRange(cellRange);
-
-//  PetscFunctionReturn(PETSC_SUCCESS);
-
-//}
-
-
-
-
-PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFlowComputeAlphakCorrection(PetscInt dim, const PetscReal time,
-                                                                                                      const PetscFVCellGeom *cg,
-                                                                                                      const PetscInt *uOff,
-                                                                                                      const PetscScalar *u,
-                                                                                                      const PetscInt *aOff,
-                                                                                                      const PetscScalar *a,
-                                                                                                      PetscScalar *flux,
-                                                                                                      void *ctx) {
-
-  PetscFunctionBegin;
-printf("%s is incorrect. I'm not passing in the velocity divergence.\n", __FUNCTION__);
-  exit(0);
-  auto process = (NPhaseAllaireAdvection *)ctx;
-  std::size_t nPhases = process->eosk.size();
-  for (std::size_t k = 0; k < nPhases; ++k) flux[k] = -u[uOff[0] + k] * u[uOff[1]];
-
-  PetscFunctionReturn(PETSC_SUCCESS);
-
 
 }
 
@@ -935,7 +1017,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::ComputeS
 
 
 std::shared_ptr<ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseDecoder> ablate::finiteVolume::processes::NPhaseAllaireAdvection::CreateNPhaseDecoder(
-    PetscInt dim, const std::vector<std::shared_ptr<eos::EOS>> &eosk) {
+    PetscInt dim, const std::vector<std::shared_ptr<eos::KthStiffenedGas>> &eosk) {
 
 
     // return std::make_shared<NStiffDecoder>(dim, eosk);
@@ -1204,8 +1286,6 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::NStiffDecoder::Dec
     DMRestoreWorkArray(subDM, nPhases, MPIU_REAL, &Cpk)  >> utilities::PetscUtilities::checkError;
     DMRestoreWorkArray(subDM, nPhases, MPIU_REAL, &gammak)  >> utilities::PetscUtilities::checkError;
     DMRestoreWorkArray(subDM, nPhases, MPIU_REAL, &pik)  >> utilities::PetscUtilities::checkError;
-
-
 }
 
 PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::ZalesakTestSourceTerm(

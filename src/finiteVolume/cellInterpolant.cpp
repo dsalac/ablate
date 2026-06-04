@@ -265,7 +265,7 @@ void ablate::finiteVolume::CellInterpolant::ComputeRHS(PetscReal time, Vec locXV
             }
         }
     }
-//printf("%s::%d\n", __FILE__, __LINE__);exit(0);
+
     // cleanup (restore access to locGradVecs, locAuxGradVecs with DMRestoreLocalVector)
     VecRestoreArrayRead(locXVec, &xArray) >> utilities::PetscUtilities::checkError;
     if (locAuxVec) {
@@ -586,6 +586,26 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
         // compute the left/right face values
         ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[0], *cgL, dm, xArray, dmGrads, locGradArrays, uL, gradL, leftFlowLabelValue == regionValue);
         ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[1], *cgR, dm, xArray, dmGrads, locGradArrays, uR, gradR, rightFlowLabelValue == regionValue);
+
+//if ( PetscAbsReal(cgL->centroid[0] + 0.0492187) < 1e-6 && PetscAbsReal(cgL->centroid[1] - 0.00078125) < 1e-6) {
+//  PetscInt alphaId = subDomain->GetField("alphak").id;
+//  const PetscReal *val;
+//  DMPlexPointLocalFieldRead(dm, faceCells[0], alphaId, xArray, &val);
+//  printf("L\n");
+//  printf("%+f\t%+f\n", val[0], val[1]);
+//  printf("%+f\t%+f\n", uL[3], uL[4]);
+//  exit(0);
+//}
+
+//if ( PetscAbsReal(cgR->centroid[0] + 0.0492187) < 1e-6 && PetscAbsReal(cgR->centroid[1] - 0.00078125) < 1e-6) {
+//  PetscInt alphaId = subDomain->GetField("alphak").id;
+//  const PetscReal *val;
+//  DMPlexPointLocalFieldRead(dm, faceCells[1], alphaId, xArray, &val);
+//  printf("R\n");
+//  printf("%+f\t%+f\n", val[0], val[1]);
+//  exit(0);
+//}
+
 
         // determine the left/right cells
         if (auxArray) {
@@ -911,10 +931,10 @@ void ablate::finiteVolume::CellInterpolant::ProjectToFace(const std::vector<doma
             DMPlexPointLocalRead(dmGrads[field.subId], cellId, gradArrays[field.subId], &gradCell) >> utilities::PetscUtilities::checkError;
             DMPlex_WaxpyD_Internal(dim, -1, cellGeom.centroid, faceGeom.centroid, dx);
 
+
             // Project the cell centered value onto the face
             for (PetscInt c = 0; c < field.numberComponents; ++c) {
                 u[offsets[field.subId] + c] = xCell[c] + DMPlex_DotD_Internal(dim, &gradCell[c * dim], dx);
-
                 // copy the gradient into the grad vector
                 for (PetscInt d = 0; d < dim; d++) {
                     grad[dirOffsets[field.subId] + c * dim + d] = gradCell[c * dim + d];
@@ -946,4 +966,5 @@ void ablate::finiteVolume::CellInterpolant::ProjectToFace(const std::vector<doma
             }
         }
     }
+
 }

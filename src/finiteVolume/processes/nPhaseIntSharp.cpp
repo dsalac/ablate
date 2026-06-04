@@ -15,7 +15,7 @@
 #include "finiteVolume/faceInterpolant.hpp"
 #include "finiteVolume/cellInterpolant.hpp"
 
-#define saveData 1
+#define saveData 0
 
 namespace ablate::finiteVolume::processes {
 
@@ -23,7 +23,7 @@ namespace ablate::finiteVolume::processes {
   void ablate::finiteVolume::processes::NPhaseIntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {}
 
 
-  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(PetscReal Gamma, PetscReal epsilon) : Gamma(Gamma), epsilon(epsilon) {}
+  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(const PetscReal Gamma, const PetscReal epsilon, const PetscReal p0) : Gamma(Gamma), epsilon(epsilon), p0(p0) {}
 
   ablate::finiteVolume::processes::NPhaseIntSharp::~NPhaseIntSharp() {}
 
@@ -108,6 +108,31 @@ namespace ablate::finiteVolume::processes {
     flow.RegisterPreStep(preStep);
   }
 
+
+
+  void Rpq(std::size_t p, const PetscReal h, const PetscInt dim, std::size_t nPhases, const PetscReal eps, const PetscReal gamma, const PetscReal *faceAlpha, const PetscReal *faceGAlpha, const PetscReal *faceGAij, PetscReal *r) {
+
+    for (PetscInt d = 0; d < dim; ++d) r[d] = eps * faceGAlpha[p*dim + d];
+
+    for (std::size_t q = 0; q < nPhases; ++q) {
+
+      if (p == q) continue;
+
+      // Gradient of A_{ij} at the face
+      const PetscReal *gpq = &faceGAij[(p * nPhases + q) * dim];
+
+      // Magnitude of the gradient
+      const PetscReal mag = utilities::MathUtilities::MagVector(dim, gpq);
+
+      for (PetscInt d = 0; d < dim; ++d) r[d] -= faceAlpha[p] * faceAlpha[q] * gpq[d] / ( mag + h*h );
+    }
+
+    const PetscReal hGamma = PetscTanhReal(faceAlpha[p] * (1.0 - faceAlpha[p]) * 5.5e5) * gamma;
+    for (PetscInt d = 0; d < dim; ++d) r[d] *= hGamma;
+
+  }
+
+
   /*
     This is based on a combination of
       "A conservative diffuse-interface method for compressible two-phase flows" by Jain, Mani, and Moin [1] and
@@ -122,6 +147,7 @@ namespace ablate::finiteVolume::processes {
     It is also assumed that flux is zero when this function is entered.
 
   */
+
   PetscErrorCode ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPointFlux(PetscInt dim, const PetscFVFaceGeom* fg,
   const PetscInt uOff[], const PetscInt uOff_x[],
   const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
@@ -165,23 +191,7 @@ namespace ablate::finiteVolume::processes {
 
       PetscReal r[3] = {0, 0, 0};
 
-      for (PetscInt d = 0; d < dim; ++d) r[d] = eps * faceGAlpha[p*dim + d];
-
-      for (std::size_t q = 0; q < nPhases; ++q) {
-
-        if (p == q) continue;
-
-        // Gradient of A_{ij} at the face
-        const PetscReal *gpq = &faceGAij[(p * nPhases + q) * dim];
-
-        // Magnitude of the gradient
-        const PetscReal mag = utilities::MathUtilities::MagVector(dim, gpq);
-
-        for (PetscInt d = 0; d < dim; ++d) r[d] -= faceAlpha[p] * faceAlpha[q] * gpq[d] / ( mag + h*h );
-      }
-
-      const PetscReal hGamma = PetscTanhReal(faceAlpha[p] * (1.0 - faceAlpha[p]) * 5.5e5) * gamma;
-      for (PetscInt d = 0; d < dim; ++d) r[d] *= hGamma;
+      Rpq(p, h, dim, nPhases, eps, gamma, faceAlpha, faceGAlpha, faceGAij, r);
 
       // alphaK
       flux[p] = -utilities::MathUtilities::DotVector(dim, r, fg->normal);
@@ -199,6 +209,7 @@ namespace ablate::finiteVolume::processes {
       if (u_n > 0) rho0 = rhokL[p];
       else         rho0 = rhokR[p];
       for (PetscInt d = 0; d < dim; ++d) flux[2 * nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOU + d] -= rho0 * r[d] * u_n;
+
 
     }
 
@@ -246,7 +257,6 @@ namespace ablate::finiteVolume::processes {
 
       PetscFunctionBegin;
 
-
       auto process = (NPhaseIntSharp *)ctx;
       std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase = process->eosNPhase;
       const PetscReal   eps = process->epsilon;
@@ -256,8 +266,6 @@ namespace ablate::finiteVolume::processes {
 
 
       const PetscReal  *faceAlpha = &field[uOff[0]];
-//      const PetscReal *cellAlphaL = &fieldL[uOff[0]];     // VOF
-//      const PetscReal *cellAlphaR = &fieldR[uOff[0]];     // VOF
       const PetscReal *faceGAlpha = &grad[uOff_x[0]];
       const PetscReal   *faceGAij = &gradAux[aOff_x[0]];
 
@@ -266,37 +274,15 @@ namespace ablate::finiteVolume::processes {
 
         PetscReal r[3] = {0, 0, 0};
 
-        for (std::size_t q = 0; q < nPhases; ++q) {
+        Rpq(p, h, dim, nPhases, eps, gamma, faceAlpha, faceGAlpha, faceGAij, r);
 
-          if (p == q) continue;
-
-          // Gradient of A_{ij} at the face
-          const PetscReal *gpq = &faceGAij[(p * nPhases + q) * dim];
-
-          // Magnitude of the gradient
-          const PetscReal mag = utilities::MathUtilities::MagVector(dim, gpq);
-
-          for (PetscInt d = 0; d < dim; ++d) r[d] += faceAlpha[q] * gpq[d] / ( mag + h*h );
-        }
-
-        flux[p] = -eps * utilities::MathUtilities::DotVector(dim, &faceGAlpha[p*dim], fg->normal);
-
-        const PetscReal rn = utilities::MathUtilities::DotVector(dim, r, fg->normal);
-
-        // Use the alpha interpolated to the face
-        flux[p] += faceAlpha[p] * rn;
-
-        // Upwinding: Don't really know if this is necessary
-//        if (rn > 0) flux[p] += cellAlphaL[p] * rn;
-//        else        flux[p] += cellAlphaR[p] * rn;
-
-        flux[p] *= gamma * PetscTanhReal(faceAlpha[p] * (1.0 - faceAlpha[p]) * 5.5e5);
+        flux[p] = -utilities::MathUtilities::DotVector(dim, r, fg->normal);
 
       }
 
+
       PetscFunctionReturn(PETSC_SUCCESS);
   }
-
 
   // Sharpen the interface before anything else is done.
   PetscErrorCode ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPreSharp(TS flowTS, ablate::solver::Solver &solver) {
@@ -599,7 +585,7 @@ namespace ablate::finiteVolume::processes {
         DMPlexPointGlobalFieldRef(auxDM, cell, rhokField.id, auxArray, &rhok);
         DMPlexPointGlobalFieldRef(auxDM, cell, pField.id, auxArray, &p);
 
-        *p = 115000;
+        *p = p0;
         for (std::size_t k = 0; k < nPhases; ++k) rhok[k] = eosNPhase[k]->GetReferenceDensity();
 
         PetscReal a = 0, b = 0;
@@ -710,5 +696,6 @@ REGISTER(ablate::finiteVolume::processes::Process,
     ablate::finiteVolume::processes::NPhaseIntSharp,
     "N-phase interface regularization term",
     ARG(PetscReal, "Gamma", "Gamma, velocity scale parameter (approx. umax)"),
-    ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)")
+    ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)"),
+    ARG(PetscReal, "p0", "pressure, initial pressure to use when reconstructing conserved fields after pre-stage sharpening")
     );
