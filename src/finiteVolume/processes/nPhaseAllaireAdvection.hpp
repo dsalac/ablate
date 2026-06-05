@@ -63,7 +63,7 @@ class NPhaseAllaireAdvection : public Process {
 
     DM subDM;
 
-    PetscErrorCode MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
+    static PetscErrorCode PressurePreRHS(FiniteVolumeSolver &fvSolver, TS ts, PetscReal time, bool initialStage, Vec locX, void *ctx);
 
     /**
      * Normalize and cleanup the mass fractions in the solution vector
