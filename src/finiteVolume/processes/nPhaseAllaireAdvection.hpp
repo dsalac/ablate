@@ -55,21 +55,13 @@ class NPhaseAllaireAdvection : public Process {
 
 
     // This just ensures the proper offset information from uOff is used.
-    const std::vector<std::string> solFieldList = {ALPHAK_FIELD, ALPHAKRHOK_FIELD, ALLAIRE_FIELD};
+    const std::vector<std::string> solFieldList = {ALPHAK_FIELD, ALPHAKRHOK_FIELD, ALLAIRE_FIELD, "veldiv"};
     static const int ALPHAK_OFFSET = 0;
     static const int ALPHAKRHOK_OFFSET = 1;
     static const int ALLAIRE_OFFSET = 2;
     std::vector<PetscReal> mu = {}; // Viscosity
 
     DM subDM;
-
-    // This is used to store the divergence of the velocity field
-    DM faceDM = nullptr;
-    Vec divVec = nullptr;
-    PetscScalar *divArray = nullptr;
-    ablate::domain::Range faceRange;
-    PetscInt faceCounter;
-
 
     PetscErrorCode MultiphaseFlowPreStage(TS flowTs, ablate::solver::Solver &flow, PetscReal stagetime);
 
@@ -143,6 +135,9 @@ class NPhaseAllaireAdvection : public Process {
     void Setup(ablate::finiteVolume::FiniteVolumeSolver &flow) override;
 
    private:
+
+    std::shared_ptr<ablate::finiteVolume::stencil::GaussianConvolution> gaussConv;
+
     // static function to compute time step for twoPhase euler advection
     static double ComputeCflTimeStep(TS ts, ablate::finiteVolume::FiniteVolumeSolver &flow, void *ctx);
 

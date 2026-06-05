@@ -2062,12 +2062,12 @@ PetscErrorCode DMPlexComputePeriodicGeometryFVM(DM dm, Vec *cellGeom, Vec *faceG
 
   PetscFunctionBegin;
 
+  PetscCall(DMPlexComputeGeometryFVM(dm, cellGeom, faceGeom));
+
   PetscCall(DMGetPeriodicity(dm, &maxCell, NULL, &L));
   if (!L) PetscFunctionReturn(PETSC_SUCCESS); // No periodic faces
 
   PetscCall(DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd));
-
-  PetscCall(DMPlexComputeGeometryFVM(dm, cellGeom, faceGeom));
 
   PetscCall(VecGetDM(*faceGeom, &dmFace));
   PetscCall(VecGetArray(*faceGeom, &faceGeomArray));

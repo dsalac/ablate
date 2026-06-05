@@ -587,26 +587,6 @@ void ablate::finiteVolume::CellInterpolant::ComputeFluxSourceTerms(DM dm, PetscD
         ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[0], *cgL, dm, xArray, dmGrads, locGradArrays, uL, gradL, leftFlowLabelValue == regionValue);
         ProjectToFace(subDomain->GetFields(), ds, *fg, faceCells[1], *cgR, dm, xArray, dmGrads, locGradArrays, uR, gradR, rightFlowLabelValue == regionValue);
 
-//if ( PetscAbsReal(cgL->centroid[0] + 0.0492187) < 1e-6 && PetscAbsReal(cgL->centroid[1] - 0.00078125) < 1e-6) {
-//  PetscInt alphaId = subDomain->GetField("alphak").id;
-//  const PetscReal *val;
-//  DMPlexPointLocalFieldRead(dm, faceCells[0], alphaId, xArray, &val);
-//  printf("L\n");
-//  printf("%+f\t%+f\n", val[0], val[1]);
-//  printf("%+f\t%+f\n", uL[3], uL[4]);
-//  exit(0);
-//}
-
-//if ( PetscAbsReal(cgR->centroid[0] + 0.0492187) < 1e-6 && PetscAbsReal(cgR->centroid[1] - 0.00078125) < 1e-6) {
-//  PetscInt alphaId = subDomain->GetField("alphak").id;
-//  const PetscReal *val;
-//  DMPlexPointLocalFieldRead(dm, faceCells[1], alphaId, xArray, &val);
-//  printf("R\n");
-//  printf("%+f\t%+f\n", val[0], val[1]);
-//  exit(0);
-//}
-
-
         // determine the left/right cells
         if (auxArray) {
             // Get the field values at this cell

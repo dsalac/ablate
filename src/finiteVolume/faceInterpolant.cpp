@@ -464,8 +464,8 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
         DMPlexPointLocalRead(cellDM, faceCells[1], cellGeomArray, &cgR) >> utilities::PetscUtilities::checkError;
 
         PetscInt ownedL = PETSC_TRUE, ownedR = PETSC_TRUE;
-        DMPlexGetPointGlobal(dm, faceCells[0], &ownedL, nullptr) >> utilities::PetscUtilities::checkError;
-        DMPlexGetPointGlobal(dm, faceCells[1], &ownedR, nullptr) >> utilities::PetscUtilities::checkError;
+//        DMPlexGetPointGlobal(dm, faceCells[0], &ownedL, nullptr) >> utilities::PetscUtilities::checkError;
+//        DMPlexGetPointGlobal(dm, faceCells[1], &ownedR, nullptr) >> utilities::PetscUtilities::checkError;
 
 
         PetscFVFaceGeom* fg;

@@ -281,12 +281,15 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
 
 //if (subDomain->ContainsField("allaire")) {
 ++cnt;
-
+#if 0
   int rank;
   PetscCallMPI(MPI_Comm_rank(PETSC_COMM_WORLD, &rank));
 
+  int size;
+  PetscCallMPI(MPI_Comm_size(PETSC_COMM_WORLD, &size));
+
   char fname[255];
-  sprintf(fname, "rhs%d.txt", cnt);
+  sprintf(fname, "rhs%d.txt", size);
   FILE *f1;
   if (rank==0) f1 = fopen(fname, "w");
   else         f1 = fopen(fname, "a");
@@ -298,6 +301,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
   const ablate::domain::Field aField = subDomain->GetField("allaire");
   const ablate::domain::Field alphaField = subDomain->GetField("alphak");
   const ablate::domain::Field alphaRhoField = subDomain->GetField("alphakrhok");
+  const ablate::domain::Field veldivField = subDomain->GetField("veldiv");
 
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     const PetscReal cell = cellRange.GetPoint(c);
@@ -319,6 +323,8 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
            alphaW: 7
         alphaRhoA: 8
         alphaRhoW: 9
+           velDiv: 10
+             rank: 11
     */
 
     const PetscScalar *vals;
@@ -329,7 +335,14 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
     PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
 
     DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, alphaRhoField.id, array, &vals);
-    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\n", vals[0], vals[1]);
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+
+    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, veldivField.id, array, &vals);
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t", vals[0]);
+
+
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%d\n", rank);
+
   }
   PetscCall(PetscSynchronizedFlush(PETSC_COMM_WORLD, f1));
   fclose(f1);
@@ -338,6 +351,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
 
   PetscPrintf(PETSC_COMM_WORLD, "%s::%d\n", __FILE__, __LINE__);
   exit(0);
+#endif
 //}
 
 
