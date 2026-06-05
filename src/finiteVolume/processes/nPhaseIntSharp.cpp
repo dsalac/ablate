@@ -15,7 +15,7 @@
 #include "finiteVolume/faceInterpolant.hpp"
 #include "finiteVolume/cellInterpolant.hpp"
 
-#define saveData 0
+#define saveData 1
 
 namespace ablate::finiteVolume::processes {
 
@@ -23,7 +23,7 @@ namespace ablate::finiteVolume::processes {
   void ablate::finiteVolume::processes::NPhaseIntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {}
 
 
-  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(const PetscReal Gamma, const PetscReal epsilon, const PetscReal p0) : Gamma(Gamma), epsilon(epsilon), p0(p0) {}
+  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(const PetscReal Gamma, const PetscReal epsilon, const PetscReal p0, const PetscInt preGauss, const PetscInt postGauss) : Gamma(Gamma), epsilon(epsilon), p0(p0), preGauss(preGauss), postGauss(postGauss) {}
 
   ablate::finiteVolume::processes::NPhaseIntSharp::~NPhaseIntSharp() {}
 
@@ -311,6 +311,7 @@ namespace ablate::finiteVolume::processes {
     PetscReal *xArray;
     PetscCall(TSGetSolution(flowTS, &X));
     PetscCall(DMGetLocalVector(dm, &locX));
+    PetscCall(DMGlobalToLocal(dm, X, INSERT_VALUES, locX));
 
     // RHS vectors
     Vec F, locF;
@@ -318,12 +319,15 @@ namespace ablate::finiteVolume::processes {
     PetscCall(DMGetGlobalVector(dm, &F));
 
     // Aux variables
+    DM auxDM = subDomain->GetAuxDM();
     Vec auxVec = subDomain->GetAuxVector();
 
     const ablate::domain::Field&    alphaField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
     const ablate::domain::Field& rhoAlphaField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK);
     const ablate::domain::Field&  allaireField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALLAIRE);
     const ablate::domain::Field&      aijField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::AIJ);
+
+    const std::size_t nPhases = alphaField.numberComponents;
 
     // Create the function description that will be used with the faceInterpolant
     FaceInterpolant::ContinuousFluxFunctionDescription faceDescription;
@@ -338,6 +342,26 @@ namespace ablate::finiteVolume::processes {
     // Face interpolant to calculate the RHS
     std::unique_ptr<FaceInterpolant> faceInterpolant = std::make_unique<FaceInterpolant>(subDomain, solver.GetRegion(), faceGeomVec, cellGeomVec);
     faceInterpolant->SetUseGaussianConvolution(PETSC_TRUE);
+
+    // Smooth the fields first
+    auto gaussConv = std::make_shared<ablate::finiteVolume::stencil::GaussianConvolution>(dm, 1, dim, dim);
+
+    for (PetscInt pg = 0; pg < preGauss; ++pg) {
+      PetscCall(VecGetArray(X, &xArray));
+      for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+        const PetscReal cell = cellRange.GetPoint(c);
+        PetscScalar *vals;
+        PetscCall(DMPlexPointGlobalFieldRef(dm, cell, alphaField.id, xArray, &vals));
+        if (vals) {
+          gaussConv->Evaluate(cell, nullptr, dm, alphaField.id, locX, 0, nPhases, vals);
+          PetscReal aSum = 0;
+          for (std::size_t k = 0; k < nPhases; ++k) aSum += vals[k];
+          for (std::size_t k = 0; k < nPhases; ++k) vals[k] /= aSum;
+        }
+      }
+      PetscCall(VecRestoreArray(X, &xArray));
+      PetscCall(DMGlobalToLocal(dm, X, INSERT_VALUES, locX));
+    }
 
 #if saveData
 
@@ -361,13 +385,13 @@ namespace ablate::finiteVolume::processes {
 
         DMPlexPointGeometricData(dm, cell, NULL, x, NULL);
         PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", x[0], x[1]);
-        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+        for (std::size_t k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+.16e\t", vals[k]);
 
         DMPlexPointGlobalFieldRead(dm, cell, rhoAlphaField.id, xArray, &vals);
-        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+        for (std::size_t k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+.16e\t", vals[k]);
 
         DMPlexPointGlobalFieldRead(dm, cell, allaireField.id, xArray, &vals);
-        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t%+e\n", vals[0], vals[1], vals[2]);
+        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+.16e\t%+.16e\t%+.16e\n", vals[0], vals[1], vals[2]);
 
       }
     }
@@ -377,7 +401,7 @@ namespace ablate::finiteVolume::processes {
 
 #endif
 
-    const std::size_t nPhases = alphaField.numberComponents;
+
 
     PetscReal dk[nPhases], dk0[nPhases];
     for (std::size_t k = 0; k < nPhases; ++k) dk[k] = PETSC_MAX_REAL;
@@ -385,9 +409,6 @@ namespace ablate::finiteVolume::processes {
     PetscReal minDk = PETSC_MAX_REAL;
 
     PetscInt iter = 0;
-
-    PetscCall(DMGlobalToLocal(dm, X, INSERT_VALUES, locX));
-
     do {
 
       ++iter;
@@ -402,7 +423,7 @@ namespace ablate::finiteVolume::processes {
         DMPlexPointLocalFieldRead(dm, cell, alphaField.id, xArray, &alpha);
 
         PetscScalar *aij;
-        DMPlexPointLocalFieldRef(subDomain->GetAuxDM(), cell, aijField.id, aArray, &aij);
+        DMPlexPointLocalFieldRef(auxDM, cell, aijField.id, aArray, &aij);
 
         for (std::size_t p = 0; p < nPhases; ++p) {
           for (std::size_t q = 0; q < nPhases; ++q) {
@@ -410,8 +431,9 @@ namespace ablate::finiteVolume::processes {
               aij[p*nPhases + q] = 0.5;
             }
             else {
-              PetscReal denom = alpha[p] + alpha[q];
-              PetscReal value = (denom > PETSC_SMALL) ? (alpha[p] / denom) : 0.0;
+              PetscReal denom = alpha[p] + alpha[q] + PETSC_SQRT_MACHINE_EPSILON;
+//              PetscReal value = (denom > PETSC_SMALL) ? (alpha[p] / denom) : 0.0;
+              PetscReal value = alpha[p] / denom;
               aij[p*nPhases + q] = value;
             }
           }
@@ -516,10 +538,12 @@ namespace ablate::finiteVolume::processes {
             DMPlexPointGeometricData(dm, cell, NULL, x, NULL);
             PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", x[0], x[1]);
 
-            PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+            for (std::size_t k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t", vals[k]);
 
             DMPlexPointLocalFieldRead(dm, cell, alphaField.id, fArray, &vals);
-            PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\n", vals[0], vals[1]);
+            for (std::size_t k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t", vals[k]);
+            PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "\n");
+
           }
         }
         VecRestoreArray(X, &xArray);
@@ -537,105 +561,101 @@ namespace ablate::finiteVolume::processes {
 
     MPI_Barrier(PETSC_COMM_WORLD);
 
+    for (PetscInt pg = 0; pg < postGauss; ++pg) {
+      PetscCall(VecGetArray(X, &xArray));
+      for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+        const PetscReal cell = cellRange.GetPoint(c);
+        PetscScalar *vals;
+        PetscCall(DMPlexPointGlobalFieldRef(dm, cell, alphaField.id, xArray, &vals));
+        if (vals) {
+          gaussConv->Evaluate(cell, nullptr, dm, alphaField.id, locX, 0, nPhases, vals);
+          PetscReal aSum = 0;
+          for (std::size_t k = 0; k < nPhases; ++k) aSum += vals[k];
+          for (std::size_t k = 0; k < nPhases; ++k) vals[k] /= aSum;
+        }
+      }
+      PetscCall(VecRestoreArray(X, &xArray));
+      PetscCall(DMGlobalToLocal(dm, X, INSERT_VALUES, locX));
+    }
+
 
     /*
-        Re-construct the conserved fields
-          The following fields are NOT updated:
-            AUX: pressure
-            AUX: phase density
-            AUX: phase internal energy (function of pressure and phase density)
-            AUX: speed of sound (function of pressure and phase density)
-
-          The following fields ARE updated:
+        Re-construct the conserved fields:
             SOL: alphak * rhok
             SOL: density * (internal energy + kinetic energy)
             SOL: density * velocity
-            AUX: total density
-            AUX: total internal energy
     */
-
-
-    DM auxDM = subDomain->GetAuxDM();
-    Vec globalAuxVec = subDomain->GetAuxGlobalVector();
-    PetscScalar *auxArray;
-    VecGetArray(globalAuxVec, &auxArray);
+    const PetscScalar *auxArray;
+    VecGetArrayRead(auxVec, &auxArray);
     VecGetArray(X, &xArray);
-
     // Required primative variables
-    const ablate::domain::Field&  pField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::PRESSURE);
     const ablate::domain::Field& velField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::UI);
-    const ablate::domain::Field& rhokField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::RHOK);
-
-    // Aux variable to update
-    const ablate::domain::Field& rhoField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::RHO);
-
-    // This should be updated to check whether the field exists
-//    const ablate::domain::Field& eIntField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::EPSILON);
-
 
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
       const PetscReal cell = cellRange.GetPoint(c);
 
-      const PetscScalar *alpha;
-      DMPlexPointGlobalFieldRead(dm, cell, alphaField.id, xArray, &alpha);
+      PetscScalar *alpha;
+      DMPlexPointGlobalFieldRef(dm, cell, alphaField.id, xArray, &alpha);
 
       if (alpha) {
 
-        PetscScalar *rhok, *p;
-        DMPlexPointGlobalFieldRef(auxDM, cell, rhokField.id, auxArray, &rhok);
-        DMPlexPointGlobalFieldRef(auxDM, cell, pField.id, auxArray, &p);
+        // Update alphaK
+        PetscReal aSum = 0;
+        for (std::size_t k = 0; k < nPhases; ++k) {
+          alpha[k] = PetscMin(PetscMax(alpha[k], 0), 1);
+          aSum += alpha[k];
+        }
+        for (std::size_t k = 0; k < nPhases; ++k) alpha[k] /= aSum;
 
-        *p = p0;
-        for (std::size_t k = 0; k < nPhases; ++k) rhok[k] = eosNPhase[k]->GetReferenceDensity();
+        aSum = 0;
+        for (std::size_t k = 0; k < nPhases; ++k) aSum += alpha[k];
+        if (PetscAbsReal(aSum - 1) > PETSC_SQRT_MACHINE_EPSILON) {
+          printf("%e\n", PetscAbsReal(aSum - 1));
+          printf("%s::%d\n", __FILE__, __LINE__);
+          exit(0);
+        }
+
+
+        PetscScalar *alphaRho;
+        DMPlexPointGlobalFieldRef(dm, cell, rhoAlphaField.id, xArray, &alphaRho);
 
         PetscReal a = 0, b = 0;
-
-        PetscReal new_rho = 0;
+        PetscReal mixRho = 0;
         for (std::size_t k = 0; k < nPhases; ++k) {
-          new_rho += rhok[k] * alpha[k];
-
+          const PetscReal rho = eosNPhase[k]->GetReferenceDensity();
           const PetscReal gamma = eosNPhase[k]->GetSpecificHeatRatio();
           const PetscReal P0 = eosNPhase[k]->GetReferencePressure();
+
+          alphaRho[k] = alpha[k] * rho;
+          mixRho += alphaRho[k];
 
           a += alpha[k] / (gamma - 1);
           b += alpha[k] * gamma * P0 / (gamma - 1);
         }
 
-        // Mixture density
-        PetscScalar *rho;
-        DMPlexPointGlobalFieldRef(auxDM, cell, rhoField.id, auxArray, &rho);
-        *rho = new_rho;
-
         // Mixture internal energy
-        PetscScalar new_eInt = (*p * a + b) / new_rho;
-  //      PetscScalar *eInt;
-  //      DMPlexPointGlobalFieldRef(auxDM, cell, eIntField.id, auxArray, &eInt);
-  //      *eInt = new_eInt
-
-        PetscScalar *alphaRho, *allaire;
-        DMPlexPointGlobalFieldRef(dm, cell, rhoAlphaField.id, xArray, &alphaRho);
-        DMPlexPointGlobalFieldRef(dm, cell, allaireField.id, xArray, &allaire);
+        PetscScalar mixEnergy = (p0 * a + b);
 
         // Kinetic energy
         const PetscScalar *vel;
-        DMPlexPointGlobalFieldRead(auxDM, cell, velField.id, auxArray, &vel);
+        DMPlexPointLocalFieldRead(auxDM, cell, velField.id, auxArray, &vel);
         PetscReal ke = 0;
         for (PetscInt d = 0; d < dim; ++d) ke += vel[d] * vel[d];
         ke *= 0.5;
 
-
-        for (std::size_t k = 0; k < nPhases; ++k) alphaRho[k] = rhok[k] * alpha[k];
-
-        allaire[ablate::finiteVolume::NPhaseFlowFields::RHOE] = new_rho * (new_eInt + ke);
-        for (PetscInt d = 0; d < dim; ++d) allaire[ablate::finiteVolume::NPhaseFlowFields::RHOU + d] = new_rho * vel[d];
-
+        PetscScalar *allaire;
+        DMPlexPointGlobalFieldRef(dm, cell, allaireField.id, xArray, &allaire);
+        allaire[ablate::finiteVolume::NPhaseFlowFields::RHOE] = mixEnergy + mixRho * ke;
+        for (PetscInt d = 0; d < dim; ++d) allaire[ablate::finiteVolume::NPhaseFlowFields::RHOU + d] = mixRho * vel[d];
       }
     }
     VecRestoreArray(X, &xArray);
-    VecRestoreArray(globalAuxVec, &auxArray);
-    PetscCall(DMGlobalToLocal(auxDM, globalAuxVec, INSERT_VALUES, auxVec));
 
+    PetscCall(DMGlobalToLocal(dm, X, INSERT_VALUES, locX));
 
+    // Make sure the AUX variable are also updated
+    auto &fvSolver = dynamic_cast<ablate::finiteVolume::FiniteVolumeSolver &>(solver);
+    fvSolver.UpdateAuxFields(NAN, locX, auxVec);
 
 #if saveData
 
@@ -643,7 +663,8 @@ namespace ablate::finiteVolume::processes {
     if (rank==0) f1 = fopen(fname, "w");
     else         f1 = fopen(fname, "a");
     VecGetArray(X, &xArray);
-
+    VecGetArrayRead(auxVec, &auxArray);
+const ablate::domain::Field& pField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::PRESSURE);
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
       const PetscReal cell = cellRange.GetPoint(c);
 
@@ -656,16 +677,20 @@ namespace ablate::finiteVolume::processes {
         DMPlexPointGeometricData(dm, cell, NULL, x, NULL);
         PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", x[0], x[1]);
 
-        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+        for (std::size_t k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+.16e\t", vals[k]);
 
         DMPlexPointGlobalFieldRead(dm, cell, rhoAlphaField.id, xArray, &vals);
-        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+        for (std::size_t k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+.16e\t", vals[k]);
 
         DMPlexPointGlobalFieldRead(dm, cell, allaireField.id, xArray, &vals);
-        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t%+e\n", vals[0], vals[1], vals[2]);
+        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+.16e\t%+.16e\t%+.16e\t", vals[0], vals[1], vals[2]);
+
+        DMPlexPointGlobalFieldRead(auxDM, cell, pField.id, auxArray, &vals);
+        PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+.16e\n", vals[0]);
       }
     }
     VecRestoreArray(X, &xArray);
+    VecRestoreArrayRead(auxVec, &auxArray);
     PetscCall(PetscSynchronizedFlush(PETSC_COMM_WORLD, f1));
     MPI_Barrier(PETSC_COMM_WORLD);
     fclose(f1);
@@ -678,8 +703,6 @@ namespace ablate::finiteVolume::processes {
     PetscCall(DMRestoreLocalVector(dm, &locX));
     PetscCall(DMRestoreLocalVector(dm, &locF));
     PetscCall(DMRestoreGlobalVector(dm, &F));
-
-//printf("%s::%d\n", __FILE__, __LINE__);exit(0);
 
     preStageHasRun = PETSC_TRUE;
 
@@ -697,5 +720,7 @@ REGISTER(ablate::finiteVolume::processes::Process,
     "N-phase interface regularization term",
     ARG(PetscReal, "Gamma", "Gamma, velocity scale parameter (approx. umax)"),
     ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)"),
-    ARG(PetscReal, "p0", "pressure, initial pressure to use when reconstructing conserved fields after pre-stage sharpening")
+    ARG(PetscReal, "p0", "pressure, initial pressure to use when reconstructing conserved fields after pre-stage sharpening"),
+    OPT(PetscInt, "preGauss", "preGauss, apply this number of Gaussian kernel smoothing operations before initial sharpening. Default is 0"),
+    OPT(PetscInt, "postGauss", "postGauss, apply this number of Gaussian kernel smoothing operations after initial sharpening. Default is 0")
     );

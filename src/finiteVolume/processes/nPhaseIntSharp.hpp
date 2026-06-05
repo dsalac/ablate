@@ -22,6 +22,8 @@ class NPhaseIntSharp : public Process {
     const PetscReal epsilon;
     PetscReal h;
     const PetscReal p0; // Initial pressure
+    const PetscInt preGauss = 0;
+    const PetscInt postGauss = 0;
 
     PetscBool preStageHasRun = PETSC_FALSE;
 
@@ -62,7 +64,9 @@ class NPhaseIntSharp : public Process {
     explicit NPhaseIntSharp(
         const PetscReal Gamma,
         const PetscReal epsilon,
-        const PetscReal p0
+        const PetscReal p0,
+        const PetscInt preGauss,
+        const PetscInt postGauss
       );
 
     ~NPhaseIntSharp() override;
