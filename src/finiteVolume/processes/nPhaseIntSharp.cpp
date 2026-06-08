@@ -91,7 +91,7 @@ namespace ablate::finiteVolume::processes {
       else throw std::runtime_error("EOS must be KthStiffnedGas in nPhaseIntSharp.");
     }
 
-//PetscPrintf(PETSC_COMM_WORLD, "Turning off flux: %s::%d\n", __FILE__, __LINE__);
+#if 1
     // Continuous flux function
     flow.RegisterRHSFunction(NPhaseIntSharpPointFlux, this,
       {ablate::finiteVolume::NPhaseFlowFields::ALPHAK, ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK, ablate::finiteVolume::NPhaseFlowFields::ALLAIRE},
@@ -103,9 +103,12 @@ namespace ablate::finiteVolume::processes {
        ablate::finiteVolume::NPhaseFlowFields::EPSILONK   // 4
       });
 
-
     auto preStep = std::bind(&ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPreSharp, this, std::placeholders::_1, std::placeholders::_2);
     flow.RegisterPreStep(preStep);
+
+#else
+    PetscPrintf(PETSC_COMM_WORLD, "Turning off flux: %s::%d\n", __FILE__, __LINE__);
+#endif
   }
 
 
@@ -481,8 +484,10 @@ namespace ablate::finiteVolume::processes {
       for (std::size_t k = 0; k < nPhases; k++) {
         MPI_Allreduce(MPI_IN_PLACE, &dk[k], 1, MPIU_REAL, MPIU_SUM, PETSC_COMM_WORLD) >> utilities::MpiUtilities::checkError;
 
-        maxDkDiff = PetscMax(maxDkDiff, PetscAbsReal((dk[k] - dk0[k]) / dk0[k]));
-        minDk = PetscMin(minDk, dk[k]);
+        if (dk[k] > 0) {
+          maxDkDiff = PetscMax(maxDkDiff, PetscAbsReal((dk[k] - dk0[k]) / dk0[k]));
+          minDk = PetscMin(minDk, dk[k]);
+        }
       }
 
 

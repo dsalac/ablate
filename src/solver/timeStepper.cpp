@@ -380,6 +380,7 @@ PetscErrorCode ablate::solver::TimeStepper::SolverComputeIJacobianLocal(DM, Pets
 
     PetscFunctionReturn(0);
 }
+
 PetscErrorCode ablate::solver::TimeStepper::SolverComputeRHSFunction(TS ts, PetscReal time, Vec X, Vec F, void* timeStepperCtx) {
     PetscFunctionBeginUser;
     auto timeStepper = (ablate::solver::TimeStepper*)timeStepperCtx;
@@ -423,13 +424,15 @@ PetscErrorCode ablate::solver::TimeStepper::SolverComputeRHSFunction(TS ts, Pets
     for (auto& solver : timeStepper->rhsFunctionSolvers) {
         PetscCall(solver->ComputeRHSFunction(time, locX, locF));
     }
+
     CHKMEMQ;
     timeStepper->EndEvent();
 
     timeStepper->StartEvent("SolverComputeRHSFunction::DMLocalToGlobalEnd");
     VecZeroEntries(F);
-    DMLocalToGlobalBegin(dm, locF, ADD_VALUES, F);
-    DMLocalToGlobalEnd(dm, locF, ADD_VALUES, F);
+    DMLocalToGlobal(dm, locF, INSERT_VALUES, F);
+//    DMLocalToGlobalBegin(dm, locF, ADD_VALUES, F);
+//    DMLocalToGlobalEnd(dm, locF, ADD_VALUES, F);
     DMRestoreLocalVector(dm, &locX);
     DMRestoreLocalVector(dm, &locF);
     timeStepper->EndEvent();

@@ -212,7 +212,7 @@ void ablate::finiteVolume::FiniteVolumeSolver::Initialize() {
     DMRestoreLocalVector(subDomain->GetDM(), &locXVec) >> utilities::PetscUtilities::checkError;
 }
 
-static PetscInt cnt = 0;
+//static PetscInt cnt = 0;
 PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(PetscReal time, Vec locXVec, Vec locFVec) {
     PetscFunctionBeginUser;
     // PetscPrintf(MPI_COMM_WORLD, "Starting ComputeRHSFunction at time %g\n", time);
@@ -280,7 +280,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
 
 
 //if (subDomain->ContainsField("allaire")) {
-++cnt;
+//++cnt;
 #if 0
   int rank;
   PetscCallMPI(MPI_Comm_rank(PETSC_COMM_WORLD, &rank));
@@ -302,6 +302,9 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
   const ablate::domain::Field alphaField = subDomain->GetField("alphak");
   const ablate::domain::Field alphaRhoField = subDomain->GetField("alphakrhok");
   const ablate::domain::Field veldivField = subDomain->GetField("veldiv");
+
+  const PetscInt nPhases = subDomain->GetField("alphak").numberComponents;
+  printf("nPhases: %d\n", nPhases);
 
   for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
     const PetscReal cell = cellRange.GetPoint(c);
@@ -325,6 +328,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         alphaRhoW: 9
            velDiv: 10
              rank: 11
+            alpha: 12-
     */
 
     const PetscScalar *vals;
@@ -332,16 +336,20 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
     PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t%+e\t", vals[0], vals[1], vals[2]);
 
     DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, alphaField.id, array, &vals);
-    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+    for (PetscInt k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t", vals[k]);
 
     DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, alphaRhoField.id, array, &vals);
-    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", vals[0], vals[1]);
+    for (PetscInt k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t", vals[k]);
 
     DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, veldivField.id, array, &vals);
     PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t", vals[0]);
 
 
-    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%d\n", rank);
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%d\t", rank);
+
+    DMPlexPointLocalFieldRead(subDomain->GetDM(), cell, alphaField.id, xArray, &vals);
+    for (PetscInt k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t", vals[k]);
+    PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "\n");
 
   }
   PetscCall(PetscSynchronizedFlush(PETSC_COMM_WORLD, f1));

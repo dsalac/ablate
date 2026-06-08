@@ -64,7 +64,7 @@ void NPhaseSurfaceTension::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow)
 }
 
 
-
+FILE *f1 = fopen("tension.txt", "w");
 /*
     This is based on a combination of
       "A conservative second order phase field model for simulation of N-phase flows" by Mirjalilia and Mani
@@ -99,6 +99,17 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::PointFlux(
 
     const PetscReal u_n = utilities::MathUtilities::DotVector(dim, vel, fg->normal);
 
+fprintf(f1, "%+e\t%+e\t", fg->centroid[0], fg->centroid[1]); // 1, 2
+fprintf(f1, "%+e\t%+e\t", fg->normal[0], fg->normal[1]);     // 3, 4
+for (std::size_t i = 0; i < nPhases; ++i) fprintf(f1, "%+e\t", alphak[i]); // 5, 6, 7
+for (std::size_t i = 0; i < nPhases; ++i) {
+  for (std::size_t j = 0; j < nPhases; ++j) {
+    fprintf(f1, "%+e\t", aux[aOff[1] + i * nPhases + j]);
+  }
+}
+fprintf(f1, "\n");
+
+
     PetscCall(PetscArrayzero(flux, dim + 1));
     for (std::size_t i = 0; i < nPhases; ++i) {
       for (std::size_t j = i + 1; j < nPhases; ++j) {
@@ -123,7 +134,6 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::PointFlux(
 
         // Momentum
         for (PetscInt d = 0; d < dim; ++d) flux[NPhaseFlowFields::RHOU + d] -= f * (mag * fg->normal[d] - g[d] * g_n / mag);
-
       }
     }
 

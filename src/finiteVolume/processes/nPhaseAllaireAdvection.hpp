@@ -60,10 +60,17 @@ class NPhaseAllaireAdvection : public Process {
     static const int ALPHAKRHOK_OFFSET = 1;
     static const int ALLAIRE_OFFSET = 2;
     std::vector<PetscReal> mu = {}; // Viscosity
+    std::vector<PetscBool> zeroAlpha = {};
+    PetscBool aijPreStageHasRun = PETSC_FALSE;
 
     DM subDM;
 
+    // Pressure smoothing -- Doesn't seem to work
     static PetscErrorCode PressurePreRHS(FiniteVolumeSolver &fvSolver, TS ts, PetscReal time, bool initialStage, Vec locX, void *ctx);
+
+    // Check whether one of the phases doesn't exist. If it doesn't make sure that aij values are zero
+    static PetscErrorCode AijPreRHS(FiniteVolumeSolver &fvSolver, TS ts, PetscReal time, bool initialStage, Vec locX, void *ctx);
+
 
     /**
      * Normalize and cleanup the mass fractions in the solution vector

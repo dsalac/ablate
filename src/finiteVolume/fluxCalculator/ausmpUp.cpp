@@ -1,5 +1,5 @@
 #include "ausmpUp.hpp"
-#include "finiteVolume/nPhaseFlowFields.hpp"
+//#include "finiteVolume/nPhaseFlowFields.hpp"
 
 ablate::finiteVolume::fluxCalculator::AusmpUp::AusmpUp(double mInf, std::shared_ptr<ablate::finiteVolume::processes::PressureGradientScaling> pgs) : pgs(pgs), mInf(mInf) {}
 
@@ -54,7 +54,7 @@ ablate::finiteVolume::fluxCalculator::Direction ablate::finiteVolume::fluxCalcul
                                                                                                                PetscReal aR, PetscReal rhoR, PetscReal pR, PetscReal* massFlux, PetscReal* p12) {
 
     PetscReal a12, m12;
-   auto ausmUp = (ablate::finiteVolume::fluxCalculator::AusmpUp*)ctx;
+    auto ausmUp = (ablate::finiteVolume::fluxCalculator::AusmpUp*)ctx;
 
     ausmUp->AusmpUpInterfaceValues(ctx, uL, aL, rhoL, pL, uR, aR, rhoR, pR, &a12, &m12, p12);
 
