@@ -53,4 +53,4 @@ cmake-build-*/
 /.idea
 
 # Backup files
-*.bak
+*bak
