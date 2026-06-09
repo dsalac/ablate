@@ -11,8 +11,7 @@ ablate::finiteVolume::CellInterpolant::CellInterpolant(std::shared_ptr<ablate::d
 
         PetscBool computeGradients;
         PetscFVGetComputeGradients(petscFieldFV, &computeGradients) >> utilities::PetscUtilities::checkError;
-
-        if (computeGradients) {
+        if (computeGradients && fieldInfo.type==ablate::domain::FieldType::FVM) {
             DM dmGradInt;
 
             DMLabel regionLabel = nullptr;

@@ -51,7 +51,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "upwind"},
         {"petsclimiter_type", "vanleer"},
-        {"petscfv_compute_gradients", "true"} //TRUE
+        {"petscfv_compute_gradients", "false"} //TRUE
     })),
 
         //register alphak FIRST, then alphakrhok
@@ -77,7 +77,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
             ablate::parameters::MapParameters::Create({
         {"petscfv_type", "upwind"},
         {"petsclimiter_type", "vanleer"},
-        {"petscfv_compute_gradients", "true"}
+        {"petscfv_compute_gradients", "false"}
     })),
 
 
@@ -122,7 +122,7 @@ std::vector<std::shared_ptr<ablate::domain::FieldDescription>> ablate::finiteVol
              ablate::parameters::MapParameters::Create({
                 {"petscfv_type", "leastsquares"},
                 {"petsclimiter_type", "none"},
-                {"petscfv_compute_gradients", "true"}
+                {"petscfv_compute_gradients", "false"}
             })),
 
         // std::make_shared<domain::FieldDescription>(

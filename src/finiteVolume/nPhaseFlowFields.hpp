@@ -45,7 +45,7 @@ class NPhaseFlowFields : public domain::FieldDescriptor {
     const std::shared_ptr<parameters::Parameters> auxFieldOptions = ablate::parameters::MapParameters::Create({
         {"petscfv_type", "leastsquares"},
         {"petsclimiter_type", "none"},
-        {"petscfv_compute_gradients", "true"}
+        {"petscfv_compute_gradients", "false"}
     });
     const PetscInt dim;
 
