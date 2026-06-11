@@ -7,8 +7,8 @@
 #include "utilities/petscUtilities.hpp"
 
 ablate::domain::modifiers::ExtrudeLabel::ExtrudeLabel(std::vector<std::shared_ptr<domain::Region>> regions, std::shared_ptr<domain::Region> boundaryRegion,
-                                                      std::shared_ptr<domain::Region> originalRegion, std::shared_ptr<domain::Region> extrudedRegion, double thickness)
-    : regions(std::move(regions)), boundaryRegion(std::move(std::move(boundaryRegion))), originalRegion(std::move(originalRegion)), extrudedRegion(std::move(extrudedRegion)), thickness(thickness) {}
+                                                      std::shared_ptr<domain::Region> originalRegion, std::shared_ptr<domain::Region> extrudedRegion, double thickness, int nLayers)
+    : regions(std::move(regions)), boundaryRegion(std::move(std::move(boundaryRegion))), originalRegion(std::move(originalRegion)), extrudedRegion(std::move(extrudedRegion)), thickness(thickness), nLayers(nLayers == 0 ? 1 : nLayers) {}
 
 std::string ablate::domain::modifiers::ExtrudeLabel::ToString() const {
     std::string string = "ablate::domain::modifiers::ExtrudeLabel: (";
@@ -64,6 +64,10 @@ void ablate::domain::modifiers::ExtrudeLabel::Modify(DM &dm) {
         DMPlexGetGeometryFVM(dm, nullptr, nullptr, &extrudeThickness) >> utilities::PetscUtilities::checkError;
         extrudeThickness *= 2.0;  // double the thickness
     }
+    extrudeThickness *= nLayers;
+
+    PetscOptionsSetValue(transformOptions, "-dm_plex_transform_extrude_layers", std::to_string(nLayers).c_str());
+
     const auto extrudeThicknessString = std::to_string(extrudeThickness);
     PetscOptionsSetValue(transformOptions, "-dm_plex_transform_extrude_thickness", extrudeThicknessString.c_str());
 
@@ -174,5 +178,7 @@ PetscErrorCode ablate::domain::modifiers::ExtrudeLabel::DMPlexTransformAdaptLabe
 REGISTER(ablate::domain::modifiers::Modifier, ablate::domain::modifiers::ExtrudeLabel, "Extrudes a layer of cells based upon the region provided",
          ARG(std::vector<ablate::domain::Region>, "regions", "the region(s) describing the boundary cells"),
          ARG(ablate::domain::Region, "boundaryRegion", "the new label describing the faces between the original and extruded regions"),
-         ARG(ablate::domain::Region, "originalRegion", "the region describing the original mesh"), ARG(ablate::domain::Region, "extrudedRegion", "the region describing the new extruded cells"),
-         OPT(double, "thickness", "thickness for the extruded cells. If default (0) the 2 * minimum cell radius is used"));
+         ARG(ablate::domain::Region, "originalRegion", "the region describing the original mesh"),
+         ARG(ablate::domain::Region, "extrudedRegion", "the region describing the new extruded cells"),
+         OPT(double, "thickness", "thickness for the extruded cells. If default (0) the 2 * minimum cell radius is used"),
+         OPT(int, "nLayers", "number of layers to extrude. Each will have the same thickness"));

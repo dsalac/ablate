@@ -28,6 +28,9 @@ class ExtrudeLabel : public Modifier {
     //! thickness for the extruded cells. If default (0) the 2 * minimum cell radius is used
     const double thickness;
 
+    //! number of layers to extrude, each with the same thickness
+    const int nLayers;
+
     /**
      * ABLATE implementation of DMPlexTransformAdaptLabel that uses a petsc options object to setup the transform
      * @param dm
@@ -50,7 +53,7 @@ class ExtrudeLabel : public Modifier {
      * @param thickness
      */
     explicit ExtrudeLabel(std::vector<std::shared_ptr<domain::Region>> regions, std::shared_ptr<domain::Region> boundaryRegion, std::shared_ptr<domain::Region> originalRegion,
-                          std::shared_ptr<domain::Region> extrudedRegion, double thickness = {});
+                          std::shared_ptr<domain::Region> extrudedRegion, double thickness = {}, int nLayers = {});
 
     void Modify(DM &) override;
 

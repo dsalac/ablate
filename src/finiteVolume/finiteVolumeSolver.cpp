@@ -261,7 +261,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
                 faceInterpolant->SetUseGaussianConvolution(PETSC_TRUE);
             }
 
-            faceInterpolant->ComputeRHS(time, locXVec, subDomain->GetAuxVector(), locFVec, GetRegion(), continuousFluxFunctionDescriptions, faceRange, cellGeomVec, faceGeomVec);
+            faceInterpolant->ComputeRHS(time, locXVec, subDomain->GetAuxVector(), locFVec, GetRegion(), continuousFluxFunctionDescriptions, cellRange, faceRange, cellGeomVec, faceGeomVec);
         }
         EndEvent();
     } catch (std::exception& exception) {

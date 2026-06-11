@@ -23,7 +23,7 @@ namespace ablate::finiteVolume::processes {
   void ablate::finiteVolume::processes::NPhaseIntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {}
 
 
-  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(const PetscReal Gamma, const PetscReal epsilon, const PetscReal p0, const PetscInt preGauss, const PetscInt postGauss) : Gamma(Gamma), epsilon(epsilon), p0(p0), preGauss(preGauss), postGauss(postGauss) {}
+  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(const PetscReal gammaFactor, const PetscReal epsilon, const PetscReal p0, const PetscInt preGauss, const PetscInt postGauss) : gammaFactor(gammaFactor), epsilon(epsilon), p0(p0), preGauss(preGauss), postGauss(postGauss) {}
 
   ablate::finiteVolume::processes::NPhaseIntSharp::~NPhaseIntSharp() {}
 
@@ -102,13 +102,15 @@ namespace ablate::finiteVolume::processes {
        ablate::finiteVolume::NPhaseFlowFields::AIJ,       // 3
        ablate::finiteVolume::NPhaseFlowFields::EPSILONK   // 4
       });
-
-    auto preStep = std::bind(&ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPreSharp, this, std::placeholders::_1, std::placeholders::_2);
-    flow.RegisterPreStep(preStep);
-
 #else
     PetscPrintf(PETSC_COMM_WORLD, "Turning off flux: %s::%d\n", __FILE__, __LINE__);
 #endif
+    auto preStepGamma = std::bind(&ablate::finiteVolume::processes::NPhaseIntSharp::UpdateGamma, this, std::placeholders::_1, std::placeholders::_2);
+    flow.RegisterPreStep(preStepGamma);
+
+
+    auto preStep = std::bind(&ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPreSharp, this, std::placeholders::_1, std::placeholders::_2);
+    flow.RegisterPreStep(preStep);
   }
 
 
@@ -163,7 +165,7 @@ namespace ablate::finiteVolume::processes {
     auto process = (NPhaseIntSharp *)ctx;
     std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase = process->eosNPhase;
     const PetscReal   eps = process->epsilon;
-    const PetscReal gamma = process->Gamma;//
+    const PetscReal gamma = process->gamma;//
     const std::size_t nPhases = eosNPhase.size();
     const PetscReal h = process->h;
 
@@ -263,7 +265,7 @@ namespace ablate::finiteVolume::processes {
       auto process = (NPhaseIntSharp *)ctx;
       std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase = process->eosNPhase;
       const PetscReal   eps = process->epsilon;
-      const PetscReal gamma = process->Gamma;//
+      const PetscReal gamma = process->gamma;//
       const std::size_t nPhases = eosNPhase.size();
       const PetscReal h = process->h;
 
@@ -287,6 +289,66 @@ namespace ablate::finiteVolume::processes {
       PetscFunctionReturn(PETSC_SUCCESS);
   }
 
+  PetscErrorCode ablate::finiteVolume::processes::NPhaseIntSharp::UpdateGamma(TS flowTS, ablate::solver::Solver &solver) {
+
+    PetscFunctionBegin;
+
+    ablate::domain::Range cellRange;
+    solver.GetCellRangeWithoutGhost(cellRange);
+    const PetscInt dim = subDomain->GetDimensions();
+    DM dm = subDomain->GetDM();
+    DM auxDM = subDomain->GetAuxDM();
+    Vec X;
+    Vec auxVec = subDomain->GetAuxVector();
+    const PetscScalar *auxArray, *xArray;
+    const ablate::domain::Field& alphaField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::ALPHAK);
+    const ablate::domain::Field&   velField = subDomain->GetField(ablate::finiteVolume::NPhaseFlowFields::UI);
+    const std::size_t nPhases = alphaField.numberComponents;
+
+
+    // Maximum velocity associated with an interface
+    PetscReal uMax = PETSC_MIN_REAL;
+
+    PetscFunctionBegin;
+
+    PetscCall(TSGetSolution(flowTS, &X));
+
+    PetscCall(VecGetArrayRead(X, &xArray));
+    PetscCall(VecGetArrayRead(auxVec, &auxArray));
+
+    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+      const PetscInt cell = cellRange.GetPoint(c);
+
+      const PetscScalar *alpha;
+      PetscCall(DMPlexPointLocalFieldRead(dm, cell, alphaField.id, xArray, &alpha));
+
+      if (!alpha) continue; // Not owned by this rank
+
+      // Determine if this is near an interface
+      PetscReal max_ai_aj = PETSC_MIN_REAL;
+      for (std::size_t i = 0; i < nPhases; ++i)
+        for (std::size_t j = i + 1; j < nPhases; ++j)
+          max_ai_aj = PetscMax(max_ai_aj, alpha[i] * alpha[j]);
+
+      if (max_ai_aj < 1e-10) continue; // Not near an interface
+
+      const PetscScalar *vel;
+      PetscCall(DMPlexPointLocalFieldRead(auxDM, cell, velField.id, auxArray, &vel));
+
+      uMax = PetscMax(uMax, utilities::MathUtilities::MagVector(dim, vel));
+    }
+
+    PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, &uMax, 1, MPIU_REAL, MPIU_MAX, PETSC_COMM_WORLD));
+
+    gamma = gammaFactor * uMax;
+
+//    PetscPrintf(PETSC_COMM_WORLD, "%s::%d\t%+e\n", __FILE__, __LINE__, gamma);
+
+    PetscFunctionReturn(PETSC_SUCCESS);
+
+
+  }
+
   // Sharpen the interface before anything else is done.
   PetscErrorCode ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharpPreSharp(TS flowTS, ablate::solver::Solver &solver) {
 
@@ -297,13 +359,17 @@ namespace ablate::finiteVolume::processes {
 
     PetscPrintf(PETSC_COMM_WORLD, "Starting initial sharpening.\n");
 
+    // Gamma may have been set to a non-unitary number. Re-set it to zero.
+    const PetscReal gamma0 = gamma;
+    gamma = 1;
+
 
     DM dm = subDomain->GetDM();
     const PetscInt dim = subDomain->GetDimensions();
 
     ablate::domain::Range faceRange, cellRange;
     solver.GetFaceRange(faceRange);
-    solver.GetCellRange(cellRange);
+    solver.GetCellRangeWithoutGhost(cellRange);
 
     Vec faceGeomVec, cellGeomVec;
     PetscReal h;
@@ -447,7 +513,7 @@ namespace ablate::finiteVolume::processes {
 
 
       PetscCall(VecZeroEntries(locF));
-      faceInterpolant->ComputeRHS(0.0, locX, auxVec, locF, solver.GetRegion(), allFaceFunctions, faceRange, cellGeomVec, faceGeomVec);
+      faceInterpolant->ComputeRHS(0.0, locX, auxVec, locF, solver.GetRegion(), allFaceFunctions, cellRange, faceRange, cellGeomVec, faceGeomVec);
 
       VecScale(locF, 10*h*h);
       PetscCall(DMLocalToGlobal(dm, locF, ADD_VALUES, X));
@@ -519,7 +585,7 @@ namespace ablate::finiteVolume::processes {
         PetscReal nrm;
         VecNorm(locF, NORM_INFINITY, &nrm) >> utilities::PetscUtilities::checkError;
         MPI_Allreduce(MPI_IN_PLACE, &nrm, 1, MPIU_REAL, MPIU_MAX, PETSC_COMM_WORLD) >> utilities::MpiUtilities::checkError;
-        PetscPrintf(PETSC_COMM_WORLD, "%05d: %e\t%+e\t%+e\n", iter, nrm, maxDkDiff, minDk);
+        PetscPrintf(PETSC_COMM_WORLD, "%05d: %e\t%+e\t%+e\n", iter, nrm / (10*h*h), maxDkDiff, minDk);
       }
 
       if (iter%1000==0){
@@ -560,7 +626,14 @@ namespace ablate::finiteVolume::processes {
 
       PetscCall(DMGlobalToLocal(dm, X, INSERT_VALUES, locX));
 
-    } while (iter <= 5000 && maxDkDiff > 1e-4 && minDk > 0);
+      if (iter < 20) maxDkDiff = 1;
+
+//if (iter == 20) {
+//  PetscPrintf(PETSC_COMM_WORLD, "Manually exiting %s at %d\n", __FUNCTION__, __LINE__);
+//  maxDkDiff = 0;
+//}
+
+    } while (iter <= 5000 && maxDkDiff > 2e-4 && minDk > 0);
 
 
 
@@ -624,6 +697,7 @@ namespace ablate::finiteVolume::processes {
         PetscScalar *alphaRho;
         DMPlexPointGlobalFieldRef(dm, cell, rhoAlphaField.id, xArray, &alphaRho);
 
+
         PetscReal a = 0, b = 0;
         PetscReal mixRho = 0;
         for (std::size_t k = 0; k < nPhases; ++k) {
@@ -639,7 +713,7 @@ namespace ablate::finiteVolume::processes {
         }
 
         // Mixture internal energy
-        PetscScalar mixEnergy = (p0 * a + b);
+        PetscReal mixEnergy = (p0 * a + b);
 
         // Kinetic energy
         const PetscScalar *vel;
@@ -678,9 +752,19 @@ const ablate::domain::Field& pField = subDomain->GetField(ablate::finiteVolume::
 
       if (vals) {
 
+        /*
+          x, y: 1,2
+          alpha: 3, 4
+          rhoAlpha: 5,6
+          rhoE: 7
+          rhoU: 8, 9
+          p: 10
+        */
+
         PetscReal x[2];
         DMPlexPointGeometricData(dm, cell, NULL, x, NULL);
         PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+e\t%+e\t", x[0], x[1]);
+
 
         for (std::size_t k = 0; k < nPhases; ++k) PetscSynchronizedFPrintf(PETSC_COMM_WORLD, f1, "%+.16e\t", vals[k]);
 
@@ -711,6 +795,9 @@ const ablate::domain::Field& pField = subDomain->GetField(ablate::finiteVolume::
 
     preStageHasRun = PETSC_TRUE;
 
+    // Old value
+    gamma = gamma0;
+
     PetscPrintf(PETSC_COMM_WORLD, "Finished initial sharpening.\n");
 
     PetscFunctionReturn(0);
@@ -723,7 +810,7 @@ const ablate::domain::Field& pField = subDomain->GetField(ablate::finiteVolume::
 REGISTER(ablate::finiteVolume::processes::Process,
     ablate::finiteVolume::processes::NPhaseIntSharp,
     "N-phase interface regularization term",
-    ARG(PetscReal, "Gamma", "Gamma, velocity scale parameter (approx. umax)"),
+    ARG(PetscReal, "gammaFactor", "gammaFactor, gamma = gammaFactor * |vel|"),
     ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)"),
     ARG(PetscReal, "p0", "pressure, initial pressure to use when reconstructing conserved fields after pre-stage sharpening"),
     OPT(PetscInt, "preGauss", "preGauss, apply this number of Gaussian kernel smoothing operations before initial sharpening. Default is 0"),

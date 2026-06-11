@@ -7,47 +7,59 @@ void ablate::finiteVolume::fluxCalculator::AusmpUp::AusmpUpInterfaceValues(void*
                                                                               PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL,
                                                                               PetscReal uR, PetscReal aR, PetscReal rhoR, PetscReal pR,
                                                                               PetscReal* a12, PetscReal* m12, PetscReal* p12) {
-    // extract pgs/minf if provided
+
     auto ausmUp = (ablate::finiteVolume::fluxCalculator::AusmpUp*)ctx;
     PetscReal pgsAlpha = ausmUp->pgs ? ausmUp->pgs->GetAlpha() : 1.0;
-    PetscReal mInf = ausmUp->mInf;
 
-    // Compute the density at the interface
-    PetscReal rho12 = (0.5) * (rhoL + rhoR);
-
-    // compute the speed of sound at a12
-    PetscReal a12i = 0.5 * (aL + aR) / pgsAlpha;  // Simple average of aL and aR.  This can be replaced with eq. 30;
-
-    // Compute the left and right mach numbers
-    PetscReal mL = uL / a12i;
-    PetscReal mR = uR / a12i;
-
-    // Compute mBar2 (eq 70)
-    PetscReal mBar2 = (PetscSqr(uL) + PetscSqr(uR)) / (2.0 * a12i * a12i);
-
-    // compute mInf2 or set fa to unity
-    PetscReal fa = 1.0;
-    if (mInf > 0) {
-        PetscReal mInf2 = PetscSqr(mInf);
-
-        PetscReal mO2 = PetscMin(1.0, PetscMax(mBar2, mInf2));
-        PetscReal mO = PetscSqrtReal(mO2);
-        fa = mO * (2.0 - mO);
+    if (PetscAbsReal(uL) < PETSC_MACHINE_EPSILON && PetscAbsReal(uR) < PETSC_MACHINE_EPSILON) {
+      if (a12) *a12 = 0.5 * (aL + aR) / pgsAlpha;  // Simple average of aL and aR.  This can be replaced with eq. 30;
+      if (m12) *m12 = 0;
+      if (p12) *p12 = 0.5 * (pL + pR) / pgsAlpha;
     }
+    else {
 
-    if (a12) *a12 = a12i;
+      // extract pgs/minf if provided
+      PetscReal mInf = ausmUp->mInf;
 
-    // compute the mach number on the interface
-    if (m12) *m12 = M4Plus(mL) + M4Minus(mR) - (Kp / fa) * PetscMax(1.0 - (sigma * mBar2), 0) * (pR - pL) / (rho12 * a12i * a12i * pgsAlpha * pgsAlpha);
+      // Compute the density at the interface
+      PetscReal rho12 = (0.5) * (rhoL + rhoR);
 
-    // Pressure
-    if (p12) {
-        double p5Plus = P5Plus(mL, fa);
-        double p5Minus = P5Minus(mR, fa);
+      // compute the speed of sound at a12
+      PetscReal a12i = 0.5 * (aL + aR) / pgsAlpha;  // Simple average of aL and aR.  This can be replaced with eq. 30;
 
-        *p12 = p5Plus * pL + p5Minus * pR - Ku * p5Plus * p5Minus * rho12 * fa * a12i * a12i * pgsAlpha * pgsAlpha * (mR - mL);
-        *p12 /= PetscSqr(pgsAlpha);
-    }
+      // Compute the left and right mach numbers
+      PetscReal mL = uL / a12i;
+      PetscReal mR = uR / a12i;
+
+      // Compute mBar2 (eq 70)
+      PetscReal mBar2 = (PetscSqr(uL) + PetscSqr(uR)) / (2.0 * a12i * a12i);
+
+      // compute mInf2 or set fa to unity
+      PetscReal fa = 1.0;
+      if (mInf > 0) {
+          PetscReal mInf2 = PetscSqr(mInf);
+
+          PetscReal mO2 = PetscMin(1.0, PetscMax(mBar2, mInf2));
+          PetscReal mO = PetscSqrtReal(mO2);
+          fa = mO * (2.0 - mO);
+      }
+
+      if (a12) *a12 = a12i;
+
+      // compute the mach number on the interface
+      if (m12) *m12 = M4Plus(mL) + M4Minus(mR) - (Kp / fa) * PetscMax(1.0 - (sigma * mBar2), 0) * (pR - pL) / (rho12 * a12i * a12i * pgsAlpha * pgsAlpha);
+
+      // Pressure
+      if (p12) {
+          double p5Plus = P5Plus(mL, fa);
+          double p5Minus = P5Minus(mR, fa);
+
+          *p12 = p5Plus * pL + p5Minus * pR - Ku * p5Plus * p5Minus * rho12 * fa * a12i * a12i * pgsAlpha * pgsAlpha * (mR - mL);
+          *p12 /= PetscSqr(pgsAlpha);
+      }
+
+  }
+
 }
 
 ablate::finiteVolume::fluxCalculator::Direction ablate::finiteVolume::fluxCalculator::AusmpUp::AusmpUpFunction(void* ctx, PetscReal uL, PetscReal aL, PetscReal rhoL, PetscReal pL, PetscReal uR,

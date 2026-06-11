@@ -323,7 +323,8 @@ void ablate::finiteVolume::FaceInterpolant::RestoreInterpolatedFaceVectors(Vec, 
     }
 }
 void ablate::finiteVolume::FaceInterpolant::ComputeRHS(PetscReal time, Vec locXVec, Vec locAuxVec, Vec locFVec, const std::shared_ptr<domain::Region>& solverRegion,
-                                                       std::vector<FaceInterpolant::ContinuousFluxFunctionDescription>& rhsFunctions, const ablate::domain::Range& faceRange, Vec cellGeomVec,
+                                                       std::vector<FaceInterpolant::ContinuousFluxFunctionDescription>& rhsFunctions,
+                                                       const ablate::domain::Range& cellRange, const ablate::domain::Range& faceRange, Vec cellGeomVec,
                                                        Vec faceGeomVec) {
     // get the dm
     auto dm = subDomain->GetDM();
@@ -516,12 +517,6 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
                     DMPlexPointLocalFieldRef(dm, faceCells[1], rhsFunctions[fun].updateFields[updateFieldIdx], locFArray, &fR) >> utilities::PetscUtilities::checkError;
                 }
 
-
-//if (rhsFunctions[fun].updateFields.size() > 1 && updateFieldIdx==0) {
-//  if (ownedL >= 0 && PetscAbsReal(cgL->centroid[0] + 0.00390625)<1e-6 && PetscAbsReal(cgL->centroid[1] - 0.01171875)<1e-6) printf("%d\t%d\t%+e\t%e\t%+d: %+.16e\n", rank, face, fg->centroid[0], fg->centroid[1], ownedL, flux[0]);
-//  if (ownedR >= 0 && PetscAbsReal(cgR->centroid[0] + 0.00390625)<1e-6 && PetscAbsReal(cgR->centroid[1] - 0.01171875)<1e-6) printf("%d\t%d\t%+e\t%e\t%+d: %+.16e\n", rank, face, fg->centroid[0], fg->centroid[1], ownedR, flux[0]);
-//}
-
                 for (PetscInt d = 0; d < fluxComponentSize[fun][updateFieldIdx]; ++d) {
                     if (fL) fL[d] -= flux[d + fluxOffset] / cgL->volume;
                     if (fR) fR[d] += flux[d + fluxOffset] / cgR->volume;
@@ -530,6 +525,79 @@ MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
             }
         }
     }
+
+
+//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+//      const PetscInt cell = cellRange.GetPoint(c);
+
+//      PetscInt cellLabelValue = regionValue;
+//      PetscInt ghost;
+//      DMLabelGetValue(ghostLabel, cell, &ghost) >> utilities::PetscUtilities::checkError;
+//      if (regionLabel) DMLabelGetValue(regionLabel, cell, &cellLabelValue) >> utilities::PetscUtilities::checkError;
+//      if (ghost <= 0 && regionValue == cellLabelValue) {
+
+//        PetscFVCellGeom *cg;
+//        DMPlexPointLocalRead(cellDM, cell, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
+
+//        // March over each source function
+//        for (std::size_t fun = 0; fun < rhsFunctions.size(); fun++) {
+//          for (std::size_t updateFieldIdx = 0; updateFieldIdx < rhsFunctions[fun].updateFields.size(); updateFieldIdx++) {
+//            PetscScalar *f = nullptr;
+//            DMPlexPointLocalFieldRef(dm, cell, fluxId[fun][updateFieldIdx], locFArray, &f) >> utilities::PetscUtilities::checkError;
+//            for (PetscInt d = 0; d < (fluxComponentSize[fun][updateFieldIdx]); ++d) f[d] = PetscAbsReal(f[d]) > 1e-13 ? f[d]/cg->volume : 0;
+//          }
+//        }
+//      }
+//    }
+
+//    for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
+//      const PetscInt cell = cellRange.GetPoint(c);
+
+//      PetscFVCellGeom *cg;
+//      DMPlexPointLocalRead(cellDM, cell, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
+
+//      for (std::size_t fun = 0; fun < rhsFunctions.size(); fun++) {
+//        for (std::size_t updateFieldIdx = 0; updateFieldIdx < rhsFunctions[fun].updateFields.size(); updateFieldIdx++) {
+//            // add the flux back to the cell
+//            PetscScalar *f = nullptr;
+//            PetscInt cellLabelValue = regionValue;
+//            PetscInt ghost;
+//            DMLabelGetValue(ghostLabel, cell, &ghost) >> utilities::PetscUtilities::checkError;
+//            if (regionLabel) {
+//              DMLabelGetValue(regionLabel, cell, &cellLabelValue) >> utilities::PetscUtilities::checkError;
+//            }
+//            if (ghost <= 0 && regionValue == cellLabelValue) {
+//              DMPlexPointLocalFieldRef(dm, cell, rhsFunctions[fun].updateFields[updateFieldIdx], locFArray, &f) >> utilities::PetscUtilities::checkError;
+//            }
+
+//            for (PetscInt d = 0; d < fluxComponentSize[fun][updateFieldIdx]; ++d) {
+//              if (f) f[d] /= cg->volume;
+//            }
+//          }
+//        }
+
+
+
+////      PetscInt cellLabelValue = regionValue;
+////      PetscInt ghost;
+////      DMLabelGetValue(ghostLabel, cell, &ghost) >> utilities::PetscUtilities::checkError;
+////      if (regionLabel) DMLabelGetValue(regionLabel, cell, &cellLabelValue) >> utilities::PetscUtilities::checkError;
+////      if (ghost <= 0 && regionValue == cellLabelValue) {
+
+////        PetscFVCellGeom *cg;
+////        DMPlexPointLocalRead(cellDM, cell, cellGeomArray, &cg) >> utilities::PetscUtilities::checkError;
+
+////        // March over each source function
+////        for (std::size_t fun = 0; fun < rhsFunctions.size(); fun++) {
+////          for (std::size_t updateFieldIdx = 0; updateFieldIdx < rhsFunctions[fun].updateFields.size(); updateFieldIdx++) {
+////            PetscScalar *f = nullptr;
+////            DMPlexPointLocalFieldRef(dm, cell, fluxId[fun][updateFieldIdx], locFArray, &f) >> utilities::PetscUtilities::checkError;
+////            for (PetscInt d = 0; d < (fluxComponentSize[fun][updateFieldIdx]); ++d) f[d] = PetscAbsReal(f[d]) > -1e-13 ? f[d]/cg->volume : 0;
+////          }
+////        }
+////      }
+//    }
+
 
     VecRestoreArrayRead(faceSolutionVec, &faceSolutionArray);
     VecRestoreArrayRead(faceSolutionGradVec, &faceSolutionGradArray);

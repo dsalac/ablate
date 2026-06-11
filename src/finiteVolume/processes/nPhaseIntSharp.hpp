@@ -18,7 +18,8 @@ namespace ablate::finiteVolume::processes {
 class NPhaseIntSharp : public Process {
 
    private:
-    const PetscReal Gamma;
+    const PetscReal gammaFactor;
+    PetscReal gamma = 1.0;
     const PetscReal epsilon;
     PetscReal h;
     const PetscReal p0; // Initial pressure
@@ -29,6 +30,11 @@ class NPhaseIntSharp : public Process {
 
     std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase;
     std::shared_ptr<ablate::domain::SubDomain> subDomain;
+
+    PetscErrorCode UpdateGamma(TS flowTS, ablate::solver::Solver &solver);
+
+    PetscErrorCode NPhaseIntSharpPreSharp(TS flowTS, ablate::solver::Solver &solver);
+
 
     static PetscErrorCode NPhaseIntSharpPointFlux(PetscInt dim, const PetscFVFaceGeom* fg,
       const PetscInt uOff[], const PetscInt uOff_x[],
@@ -59,7 +65,7 @@ class NPhaseIntSharp : public Process {
 
    public:
 
-    PetscErrorCode NPhaseIntSharpPreSharp(TS flowTS, ablate::solver::Solver &solver);
+
 
     explicit NPhaseIntSharp(
         const PetscReal Gamma,

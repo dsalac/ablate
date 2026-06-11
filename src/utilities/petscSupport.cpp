@@ -285,7 +285,7 @@ PetscErrorCode DMPlexPointGeometricData(DM dm, const PetscInt p, PetscReal *vol,
           PetscCall(PetscArraycpy(normal, fg->normal, dim)); // This is a the area normal, so normalize to return unit normal.
 
           PetscReal nrm = 0.0;
-          if (*vol){
+          if (vol){
             nrm = *vol;
           }
           else {
