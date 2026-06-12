@@ -94,7 +94,7 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::MultiphaseFlowPost
     auto alphaAccessor = solver.GetSubDomain().GetSolutionAccessor(ALPHAK_FIELD);
     auto alpharhoAccessor = solver.GetSubDomain().GetSolutionAccessor(ALPHAKRHOK_FIELD);
     auto allaireAccessor = solver.GetSubDomain().GetSolutionAccessor(ALLAIRE_FIELD);
-
+//printf("%s::%d\n", __FILE__, __LINE__);
     // Cell range without ghosts
     ablate::domain::Range cellRange;
     solver.GetCellRangeWithoutGhost(cellRange);
@@ -187,7 +187,7 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::Setup(ablate::fini
 #endif
 
     // After evaluation re-set the vof fields
-    flow.RegisterPostStep(MultiphaseFlowPostEvaluate);
+    flow.RegisterPostEvaluate(MultiphaseFlowPostEvaluate);
 
 
     // Register Zalesak test as source term if enabled
@@ -272,7 +272,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::UpdateAu
     DMGetWorkArray(subDM, nPhases, MPIU_REAL, &Mk)  >> utilities::PetscUtilities::checkError;
     DMGetWorkArray(subDM, nPhases, MPIU_REAL, &Tk)  >> utilities::PetscUtilities::checkError;
 
-
+if (time==-12345) dim = -2;
     if (conservedValues) {
 //        try {
             nPhaseAllaireAdvection->decoder->DecodeNPhaseAllaireState(subDM, cellGeom->centroid,
@@ -947,7 +947,8 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::NStiffDecoder::Dec
                                                                                                                     PetscReal *pOut,               // Total pressure
                                                                                                                     PetscReal *TkOut) {            // Phase temperature
 
-
+//PetscBool debug = (dim==-2);
+dim = PetscAbsInt(dim);
 
     std::size_t nPhases = eosk.size();
 
@@ -1017,7 +1018,11 @@ void ablate::finiteVolume::processes::NPhaseAllaireAdvection::NStiffDecoder::Dec
 //    const PetscReal p = ((rhoIntE) / den); // Shifted energy
 
 
-    if (p < 0) {
+    if (p < 0 || p > 1e12) {
+      printf("%+e\n", rhoIntE);
+      printf("%+e\t%+e\n", alphak[0], alphak[1]);
+      printf("%+e\t%+e\n", rhok[0], rhok[1]);
+      printf("%+e\n", rho);
       printf("%+f\t%+f\n", centroid[0], centroid[1]);
       printf("Negative pressure\n");
       printf("%+e\n", p);

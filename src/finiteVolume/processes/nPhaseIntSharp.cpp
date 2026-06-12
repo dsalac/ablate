@@ -354,6 +354,12 @@ namespace ablate::finiteVolume::processes {
 
     PetscFunctionBegin;
 
+//if (!preStageHasRun) {
+//  PetscPrintf(PETSC_COMM_WORLD, "Manually skipping %s.\n", __FUNCTION__);
+//  preStageHasRun = PETSC_TRUE;
+//}
+
+
     // Only run this once
     if (preStageHasRun) PetscFunctionReturn(PETSC_SUCCESS);
 
@@ -633,7 +639,7 @@ namespace ablate::finiteVolume::processes {
 //  maxDkDiff = 0;
 //}
 
-    } while (iter <= 5000 && maxDkDiff > 2e-4 && minDk > 0);
+    } while (iter <= 5000 && maxDkDiff > 1e-4 && minDk > 0);
 
 
 

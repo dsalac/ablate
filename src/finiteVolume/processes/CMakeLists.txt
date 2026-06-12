@@ -29,6 +29,7 @@ target_sources(ablateLibrary
         compactCompressibleNSSpeciesSingleProgressTransport.cpp
         #intSharp-marziale.cpp
         locations.cpp
+        pressureCorrection.cpp
 
         PUBLIC
         process.hpp
@@ -61,4 +62,5 @@ target_sources(ablateLibrary
         compactCompressibleNSSpeciesSingleProgressTransport.hpp
         #intSharp-marziale.hpp
         locations.hpp
+        pressureCorrection.hpp
         )
