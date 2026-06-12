@@ -68,11 +68,11 @@ namespace ablate::finiteVolume::processes {
     std::size_t k = 0;
     for (auto fieldName : requiredFieldList) {
       if (!(subDomain->ContainsField(fieldName))) {
-        throw std::runtime_error("ablate::finiteVolume::processes::IntSharp expects a "+ fieldName +" field to be defined.");
+        throw std::runtime_error("ablate::finiteVolume::processes::NPhaseIntSharp expects a "+ fieldName +" field to be defined.");
       }
       const ablate::domain::Field field = subDomain->GetField(fieldName);
       if (field.location != requiredLocationList[k++]) {
-        throw std::runtime_error("ablate::finiteVolume::processes::IntSharp: "+ fieldName +" is in the incorrect location.");
+        throw std::runtime_error("ablate::finiteVolume::processes::NPhaseIntSharp: "+ fieldName +" is in the incorrect location.");
       }
     }
 
@@ -94,8 +94,11 @@ namespace ablate::finiteVolume::processes {
 #if 1
     // Continuous flux function
     flow.RegisterRHSFunction(NPhaseIntSharpPointFlux, this,
-      {ablate::finiteVolume::NPhaseFlowFields::ALPHAK, ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK, ablate::finiteVolume::NPhaseFlowFields::ALLAIRE},
-      {ablate::finiteVolume::NPhaseFlowFields::ALPHAK},
+      {ablate::finiteVolume::NPhaseFlowFields::ALPHAK,
+        ablate::finiteVolume::NPhaseFlowFields::ALPHAKRHOK,
+        ablate::finiteVolume::NPhaseFlowFields::ALLAIRE},
+      {ablate::finiteVolume::NPhaseFlowFields::ALPHAK,
+        ablate::finiteVolume::NPhaseFlowFields::ALLAIRE},
       {ablate::finiteVolume::NPhaseFlowFields::UI,        // 0
        ablate::finiteVolume::NPhaseFlowFields::RHOK,      // 1
        ablate::finiteVolume::NPhaseFlowFields::PRESSURE,  // 2
@@ -174,19 +177,21 @@ namespace ablate::finiteVolume::processes {
     const PetscReal    *faceGAlpha = &grad[uOff_x[0]];     // gradient of alpha on the face
 
     // Aux variables
-    const PetscReal     *velL = &auxL[aOff[0]];           // velocity at face
-    const PetscReal     *velR = &auxR[aOff[0]];           // velocity at face
+//    const PetscReal     *velL = &auxL[aOff[0]];           // velocity at face
+//    const PetscReal     *velR = &auxR[aOff[0]];           // velocity at face
     const PetscReal    *rhokL = &auxL[aOff[1]];           // phase density of left cell
     const PetscReal    *rhokR = &auxR[aOff[1]];           // phase density of right cell
     const PetscReal        PL =  auxL[aOff[2]];           // interpolated pressure at the face
     const PetscReal        PR =  auxR[aOff[2]];           // interpolated pressure at the face
     const PetscReal *faceGAij = &gradAux[aOff_x[3]];      // gradient of pairwise alpha at the face
-    const PetscReal    *eIntL = &auxL[aOff[4]];           // phase internal energy of left cell
-    const PetscReal    *eIntR = &auxR[aOff[4]];           // phase internal energy of right cell
+    const PetscReal *allaireL = &fieldL[uOff[1]];
+    const PetscReal *allaireR = &fieldR[uOff[1]];
+//    const PetscReal    *eIntL = &auxL[aOff[4]];           // phase internal energy of left cell
+//    const PetscReal    *eIntR = &auxR[aOff[4]];           // phase internal energy of right cell
 
     // Kinetic energy
-    const PetscReal keL = 0.5 * utilities::MathUtilities::DotVector(dim, velL, velL);
-    const PetscReal keR = 0.5 * utilities::MathUtilities::DotVector(dim, velR, velR);
+//    const PetscReal keL = 0.5 * utilities::MathUtilities::DotVector(dim, velL, velL);
+//    const PetscReal keR = 0.5 * utilities::MathUtilities::DotVector(dim, velR, velR);
 
     const PetscReal u_n = utilities::MathUtilities::DotVector(dim, &aux[aOff[0]], fg->normal);
 
@@ -206,8 +211,11 @@ namespace ablate::finiteVolume::processes {
       else             flux[p + nPhases] = rhokR[p] * flux[p];
 
       // Energy
-      if (flux[p] > 0) flux[2 * nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOE] += (rhokL[p] * (eIntL[p] + keL) + PL) * flux[p];
-      else             flux[2 * nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOE] += (rhokR[p] * (eIntR[p] + keR) + PR) * flux[p];
+//      if (flux[p] > 0) flux[2 * nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOE] += (rhokL[p] * (eIntL[p] + keL) + PL) * flux[p];
+//      else             flux[2 * nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOE] += (rhokR[p] * (eIntR[p] + keR) + PR) * flux[p];
+
+      if (flux[p] > 0) flux[2 * nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOE] += (allaireL[ablate::finiteVolume::NPhaseFlowFields::RHOE] + PL) * flux[p];
+      else             flux[2 * nPhases + ablate::finiteVolume::NPhaseFlowFields::RHOE] += (allaireR[ablate::finiteVolume::NPhaseFlowFields::RHOE] + PR) * flux[p];
 
       // Momentum
       PetscReal rho0;
@@ -639,7 +647,7 @@ namespace ablate::finiteVolume::processes {
 //  maxDkDiff = 0;
 //}
 
-    } while (iter <= 5000 && maxDkDiff > 1e-4 && minDk > 0);
+    } while (iter <= 100 && maxDkDiff > 1e-4 && minDk > 0);
 
 
 

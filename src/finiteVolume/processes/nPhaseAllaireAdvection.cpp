@@ -661,6 +661,17 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
   auto nPhaseAllaireAdvection = (NPhaseAllaireAdvection *)ctx;
   std::size_t nPhases = nPhaseAllaireAdvection->eosk.size();
 
+//  if (nPhases == 3 && field[uOff[ALPHAK_OFFSET] + 2] > 0.5) {
+//    std::size_t offset = 0;
+//    for (std::size_t k = 0; k < nPhases; k++) flux[offset++] = 0;
+//    for (std::size_t k = 0; k < nPhases; k++) flux[offset++] = 0;
+//    flux[offset++] = 0;
+//    for (PetscInt d = 0; d < dim; d++) flux[offset++] = 0;
+//    flux[offset++] = 0;
+//    PetscFunctionReturn(PETSC_SUCCESS);
+
+//  }
+
   const PetscReal p = aux[aOff[0]];
   const PetscReal *vel = &aux[aOff[1]];
 
@@ -752,36 +763,10 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
     const PetscScalar *alpha, *div;
     PetscScalar *alphaF;
 
-//PetscReal x[2], vol;
-//DMPlexPointGeometricData(dm, cell, &vol, x, NULL);
-//if (PetscAbsReal(x[0] - 0.0567307) < 1e-6 && PetscAbsReal(x[1] - 0.0097922) < 1e-6) {
-//  printf("Cell: %d\n", cell);
-//  PetscInt nFaces;
-//  DMPlexGetConeSize(dm, cell, &nFaces);
-//  const PetscInt *faces;
-//  DMPlexGetCone(dm, cell, &faces);
-
-//  for (PetscInt i = 0; i < nFaces; ++i) {
-//    PetscReal area, x[2], n[2];
-//    DMPlexPointGeometricData(dm, faces[i], &area, x, n);
-//    printf("quiver(%e,%e,%e,%e,0);\n", x[0], x[1], area*n[0], area*n[1]);
-//    printf("n%d = [%+.16e %+.16e];\n", i+1, area*n[0], area*n[1]);
-
-//    const PetscScalar *array;
-//    PetscScalar       *coords = NULL;
-//    PetscInt           numCoords;
-//    PetscBool          isDG;
-//    PetscCall(DMPlexGetCellCoordinates(dm, faces[i], &isDG, &numCoords, &array, &coords));
-//    printf("plot([%e %e],[%e %e],'k');\n", coords[0], coords[2], coords[1], coords[3]);
-//    PetscCall(DMPlexRestoreCellCoordinates(dm, faces[i], &isDG, &numCoords, &array, &coords));
-
-//  }
-//  printf("v=%.16e;\n", vol);
-//  xexit("");
-
-//}
-
     PetscCall(DMPlexPointLocalFieldRead(dm, cell, alphaId, xArray, &alpha));
+
+//    if (nPhases == 3 && alpha[2] > 0.5) continue;
+
     PetscCall(DMPlexPointLocalFieldRef(dm, cell, alphaId, fArray, &alphaF));
     PetscCall(DMPlexPointLocalFieldRead(dm, cell, velDivId, fArray, &div));
 
@@ -812,9 +797,18 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::Diffusio
 
     auto process = (NPhaseAllaireAdvection *)ctx;
 
+    std::size_t nPhases = process->mu.size();
+
+//    if (nPhases == 3 && field[uOff[0] + 2] > 0.5) {
+//      flux[NPhaseFlowFields::RHOE] = 0;
+//      for (PetscInt d = 0; d < dim; ++d) flux[NPhaseFlowFields::RHOU + d] = 0;
+//      PetscFunctionReturn(PETSC_SUCCESS);
+//    }
+
+
     // Compute the volume-averaged mixture viscosity
     PetscReal mu = 0;
-    for (std::size_t k = 0; k < process->mu.size(); ++k) mu += field[uOff[0] + k] * process->mu[k];
+    for (std::size_t k = 0; k < nPhases; ++k) mu += field[uOff[0] + k] * process->mu[k];
 
     // Compute the stress tensor tau
     PetscReal tau[9] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};  // Maximum size without symmetry

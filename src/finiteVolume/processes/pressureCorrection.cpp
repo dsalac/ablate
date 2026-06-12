@@ -143,6 +143,10 @@ namespace ablate::finiteVolume::processes {
         // The decoded pressure
         const PetscReal p = ((rhoIntE - b) / a);
 
+        if (nPhases == 3 && alpha[2] > 0.25) {
+          for (PetscInt d = 0; d < dim; ++d) allaire[ablate::finiteVolume::NPhaseFlowFields::RHOU + d] = 0;
+        }
+
         if (p >= minPressure) continue; // Don't need any correction
 
         // Mixture internal energy based on the minimum pressure
@@ -158,12 +162,12 @@ namespace ablate::finiteVolume::processes {
       VecRestoreArray(subDomain->GetSolutionVector(), &xArray) >> utilities::PetscUtilities::checkError;
 
 
-      subDomain->UpdateSolutionLocalVector();
-      Vec locX = subDomain->GetSolutionLocalVector();
-      PetscReal time;
-      TSGetTime(flowTs, &time);
+//      subDomain->UpdateSolutionLocalVector();
+//      Vec locX = subDomain->GetSolutionLocalVector();
+//      PetscReal time;
+//      TSGetTime(flowTs, &time);
 
-      fvSolver.UpdateAuxFields(time, locX, subDomain->GetAuxVector());
+//      fvSolver.UpdateAuxFields(time, locX, subDomain->GetAuxVector());
 
 
 
