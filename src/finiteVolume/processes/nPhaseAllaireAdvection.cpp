@@ -994,11 +994,17 @@ dim = PetscAbsInt(dim);
     const PetscReal p = ((rhoIntE - num) / den); // Shifted energy
 //    const PetscReal p = ((rhoIntE) / den); // Shifted energy
 
-
     if (p < 0 || p > 1e12) {
-      printf("%+e\n", rhoIntE);
-      printf("%+e\t%+e\n", alphak[0], alphak[1]);
-      printf("%+e\t%+e\n", rhok[0], rhok[1]);
+      for (std::size_t k = 0; k < nPhases; ++k){
+        printf("Phase %lu:\n", k);
+        printf("\t%10s: %+e\n", "alpha", alphak[k]);
+        printf("\t%10s: %+e\n", "gamma", gammak[k]);
+        printf("\t%10s: %+e\n", "pi", pik[k]);
+      }
+      printf("%10s: %+e\n", "rhoE", rhoIntE);
+      printf("%10s: %+e\n", "T rhoE", 100000*den + num);
+
+      printf("%+e\t%+e\t%+e\n", rhok[0], rhok[1], rhok[2]);
       printf("%+e\n", rho);
       printf("%+f\t%+f\n", centroid[0], centroid[1]);
       printf("Negative pressure\n");

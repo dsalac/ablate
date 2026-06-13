@@ -733,6 +733,9 @@ namespace ablate::finiteVolume::processes {
         // Mixture internal energy
         PetscReal mixEnergy = (p0 * a + b);
 
+        // Shifted Mixture internal energy
+//        PetscReal mixEnergy = (p0 * a);
+
         // Kinetic energy
         const PetscScalar *vel;
         DMPlexPointLocalFieldRead(auxDM, cell, velField.id, auxArray, &vel);
