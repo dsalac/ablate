@@ -651,7 +651,7 @@ namespace ablate::finiteVolume::processes {
 //  maxDkDiff = 0;
 //}
 
-    } while (iter <= 100 && maxDkDiff > 1e-4 && minDk > 0);
+    } while (iter <= 1000 && maxDkDiff > 1e-4 && minDk > 0);
 
 
 
