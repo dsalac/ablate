@@ -143,9 +143,9 @@ namespace ablate::finiteVolume::processes {
         // The decoded pressure
         const PetscReal p = ((rhoIntE - b) / a);
 
-        if (nPhases == 3 && alpha[2] > 0.25) {
-          for (PetscInt d = 0; d < dim; ++d) allaire[ablate::finiteVolume::NPhaseFlowFields::RHOU + d] = 0;
-        }
+//        if (nPhases == 3 && alpha[2] > 0.25) {
+//          for (PetscInt d = 0; d < dim; ++d) allaire[ablate::finiteVolume::NPhaseFlowFields::RHOU + d] = 0;
+//        }
 
         if (p >= minPressure) continue; // Don't need any correction
 

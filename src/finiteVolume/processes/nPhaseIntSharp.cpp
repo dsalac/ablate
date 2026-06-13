@@ -23,7 +23,7 @@ namespace ablate::finiteVolume::processes {
   void ablate::finiteVolume::processes::NPhaseIntSharp::Initialize(ablate::finiteVolume::FiniteVolumeSolver &solver) {}
 
 
-  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(const PetscReal gammaFactor, const PetscReal epsilon, const PetscReal p0, const PetscInt preGauss, const PetscInt postGauss) : gammaFactor(gammaFactor), epsilon(epsilon), p0(p0), preGauss(preGauss), postGauss(postGauss) {}
+  ablate::finiteVolume::processes::NPhaseIntSharp::NPhaseIntSharp(const PetscReal gammaFactor, const PetscReal epsilon, const std::vector<PetscReal> &epsilonij, const PetscReal p0, const PetscInt preGauss, const PetscInt postGauss) : gammaFactor(gammaFactor), epsilon(epsilon), epsilonij(epsilonij), p0(p0), preGauss(preGauss), postGauss(postGauss) {}
 
   ablate::finiteVolume::processes::NPhaseIntSharp::~NPhaseIntSharp() {}
 
@@ -118,7 +118,7 @@ namespace ablate::finiteVolume::processes {
 
 
 
-  void Rpq(std::size_t p, const PetscReal h, const PetscInt dim, std::size_t nPhases, const PetscReal eps, const PetscReal gamma, const PetscReal *faceAlpha, const PetscReal *faceGAlpha, const PetscReal *faceGAij, PetscReal *r) {
+  void Rpq(std::size_t p, const PetscReal h, const PetscInt dim, std::size_t nPhases, const PetscReal eps, std::vector<PetscReal> epsij, const PetscReal gamma, const PetscReal *faceAlpha, const PetscReal *faceGAlpha, const PetscReal *faceGAij, PetscReal *r) {
 
     for (PetscInt d = 0; d < dim; ++d) r[d] = eps * faceGAlpha[p*dim + d];
 
@@ -132,11 +132,11 @@ namespace ablate::finiteVolume::processes {
       // Magnitude of the gradient
       const PetscReal mag = utilities::MathUtilities::MagVector(dim, gpq);
 
-      for (PetscInt d = 0; d < dim; ++d) r[d] -= faceAlpha[p] * faceAlpha[q] * gpq[d] / ( mag + h*h );
+      for (PetscInt d = 0; d < dim; ++d) r[d] -= ( eps * faceAlpha[p] * faceAlpha[q] / epsij[p * nPhases + q] ) * ( gpq[d] / (mag + h*h) );
     }
 
-    const PetscReal hGamma = PetscTanhReal(faceAlpha[p] * (1.0 - faceAlpha[p]) * 5.5e5) * gamma;
-    for (PetscInt d = 0; d < dim; ++d) r[d] *= hGamma;
+//    const PetscReal hGamma = PetscTanhReal(faceAlpha[p] * (1.0 - faceAlpha[p]) * 5.5e5) * gamma;
+    for (PetscInt d = 0; d < dim; ++d) r[d] *= gamma;
 
   }
 
@@ -168,6 +168,7 @@ namespace ablate::finiteVolume::processes {
     auto process = (NPhaseIntSharp *)ctx;
     std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase = process->eosNPhase;
     const PetscReal   eps = process->epsilon;
+    std::vector<PetscReal> epsij = process->epsilonij;
     const PetscReal gamma = process->gamma;//
     const std::size_t nPhases = eosNPhase.size();
     const PetscReal h = process->h;
@@ -201,7 +202,7 @@ namespace ablate::finiteVolume::processes {
 
       PetscReal r[3] = {0, 0, 0};
 
-      Rpq(p, h, dim, nPhases, eps, gamma, faceAlpha, faceGAlpha, faceGAij, r);
+      Rpq(p, h, dim, nPhases, eps, epsij, gamma, faceAlpha, faceGAlpha, faceGAij, r);
 
       // alphaK
       flux[p] = -utilities::MathUtilities::DotVector(dim, r, fg->normal);
@@ -273,6 +274,7 @@ namespace ablate::finiteVolume::processes {
       auto process = (NPhaseIntSharp *)ctx;
       std::vector<std::shared_ptr<ablate::eos::KthStiffenedGas>> eosNPhase = process->eosNPhase;
       const PetscReal   eps = process->epsilon;
+      std::vector<PetscReal> epsij = process->epsilonij;
       const PetscReal gamma = process->gamma;//
       const std::size_t nPhases = eosNPhase.size();
       const PetscReal h = process->h;
@@ -287,7 +289,7 @@ namespace ablate::finiteVolume::processes {
 
         PetscReal r[3] = {0, 0, 0};
 
-        Rpq(p, h, dim, nPhases, eps, gamma, faceAlpha, faceGAlpha, faceGAij, r);
+        Rpq(p, h, dim, nPhases, eps, epsij, gamma, faceAlpha, faceGAlpha, faceGAij, r);
 
         flux[p] = -utilities::MathUtilities::DotVector(dim, r, fg->normal);
 
@@ -363,7 +365,7 @@ namespace ablate::finiteVolume::processes {
     PetscFunctionBegin;
 
 //if (!preStageHasRun) {
-//  PetscPrintf(PETSC_COMM_WORLD, "Manually skipping %s.\n", __FUNCTION__);
+//  PetscPrintf(PETSC_COMM_WORLD, "Manually skipping %s::%d.\n", __FUNCTION__, __LINE__);
 //  preStageHasRun = PETSC_TRUE;
 //}
 
@@ -514,9 +516,12 @@ namespace ablate::finiteVolume::processes {
               aij[p*nPhases + q] = 0.5;
             }
             else {
-              PetscReal denom = alpha[p] + alpha[q] + PETSC_SQRT_MACHINE_EPSILON;
-//              PetscReal value = (denom > PETSC_SMALL) ? (alpha[p] / denom) : 0.0;
-              PetscReal value = alpha[p] / denom;
+              PetscReal value = NAN;
+              PetscReal sum = alpha[p] + alpha[q];
+              if (sum < PETSC_MACHINE_EPSILON) value = 0;
+              else if (alpha[p] < PETSC_MACHINE_EPSILON) value = 0;
+              else if (alpha[q] < PETSC_MACHINE_EPSILON) value = 1;
+              else value = alpha[p] / sum;
               aij[p*nPhases + q] = value;
             }
           }
@@ -524,7 +529,6 @@ namespace ablate::finiteVolume::processes {
       }
       VecRestoreArray(locX, &xArray);
       VecRestoreArray(auxVec, &aArray);
-
 
       PetscCall(VecZeroEntries(locF));
       faceInterpolant->ComputeRHS(0.0, locX, auxVec, locF, solver.GetRegion(), allFaceFunctions, cellRange, faceRange, cellGeomVec, faceGeomVec);
@@ -826,6 +830,7 @@ REGISTER(ablate::finiteVolume::processes::Process,
     "N-phase interface regularization term",
     ARG(PetscReal, "gammaFactor", "gammaFactor, gamma = gammaFactor * |vel|"),
     ARG(PetscReal, "epsilon", "epsilon, interface thickness scale parameter (approx. h)"),
+    ARG(std::vector<PetscReal>, "epsilonij", "epsilonij, interface thickness pair scaling"),
     ARG(PetscReal, "p0", "pressure, initial pressure to use when reconstructing conserved fields after pre-stage sharpening"),
     OPT(PetscInt, "preGauss", "preGauss, apply this number of Gaussian kernel smoothing operations before initial sharpening. Default is 0"),
     OPT(PetscInt, "postGauss", "postGauss, apply this number of Gaussian kernel smoothing operations after initial sharpening. Default is 0")

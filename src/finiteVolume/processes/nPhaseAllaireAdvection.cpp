@@ -272,7 +272,6 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::UpdateAu
     DMGetWorkArray(subDM, nPhases, MPIU_REAL, &Mk)  >> utilities::PetscUtilities::checkError;
     DMGetWorkArray(subDM, nPhases, MPIU_REAL, &Tk)  >> utilities::PetscUtilities::checkError;
 
-if (time==-12345) dim = -2;
     if (conservedValues) {
 //        try {
             nPhaseAllaireAdvection->decoder->DecodeNPhaseAllaireState(subDM, cellGeom->centroid,
@@ -416,8 +415,12 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::AijPreRH
     const PetscInt alphaId = fvSolver.GetSubDomain().GetField(NPhaseFlowFields::ALPHAK).id;
     const PetscInt aijId = fvSolver.GetSubDomain().GetField(NPhaseFlowFields::AIJ).id;
 
+    DM dm = fvSolver.GetSubDomain().GetDM();
     DM auxDM = fvSolver.GetSubDomain().GetAuxDM();
     Vec auxVec = fvSolver.GetSubDomain().GetAuxVector();
+
+    const PetscScalar *xArray;
+    PetscCall(VecGetArrayRead(locX, &xArray));
 
     PetscScalar *auxArray;
     PetscCall(VecGetArray(auxVec, &auxArray));
@@ -432,13 +435,12 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::AijPreRH
     for (PetscInt c = cellRange.start; c < cellRange.end; ++c) {
       const PetscInt cell = cellRange.GetPoint(c);
       const PetscScalar *vals;
-      DMPlexPointLocalFieldRead(auxDM, cell, alphaId, auxArray, &vals);
+      DMPlexPointLocalFieldRead(dm, cell, alphaId, xArray, &vals);
 
       for (std::size_t i = 0; i < nPhases; ++i) {
         alphaMax[i] = PetscMax(alphaMax[i], vals[i]);
       }
     }
-
     PetscCallMPI(MPI_Allreduce(MPI_IN_PLACE, alphaMax, nPhases, MPIU_REAL, MPI_MAX, PetscObjectComm((PetscObject)auxDM)));
 
     for (std::size_t i = 0; i < nPhases; ++i) zeroAlpha[i] = (alphaMax[i] < PETSC_MACHINE_EPSILON);
@@ -458,6 +460,7 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::AijPreRH
     }
 
     PetscCall(VecRestoreArray(auxVec, &auxArray));
+    PetscCall(VecRestoreArrayRead(locX, &xArray));
 
     fvSolver.RestoreRange(cellRange);
 
@@ -661,17 +664,6 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
   auto nPhaseAllaireAdvection = (NPhaseAllaireAdvection *)ctx;
   std::size_t nPhases = nPhaseAllaireAdvection->eosk.size();
 
-//  if (nPhases == 3 && field[uOff[ALPHAK_OFFSET] + 2] > 0.5) {
-//    std::size_t offset = 0;
-//    for (std::size_t k = 0; k < nPhases; k++) flux[offset++] = 0;
-//    for (std::size_t k = 0; k < nPhases; k++) flux[offset++] = 0;
-//    flux[offset++] = 0;
-//    for (PetscInt d = 0; d < dim; d++) flux[offset++] = 0;
-//    flux[offset++] = 0;
-//    PetscFunctionReturn(PETSC_SUCCESS);
-
-//  }
-
   const PetscReal p = aux[aOff[0]];
   const PetscReal *vel = &aux[aOff[1]];
 
@@ -765,8 +757,6 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::NPhaseFl
 
     PetscCall(DMPlexPointLocalFieldRead(dm, cell, alphaId, xArray, &alpha));
 
-//    if (nPhases == 3 && alpha[2] > 0.5) continue;
-
     PetscCall(DMPlexPointLocalFieldRef(dm, cell, alphaId, fArray, &alphaF));
     PetscCall(DMPlexPointLocalFieldRead(dm, cell, velDivId, fArray, &div));
 
@@ -798,13 +788,6 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseAllaireAdvection::Diffusio
     auto process = (NPhaseAllaireAdvection *)ctx;
 
     std::size_t nPhases = process->mu.size();
-
-//    if (nPhases == 3 && field[uOff[0] + 2] > 0.5) {
-//      flux[NPhaseFlowFields::RHOE] = 0;
-//      for (PetscInt d = 0; d < dim; ++d) flux[NPhaseFlowFields::RHOU + d] = 0;
-//      PetscFunctionReturn(PETSC_SUCCESS);
-//    }
-
 
     // Compute the volume-averaged mixture viscosity
     PetscReal mu = 0;

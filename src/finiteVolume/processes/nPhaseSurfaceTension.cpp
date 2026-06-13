@@ -68,7 +68,7 @@ void NPhaseSurfaceTension::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow)
       "A conservative second order phase field model for simulation of N-phase flows" by Mirjalilia and Mani
       and the capillary (Korteweg) stress tensor.
 
-      The capillary tensor for two-phase flow is T = sigma * (I - n n^T)| grad(c) |, where n n^T is the outer product.
+      The capillary tensor for two-phase flow is T = -sigma * (I - n n^T) || grad(c) ||, where n n^T is the outer product.
       The divergence of this results in the standard surface tension force: -sigma * H * grad(c).
 
       Eq. (10) in Mirjalilia and Mani has the tension contribution of the i-j pair as 6 * sigma_{ij} * H_{ij} * ai * aj * grad(aij),
@@ -77,6 +77,7 @@ void NPhaseSurfaceTension::Setup(ablate::finiteVolume::FiniteVolumeSolver &flow)
       Re-arranging this we get (6 * sigma_{ij} * ai * aj) * H_{ij} * grad(aij). Thus, for n-phase flow we replace this with the pairwise capillary stress tensor:
       Tij = (6 * sigma_{ij} * ai * aj) * (I - n_{ij} n^T_{ij}) | grad(aij) |
 */
+
 PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::PointFlux(PetscInt dim, const PetscFVFaceGeom* fg,
   const PetscInt uOff[], const PetscInt uOff_x[],
   const PetscScalar fieldL[], const PetscScalar fieldR[], const PetscScalar field[], const PetscScalar grad[],
@@ -104,9 +105,15 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::PointFlux(
         // Kernel times surface tension coefficient
         const PetscReal f = 6 * sigmaij[i * nPhases + j] * alphak[i] * alphak[j];
 
+        if (f < PETSC_MACHINE_EPSILON) continue;
+
         // Gradient of A_{ij}
         const PetscReal *g = &gaij[(i * nPhases + j)*dim];
-
+//if (PetscAbsReal(fg->centroid[0] - 0.05) < 1e-6 && PetscAbsReal(fg->centroid[1] - 0.00078125) < 1e-6) {
+//    printf("%+e\t%+e\n", g[0], g[1]);
+////  printf("%lu, %lu: %+e\t%+e\n", i, j, g[0], g[1]);
+////  printf("quiver(%+e, %+e, %+e*5e-5, %+e*5e-5, 0, 'r');\n", fg->centroid[0], fg->centroid[1], g[0], g[1]);
+//}
         // || grad(A_{ij}) || + h * h
         const PetscReal mag = utilities::MathUtilities::MagVector(dim, g) + h * h;
 
@@ -121,8 +128,21 @@ PetscErrorCode ablate::finiteVolume::processes::NPhaseSurfaceTension::PointFlux(
 
         // Momentum
         for (PetscInt d = 0; d < dim; ++d) flux[NPhaseFlowFields::RHOU + d] -= f * (mag * fg->normal[d] - g[d] * g_n / mag);
+
       }
     }
+
+//    if (PetscAbsReal(fg->centroid[0] - 0.05) < 1e-6 && PetscAbsReal(fg->centroid[1] - 0.00078125) < 1e-6) {
+////      printf("%+e\t%+e\n", fieldL[uOff[0] + 0], fieldL[uOff[0] + 1]);
+////      printf("%+e\t%+e\n", fieldR[uOff[0] + 0], fieldR[uOff[0] + 1]);
+////      printf("%+e\t%+e\n", alphak[0], alphak[1]);
+////      printf("%+e\t%+e\n", aux[aOff[1]+1], aux[aOff[1] + 2]);
+//      printf("%+e\t%+e\n", flux[NPhaseFlowFields::RHOU + 0], flux[NPhaseFlowFields::RHOU + 1]);
+//      printf("%s::%d\n", __FILE__, __LINE__);exit(0);
+
+//    }
+
+
 
     PetscFunctionReturn(PETSC_SUCCESS);
 

@@ -21,6 +21,7 @@ class NPhaseIntSharp : public Process {
     const PetscReal gammaFactor;
     PetscReal gamma = 1.0;
     const PetscReal epsilon;
+    std::vector<PetscReal> epsilonij;
     PetscReal h;
     const PetscReal p0; // Initial pressure
     const PetscInt preGauss = 0;
@@ -70,6 +71,7 @@ class NPhaseIntSharp : public Process {
     explicit NPhaseIntSharp(
         const PetscReal Gamma,
         const PetscReal epsilon,
+        const std::vector<PetscReal>& epsilonij,
         const PetscReal p0,
         const PetscInt preGauss,
         const PetscInt postGauss

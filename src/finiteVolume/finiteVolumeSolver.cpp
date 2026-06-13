@@ -258,7 +258,7 @@ PetscErrorCode ablate::finiteVolume::FiniteVolumeSolver::ComputeRHSFunction(Pets
         if (!continuousFluxFunctionDescriptions.empty()) {
             if (faceInterpolant == nullptr) {
                 faceInterpolant = std::make_unique<FaceInterpolant>(subDomain, GetRegion(), faceGeomVec, cellGeomVec);
-                faceInterpolant->SetUseGaussianConvolution(PETSC_FALSE);
+                faceInterpolant->SetUseGaussianConvolution(PETSC_TRUE);
             }
 
             faceInterpolant->ComputeRHS(time, locXVec, subDomain->GetAuxVector(), locFVec, GetRegion(), continuousFluxFunctionDescriptions, cellRange, faceRange, cellGeomVec, faceGeomVec);
